@@ -540,6 +540,7 @@ size_t QUIC_IOCTL_BUFFER_SIZES[] =
     0,
     sizeof(INT32),
     sizeof(QUIC_RUN_PROBE_PATH_PARAMS),
+    sizeof(QUIC_RUN_PROBE_PATH_FAILED_PARAMS),
     sizeof(QUIC_RUN_MIGRATION_PARAMS),
 };
 
@@ -572,6 +573,7 @@ typedef union {
     QUIC_RUN_MTU_DISCOVERY_PARAMS MtuDiscoveryParams;
     uint32_t Test;
     QUIC_RUN_PROBE_PATH_PARAMS ProbePathParams;
+    QUIC_RUN_PROBE_PATH_FAILED_PARAMS ProbePathFailedParams;
     QUIC_RUN_MIGRATION_PARAMS MigrationParams;
     QUIC_RUN_REBIND_PARAMS RebindParams;
     UINT8 RejectByClosing;
@@ -1103,6 +1105,14 @@ QuicTestCtlEvtIoDeviceControl(
                 Params->ProbePathParams.ShareBinding,
                 Params->ProbePathParams.DeferConnIDGen,
                 Params->ProbePathParams.DropPacketCount));
+        break;
+
+    case IOCTL_QUIC_RUN_PROBE_PATH_FAILED:
+        CXPLAT_FRE_ASSERT(Params != nullptr);
+        QuicTestCtlRun(
+            QuicTestProbePathFailed(
+                Params->ProbePathFailedParams.Family,
+                Params->ProbePathFailedParams.ShareBinding));
         break;
 
     case IOCTL_QUIC_RUN_MIGRATION:
