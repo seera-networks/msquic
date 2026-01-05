@@ -2,9 +2,9 @@ name: Scorecards supply-chain security
 
 on:
   push:
-    branches: [ main ]
+    branches: [ seera-main ]
   pull_request:
-    branches: [ main ]
+    branches: [ seera-main ]
 
 # Declare default permissions as read only.
 permissions: read-all

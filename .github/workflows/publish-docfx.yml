@@ -5,11 +5,11 @@ on:
   workflow_dispatch:
   # Runs on pushes targeting the default branch
   push:
-    branches: ["main"]
+    branches: ["seera-main"]
     paths: ["docs/**", ".github/workflows/publish-docfx.yml"]
 
   pull_request:
-    branches: ["main"]
+    branches: ["seera-main"]
     paths: ["docs/**", ".github/workflows/publish-docfx.yml"]
 
 permissions: read-all

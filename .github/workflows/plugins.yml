@@ -2,12 +2,12 @@ name: Plugins
 
 on:
   push:
-    branches: [ main ]
+    branches: [ seera-main ]
     paths:
     - .github/workflows/plugins.yml
     - src/plugins/**
   pull_request:
-    branches: [ main ]
+    branches: [ seera-main ]
     paths:
     - .github/workflows/plugins.yml
     - src/plugins/**

@@ -4,12 +4,12 @@ name: "CodeQL"
 on:
   push:
     branches:
-      - main
+      - seera-main
       - release/*
   pull_request:
     # The branches below must be a subset of the branches above
     branches:
-      - main
+      - seera-main
       - release/*
   schedule:
     - cron: '0 17 * * 1'

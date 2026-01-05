@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-    - main
+    - seera-main
     paths:
     - .github/workflows/netperf.yml
     - .gitmodules
@@ -22,7 +22,7 @@ on:
     - submodules/xdp-for-windows/**
   pull_request:
     branches:
-    - main
+    - seera-main
     paths:
     - .github/workflows/netperf.yml
     - .gitmodules

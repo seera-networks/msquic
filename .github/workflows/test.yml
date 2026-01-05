@@ -32,11 +32,11 @@ on:
         - 'Stacks.Verbose'
   push:
     branches:
-    - main
+    - seera-main
     - release/*
   pull_request:
     branches:
-    - main
+    - seera-main
     - release/*
 
 concurrency:

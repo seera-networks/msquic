@@ -3,11 +3,11 @@ name: Test Down Level
 on:
   push:
     branches:
-    - main
+    - seera-main
     - release/*
   pull_request:
     branches:
-    - main
+    - seera-main
     - release/*
 
 concurrency:
