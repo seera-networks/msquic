@@ -542,6 +542,10 @@ size_t QUIC_IOCTL_BUFFER_SIZES[] =
     sizeof(QUIC_RUN_PROBE_PATH_PARAMS),
     sizeof(QUIC_RUN_PROBE_PATH_FAILED_PARAMS),
     sizeof(QUIC_RUN_MIGRATION_PARAMS),
+    sizeof(QUIC_RUN_PROBE_PATH_PARAMS),
+    sizeof(INT32),
+    sizeof(QUIC_RUN_PROBE_PATH_PARAMS),
+    sizeof(QUIC_RUN_MIGRATION_PARAMS)
 };
 
 CXPLAT_STATIC_ASSERT(
@@ -1121,6 +1125,41 @@ QuicTestCtlEvtIoDeviceControl(
             QuicTestMigration(
                 Params->MigrationParams.Family,
                 Params->MigrationParams.ShareBinding,
+                Params->MigrationParams.AddressType,
+                Params->MigrationParams.Type));
+        break;
+
+    case IOCTL_QUIC_RUN_MULTIPLE_LOCAL_ADDRESSES:
+        CXPLAT_FRE_ASSERT(Params != nullptr);
+        QuicTestCtlRun(
+            QuicTestMultipleLocalAddresses(
+                Params->ProbePathParams.Family,
+                Params->ProbePathParams.ShareBinding,
+                Params->ProbePathParams.DeferConnIDGen,
+                Params->ProbePathParams.DropPacketCount));
+        break;
+
+    case IOCTL_QUIC_RUN_ADDRESS_DISCOVERY:
+        CXPLAT_FRE_ASSERT(Params != nullptr);
+        QuicTestCtlRun(
+            QuicTestAddressDiscovery(Params->Family));
+        break;
+
+    case IOCTL_QUIC_RUN_SERVER_PROBE_PATH:
+        CXPLAT_FRE_ASSERT(Params != nullptr);
+        QuicTestCtlRun(
+            QuicTestServerProbePath(
+                Params->ProbePathParams.Family,
+                Params->ProbePathParams.DeferConnIDGen,
+                Params->ProbePathParams.DropPacketCount));
+        break;
+
+    case IOCTL_QUIC_RUN_SERVER_MIGRATION:
+        CXPLAT_FRE_ASSERT(Params != nullptr);
+        QuicTestCtlRun(
+            QuicTestServerMigration(
+                Params->MigrationParams.Family,
+                Params->MigrationParams.AddressType,
                 Params->MigrationParams.Type));
         break;
 

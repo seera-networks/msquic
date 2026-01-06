@@ -628,6 +628,8 @@ QuicLossDetectionOnPacketAcknowledged(
             break;
 
         case QUIC_FRAME_REMOVE_ADDRESS: {
+#pragma warning(push)
+#pragma warning(disable:6001) // Using uninitialized memory
             QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound = NULL;
             for (CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
                     Entry != &Connection->BoundAddresses;
@@ -644,6 +646,7 @@ QuicLossDetectionOnPacketAcknowledged(
                     break;
                 }
             }
+#pragma warning(pop)
             if (Bound != NULL) {
                 QuicTraceEvent(
                     ConnObservedAddrRemoved,

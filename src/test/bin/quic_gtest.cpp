@@ -1805,9 +1805,10 @@ TEST_P(WithProbePathArgs, MultipleLocalAddresses) {
             GetParam().DeferConnIDGen,
             GetParam().DropPacketCount
         };
-        ASSERT_TRUE(DriverClient.Run(IOCTL_QUIC_RUN_PROBE_PATH, Params));
+        ASSERT_TRUE(DriverClient.Run(IOCTL_QUIC_RUN_MULTIPLE_LOCAL_ADDRESSES, Params));
     } else {
-        QuicTestMultipleLocalAddresses(GetParam().Family,
+        QuicTestMultipleLocalAddresses(
+            GetParam().Family,
             GetParam().ShareBinding,
             GetParam().DeferConnIDGen,
             GetParam().DropPacketCount);
@@ -1817,10 +1818,7 @@ TEST_P(WithProbePathArgs, MultipleLocalAddresses) {
 TEST_P(WithFamilyArgs, AddressDiscovery) {
     TestLoggerT<ParamType> Logger("QuicTestAddressDiscovery", GetParam());
     if (TestingKernelMode) {
-        QUIC_RUN_ADDRESS_DISCOVERY_PARAMS Params = {
-            GetParam().Family
-        };
-        ASSERT_TRUE(DriverClient.Run(IOCTL_QUIC_RUN_ADDRESS_DISCOVERY, Params));
+        ASSERT_TRUE(DriverClient.Run(IOCTL_QUIC_RUN_ADDRESS_DISCOVERY, GetParam().Family));
     } else {
         QuicTestAddressDiscovery(GetParam().Family);
     }
@@ -1829,8 +1827,9 @@ TEST_P(WithFamilyArgs, AddressDiscovery) {
 TEST_P(WithServerProbePathArgs, ServerProbePath) {
     TestLoggerT<ParamType> Logger("QuicTestServerProbePath", GetParam());
     if (TestingKernelMode) {
-        QUIC_RUN_SERVER_PROBE_PATH_PARAMS Params = {
+        QUIC_RUN_PROBE_PATH_PARAMS Params = {
             GetParam().Family,
+            TRUE,
             GetParam().DeferConnIDGen,
             GetParam().DropPacketCount
         };
@@ -1845,8 +1844,9 @@ TEST_P(WithServerProbePathArgs, ServerProbePath) {
 TEST_P(WithServerMigrationArgs, ServerMigration) {
     TestLoggerT<ParamType> Logger("QuicTestServerMigration", GetParam());
     if (TestingKernelMode) {
-        QUIC_RUN_SERVER_MIGRATION_PARAMS Params = {
+        QUIC_RUN_MIGRATION_PARAMS Params = {
             GetParam().Family,
+            TRUE,
             GetParam().AddressType,
             GetParam().Type
         };
