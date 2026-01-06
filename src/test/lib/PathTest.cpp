@@ -361,14 +361,7 @@ QuicTestMigration(
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(PairAddr));
     } else {
         TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(SecondAddr));
-        QUIC_ADDR_STR SecondAddrStr;
-        QuicAddrToString(&SecondAddr.SockAddr, &SecondAddrStr);
-        fprintf(stderr, "Current Remote Address: %s scope:%u\n", SecondAddrStr.Address, SecondAddr.SockAddr.Ipv6.sin6_scope_id);
-        SecondAddr.SetPort(rand() % 65536);
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(PairAddr));
-        QUIC_ADDR_STR PairAddrStr;
-        QuicAddrToString(&PairAddr.SockAddr, &PairAddrStr);
-        fprintf(stderr, "Current Local Address: %s\n", PairAddrStr.Address);
         PairAddr.SetPort(rand() % 65536);
     }
 
@@ -419,11 +412,6 @@ QuicTestMigration(
             }
         } else if (AddressType == NewBothAddresses) {
             PathParam = { &PairAddr.SockAddr, &SecondAddr.SockAddr };
-            QUIC_ADDR_STR PairAddrStr;
-            QuicAddrToString(&PairAddr.SockAddr, &PairAddrStr);
-            QUIC_ADDR_STR SecondAddrStr;
-            QuicAddrToString(&SecondAddr.SockAddr, &SecondAddrStr);
-            fprintf(stderr, "New Path Local Address: %s Remote Address: %s\n", PairAddrStr.Address, SecondAddrStr.Address);
             Try = 0;
             do {
                 Status = Connection.SetParam(
