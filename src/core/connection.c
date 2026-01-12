@@ -7304,20 +7304,25 @@ QuicConnRemovePath(
     // to the array shifting that happens in QuicPathRemove.
     //
     for (int16_t i = Connection->PathsCount - 1; i >= 0; --i) {
-        if (((QuicAddrIsWildCard(Param->LocalAddress) && QuicAddrGetPort(Param->LocalAddress) == 0) ||
-             (QuicAddrIsWildCard(Param->LocalAddress) &&
+        BOOLEAN LocalAddrMatch =
+            (QuicAddrIsWildCard(Param->LocalAddress) && QuicAddrGetPort(Param->LocalAddress) == 0) ||
+            (QuicAddrIsWildCard(Param->LocalAddress) &&
                 QuicAddrGetPort(&Connection->Paths[i].Route.LocalAddress) ==
                     QuicAddrGetPort(Param->LocalAddress)) ||
-             (QuicAddrCompare(
+            QuicAddrCompare(
                 &Connection->Paths[i].Route.LocalAddress,
-                Param->LocalAddress))) &&
-            ((QuicAddrIsWildCard(Param->RemoteAddress) && QuicAddrGetPort(Param->RemoteAddress) == 0) ||
-             (QuicAddrIsWildCard(Param->RemoteAddress) &&
+                Param->LocalAddress);
+
+        BOOLEAN RemoteAddrMatch =
+            (QuicAddrIsWildCard(Param->RemoteAddress) && QuicAddrGetPort(Param->RemoteAddress) == 0) ||
+            (QuicAddrIsWildCard(Param->RemoteAddress) &&
                 QuicAddrGetPort(&Connection->Paths[i].Route.RemoteAddress) ==
                     QuicAddrGetPort(Param->RemoteAddress)) ||
-             (QuicAddrCompare(
+            QuicAddrCompare(
                 &Connection->Paths[i].Route.RemoteAddress,
-                Param->RemoteAddress)))) {
+                Param->RemoteAddress);
+
+        if (LocalAddrMatch && RemoteAddrMatch) {
             QUIC_PATH* Path = &Connection->Paths[i];
             uint8_t RemovingPathIndex = (uint8_t)i;
             PathFound = TRUE;
