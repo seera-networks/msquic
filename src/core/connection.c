@@ -6658,7 +6658,7 @@ QuicConnOpenNewPath(
     } else {
         UdpConfig.RemoteAddress = &Path->Route.RemoteAddress;
     }
-    UdpConfig.Flags = Connection->State.ShareBinding ? CXPLAT_SOCKET_FLAG_SHARE : 0;
+    UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
     UdpConfig.InterfaceIndex = 0;
     // Open a new binding with the same partition as the connection.
     UdpConfig.PartitionIndex = QuicPartitionIdGetIndex(Connection->PartitionID);
@@ -6668,6 +6668,19 @@ QuicConnOpenNewPath(
 #ifdef QUIC_OWNING_PROCESS
     UdpConfig.OwningProcess = Connection->Configuration->OwningProcess;
 #endif
+
+    if (Connection->State.ShareBinding) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_SHARE;
+    }
+    if (Connection->Settings.XdpEnabled) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_XDP;
+    }
+    if (Connection->Settings.QTIPEnabled) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_QTIP;
+    }
+    if (Connection->State.Partitioned) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_PARTITIONED;
+    }
 
     QUIC_STATUS Status = QuicLibraryGetBinding(&UdpConfig, &NewBinding);
     if (QUIC_FAILED(Status)) {
@@ -6829,7 +6842,7 @@ QuicConnAddBoundAddress(
     CXPLAT_UDP_CONFIG UdpConfig = {0};
     UdpConfig.LocalAddress = Param;
     UdpConfig.RemoteAddress = NULL;
-    UdpConfig.Flags = CXPLAT_SOCKET_FLAG_SHARE;
+    UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
     UdpConfig.InterfaceIndex = 0;
     // Open a new binding with the same partition as the connection.
     UdpConfig.PartitionIndex = QuicPartitionIdGetIndex(Connection->PartitionID);
@@ -6839,6 +6852,19 @@ QuicConnAddBoundAddress(
 #ifdef QUIC_OWNING_PROCESS
     UdpConfig.OwningProcess = Connection->Configuration->OwningProcess;
 #endif
+
+    if (Connection->State.ShareBinding) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_SHARE;
+    }
+    if (Connection->Settings.XdpEnabled) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_XDP;
+    }
+    if (Connection->Settings.QTIPEnabled) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_QTIP;
+    }
+    if (Connection->State.Partitioned) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_PARTITIONED;
+    }
 
     QUIC_STATUS Status = QuicLibraryGetBinding(&UdpConfig, &Bound->Binding);
     if (QUIC_FAILED(Status)) {
@@ -7092,6 +7118,10 @@ QuicConnActivatePath(
     if (Connection->Settings.QTIPEnabled) {
         UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_QTIP;
     }
+    if (Connection->State.Partitioned) {
+        UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_PARTITIONED;
+    }
+
     QUIC_STATUS Status =
         QuicLibraryGetBinding(
             &UdpConfig,
