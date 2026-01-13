@@ -5002,7 +5002,9 @@ void QuicTest_QUIC_PARAM_CONN_ADD_PATH(MsQuicRegistration& Registration, MsQuicC
             TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
             SimulateConnBadStartState(Connection, ClientConfiguration);
 
-            QUIC_PATH_PARAM Dummy = {};
+            QUIC_ADDR LocalAddress = {0};
+            QUIC_ADDR RemoteAddress = {0};
+            QUIC_PATH_PARAM Dummy = {&LocalAddress, &RemoteAddress};
             TEST_QUIC_STATUS(
                 QUIC_STATUS_INVALID_STATE,
                 Connection.SetParam(
