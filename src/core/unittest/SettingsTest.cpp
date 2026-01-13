@@ -131,6 +131,7 @@ TEST(SettingsTest, TestAllSettingsFieldsSet)
     SETTINGS_FEATURE_SET_TEST(StreamMultiReceiveEnabled, QuicSettingsSettingsToInternal);
     SETTINGS_FEATURE_SET_TEST(ServerMigrationEnabled, QuicSettingsSettingsToInternal);
     SETTINGS_FEATURE_SET_TEST(AddAddressMode, QuicSettingsSettingsToInternal);
+    SETTINGS_FEATURE_SET_TEST(IgnoreUnreachable, QuicSettingsSettingsToInternal);
 
     // Bias field count on behalf of erstwhile ReservedRioEnabled
     FieldCount++;
