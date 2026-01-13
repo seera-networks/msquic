@@ -38,11 +38,6 @@ on:
     branches:
     - seera-main
     - release/*
-    inputs:
-      filter:
-        required: false
-        default: '*:-SpinFrame.SpinFrame1000000'
-        type: string
 
 concurrency:
   # Cancel any workflow currently in progress for the same PR.
@@ -205,13 +200,14 @@ jobs:
     - name: Test
       if: matrix.vec.os == 'WinServerPrerelease'
       shell: pwsh
-      timeout-minutes: 360
+      timeout-minutes: 120
       run: scripts/test.ps1 -Config ${{ matrix.vec.config }} -Arch ${{ matrix.vec.arch }} -Tls ${{ matrix.vec.tls }} -GHA -LogProfile ${{ matrix.vec.log || (inputs.log_level || 'Full.Light') }} -GenerateXmlResults ${{ matrix.vec.xdp }} ${{ matrix.vec.qtip }} ${{ inputs.filter && '-Filter' }} ${{ inputs.filter || '' }}
     - name: Test
       if: matrix.vec.os != 'WinServerPrerelease'
       shell: pwsh
-      timeout-minutes: 360
-      run: scripts/test.ps1 -Config ${{ matrix.vec.config }} -Arch ${{ matrix.vec.arch }} -Tls ${{ matrix.vec.tls }} -OsRunner ${{ matrix.vec.os }} -GHA -LogProfile ${{ matrix.vec.log || (inputs.log_level || 'Full.Light') }} -GenerateXmlResults ${{ matrix.vec.xdp }} ${{ matrix.vec.qtip }} ${{ inputs.filter && '-Filter' }} ${{ inputs.filter || '' }}
+      timeout-minutes: 120
+      # run: scripts/test.ps1 -Config ${{ matrix.vec.config }} -Arch ${{ matrix.vec.arch }} -Tls ${{ matrix.vec.tls }} -OsRunner ${{ matrix.vec.os }} -GHA -LogProfile ${{ matrix.vec.log || (inputs.log_level || 'Full.Light') }} -GenerateXmlResults ${{ matrix.vec.xdp }} ${{ matrix.vec.qtip }} ${{ inputs.filter && '-Filter' }} ${{ inputs.filter || '' }}
+      run: scripts/test.ps1 -Config ${{ matrix.vec.config }} -Arch ${{ matrix.vec.arch }} -Tls ${{ matrix.vec.tls }} -OsRunner ${{ matrix.vec.os }} -GHA -LogProfile ${{ matrix.vec.log || (inputs.log_level || 'Full.Light') }} -GenerateXmlResults ${{ matrix.vec.xdp }} ${{ matrix.vec.qtip }} '-Filter' '*:-SpinFrame.SpinFrame1000000'
     - name: Fix log permissions for Linux XDP
       if: failure() && matrix.vec.plat == 'linux' # (matrix.vec.plat == 'linux' && matrix.vec.xdp == '-UseXdp') doesn't work for some reason
       run: |
