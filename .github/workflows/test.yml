@@ -9,7 +9,7 @@ on:
         type: string
       filter:
         required: false
-        default: ''
+        default: '*:-SpinFrame.SpinFrame1000000'
         type: string
       log_level:
         required: true
