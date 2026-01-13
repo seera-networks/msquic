@@ -9,7 +9,7 @@ on:
         type: string
       filter:
         required: false
-        default: '*:-SpinFrame.SpinFrame1000000'
+        default: ''
         type: string
       log_level:
         required: true
@@ -38,6 +38,11 @@ on:
     branches:
     - seera-main
     - release/*
+    inputs:
+      filter:
+        required: false
+        default: '*:-SpinFrame.SpinFrame1000000'
+        type: string
 
 concurrency:
   # Cancel any workflow currently in progress for the same PR.
