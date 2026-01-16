@@ -320,6 +320,13 @@ struct QuicAddr {
     QUIC_ADDRESS_FAMILY GetFamily() const { return QuicAddrGetFamily(&SockAddr); }
     uint16_t GetPort() const { return QuicAddrGetPort(&SockAddr); }
     void SetPort(uint16_t Port) noexcept { QuicAddrSetPort(&SockAddr, Port); }
+    void SetEphemeralPort() noexcept {
+        uint16_t Port = rand() % 65536;
+        while (Port < 49152) {
+            Port = rand() % 65536;
+        }
+        QuicAddrSetPort(&SockAddr, Port);
+    }
     operator const QUIC_ADDR* () const noexcept { return &SockAddr; }
 };
 

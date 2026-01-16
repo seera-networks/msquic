@@ -757,10 +757,10 @@ QuicTestServerProbePath(
 
     QuicAddr SecondLocalAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(SecondLocalAddr));
-    SecondLocalAddr.SetPort(rand() % 65536);
+    SecondLocalAddr.SetEphemeralPort();
     QuicAddr SecondRemoteAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondRemoteAddr));
-    SecondRemoteAddr.SetPort(rand() % 65536);
+    SecondRemoteAddr.SetEphemeralPort();
     QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &SecondRemoteAddr.SockAddr };
     PathProbeHelper *ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), DropPacketCount, DropPacketCount);
 
@@ -774,7 +774,7 @@ QuicTestServerProbePath(
 
         if (!QUIC_SUCCEEDED(Status)) {
             TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-            SecondRemoteAddr.SetPort(rand() % 65536);
+            SecondRemoteAddr.SetEphemeralPort();
         }
     } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
     TEST_EQUAL(Status, QUIC_STATUS_SUCCESS);
@@ -789,7 +789,7 @@ QuicTestServerProbePath(
         if (!QUIC_SUCCEEDED(Status)) {
             TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
             delete ProbeHelper;
-            SecondLocalAddr.SetPort(rand() % 65536);
+            SecondLocalAddr.SetEphemeralPort();
             ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), DropPacketCount, DropPacketCount);
         }
     } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
