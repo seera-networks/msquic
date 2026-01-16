@@ -6848,7 +6848,7 @@ QuicConnAddBoundAddress(
     CxPlatCopyMemory(&Bound->Address, Param, sizeof(QUIC_ADDR));
 
     BOOLEAN PortUnspecified = QuicAddrGetPort(Param) == 0;
-    QUIC_ADDR BindingLocalAddress;
+    QUIC_ADDR BindingLocalAddress = {0};
     QuicAddrSetFamily(&BindingLocalAddress, QUIC_ADDRESS_FAMILY_INET6);
     QuicAddrSetPort(&BindingLocalAddress,
         PortUnspecified ? 0 : QuicAddrGetPort(Param));
