@@ -2518,15 +2518,38 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnRecvUdpDatagrams,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ConnReleaseChain
+// [conn][%p] ReleaseChain: %p
+// QuicTraceEvent(
+        ConnReleaseChain,
+        "[conn][%p] ReleaseChain: %p",
+        Connection,
+        ReleaseChain);
+// arg2 = arg2 = Connection = arg2
+// arg3 = arg3 = ReleaseChain = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnReleaseChain,
+    TP_ARGS(
+        const void *, arg2,
+        const void *, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg2, (uint64_t)arg2)
+        ctf_integer_hex(uint64_t, arg3, (uint64_t)arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ConnBoundAddrAdded
 // [conn][%p] New Bound IP: %!ADDR!
 // QuicTraceEvent(
         ConnBoundAddrAdded,
         "[conn][%p] New Bound IP: %!ADDR!",
         Connection,
-        CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress));
+        CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress) = arg3
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address) = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnBoundAddrAdded,
     TP_ARGS(
@@ -2549,11 +2572,11 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnBoundAddrAdded,
         ConnObservedAddrAdded,
         "[conn][%p] New Observed IP: %!ADDR! for Bound IP: %!ADDR!",
         Connection,
-        CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->ObservedLocalAddress), &LocalAddress->ObservedLocalAddress),
-        CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress));
+        CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress),
+        CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->ObservedLocalAddress), &LocalAddress->ObservedLocalAddress) = arg3
-// arg4 = arg4 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress) = arg4
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress) = arg3
+// arg4 = arg4 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address) = arg4
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnObservedAddrAdded,
     TP_ARGS(

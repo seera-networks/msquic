@@ -446,11 +446,11 @@ TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, AllocFailure,
                     ConnObservedAddrRemoved,
                     "[conn][%p] Removed Observed IP: %!ADDR! for Bound IP: %!ADDR!",
                     Connection,
-                    CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->ObservedLocalAddress), &LocalAddress->ObservedLocalAddress),
-                    CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress));
+                    CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress),
+                    CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->ObservedLocalAddress), &LocalAddress->ObservedLocalAddress) = arg3
-// arg4 = arg4 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress) = arg4
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress) = arg3
+// arg4 = arg4 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address) = arg4
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, ConnObservedAddrRemoved,
     TP_ARGS(

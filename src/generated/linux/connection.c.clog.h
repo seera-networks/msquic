@@ -2236,15 +2236,35 @@ tracepoint(CLOG_CONNECTION_C, ConnRecvUdpDatagrams , arg2, arg3, arg4);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ConnReleaseChain
+// [conn][%p] ReleaseChain: %p
+// QuicTraceEvent(
+        ConnReleaseChain,
+        "[conn][%p] ReleaseChain: %p",
+        Connection,
+        ReleaseChain);
+// arg2 = arg2 = Connection = arg2
+// arg3 = arg3 = ReleaseChain = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ConnReleaseChain
+#define _clog_4_ARGS_TRACE_ConnReleaseChain(uniqueId, encoded_arg_string, arg2, arg3)\
+tracepoint(CLOG_CONNECTION_C, ConnReleaseChain , arg2, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ConnBoundAddrAdded
 // [conn][%p] New Bound IP: %!ADDR!
 // QuicTraceEvent(
         ConnBoundAddrAdded,
         "[conn][%p] New Bound IP: %!ADDR!",
         Connection,
-        CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress));
+        CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress) = arg3
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address) = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_5_ARGS_TRACE_ConnBoundAddrAdded
 #define _clog_5_ARGS_TRACE_ConnBoundAddrAdded(uniqueId, encoded_arg_string, arg2, arg3, arg3_len)\
@@ -2262,11 +2282,11 @@ tracepoint(CLOG_CONNECTION_C, ConnBoundAddrAdded , arg2, arg3_len, arg3);\
         ConnObservedAddrAdded,
         "[conn][%p] New Observed IP: %!ADDR! for Bound IP: %!ADDR!",
         Connection,
-        CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->ObservedLocalAddress), &LocalAddress->ObservedLocalAddress),
-        CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress));
+        CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress),
+        CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->ObservedLocalAddress), &LocalAddress->ObservedLocalAddress) = arg3
-// arg4 = arg4 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress) = arg4
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress) = arg3
+// arg4 = arg4 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address) = arg4
 ----------------------------------------------------------*/
 #ifndef _clog_7_ARGS_TRACE_ConnObservedAddrAdded
 #define _clog_7_ARGS_TRACE_ConnObservedAddrAdded(uniqueId, encoded_arg_string, arg2, arg3, arg3_len, arg4, arg4_len)\

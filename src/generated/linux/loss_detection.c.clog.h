@@ -416,11 +416,11 @@ tracepoint(CLOG_LOSS_DETECTION_C, AllocFailure , arg2, arg3);\
                     ConnObservedAddrRemoved,
                     "[conn][%p] Removed Observed IP: %!ADDR! for Bound IP: %!ADDR!",
                     Connection,
-                    CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->ObservedLocalAddress), &LocalAddress->ObservedLocalAddress),
-                    CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress));
+                    CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress),
+                    CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->ObservedLocalAddress), &LocalAddress->ObservedLocalAddress) = arg3
-// arg4 = arg4 = CASTED_CLOG_BYTEARRAY(sizeof(LocalAddress->LocalAddress), &LocalAddress->LocalAddress) = arg4
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress) = arg3
+// arg4 = arg4 = CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address) = arg4
 ----------------------------------------------------------*/
 #ifndef _clog_7_ARGS_TRACE_ConnObservedAddrRemoved
 #define _clog_7_ARGS_TRACE_ConnObservedAddrRemoved(uniqueId, encoded_arg_string, arg2, arg3, arg3_len, arg4, arg4_len)\

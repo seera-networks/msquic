@@ -1983,6 +1983,22 @@
       ],
       "macroName": "QuicTraceEvent"
     },
+    "ConnReleaseChain": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ReleaseChain: %p",
+      "UniqueId": "ConnReleaseChain",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceEvent"
+    },
     "ConnRemoteAddrAdded": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] New Remote IP: %!ADDR!",
@@ -14258,6 +14274,11 @@
         "UniquenessHash": "60a38bc0-4218-963b-507a-5d7cb5c08596",
         "TraceID": "ConnRegistered",
         "EncodingString": "[conn][%p] Registered with %p"
+      },
+      {
+        "UniquenessHash": "9549fc4a-6b0a-8e2c-514e-946f9638d374",
+        "TraceID": "ConnReleaseChain",
+        "EncodingString": "[conn][%p] ReleaseChain: %p"
       },
       {
         "UniquenessHash": "57df3cb1-120c-282b-ea2a-f9ff854b5a76",
