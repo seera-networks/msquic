@@ -772,11 +772,10 @@ QuicTestServerProbePath(
             sizeof(SecondRemoteAddr.SockAddr),
             &SecondRemoteAddr.SockAddr);
 
-        if (!QUIC_SUCCEEDED(Status)) {
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+        if (QUIC_FAILED(Status)) {
             SecondRemoteAddr.SetEphemeralPort();
         }
-    } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
     TEST_EQUAL(Status, QUIC_STATUS_SUCCESS);
 
     Try = 0;
@@ -786,13 +785,12 @@ QuicTestServerProbePath(
             sizeof(PathParam),
             &PathParam);
 
-        if (!QUIC_SUCCEEDED(Status)) {
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+        if (QUIC_FAILED(Status)) {
             delete ProbeHelper;
             SecondLocalAddr.SetEphemeralPort();
             ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), DropPacketCount, DropPacketCount);
         }
-    } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
     TEST_EQUAL(Status, QUIC_STATUS_SUCCESS);
 
     if (DeferConnIDGen) {
