@@ -321,10 +321,10 @@ struct QuicAddr {
     uint16_t GetPort() const { return QuicAddrGetPort(&SockAddr); }
     void SetPort(uint16_t Port) noexcept { QuicAddrSetPort(&SockAddr, Port); }
     void SetEphemeralPort() noexcept {
-        uint16_t Port = rand() % 65536;
-        while (Port < 49152) {
-            Port = rand() % 65536;
-        }
+        uint16_t Port;
+        do {
+            CxPlatRandom(sizeof(Port), (uint8_t*)&Port);
+        } while (Port < 49152);
         QuicAddrSetPort(&SockAddr, Port);
     }
     operator const QUIC_ADDR* () const noexcept { return &SockAddr; }

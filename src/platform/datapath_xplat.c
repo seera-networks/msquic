@@ -280,17 +280,31 @@ CxPlatRecvDataReturn(
     if (RecvDataChain == NULL) {
         return;
     }
+    CXPLAT_DATAPATH_TYPE DataPathType = RecvDataChain->DatapathType;
+    CXPLAT_RECV_DATA* Head = NULL;
+    CXPLAT_RECV_DATA** Tail = &Head;
 
     while (RecvDataChain != NULL) {
-        CXPLAT_RECV_DATA* Next = RecvDataChain->Next;
-        RecvDataChain->Next = NULL;
         CXPLAT_DBG_ASSERT(
             RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_NORMAL ||
             RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_RAW);
-        RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_NORMAL ?
-            RecvDataReturn(RecvDataChain) : RawRecvDataReturn(RecvDataChain);
-        RecvDataChain = Next;
+
+        if (RecvDataChain->DatapathType != DataPathType) {
+            CXPLAT_DBG_ASSERT(Head != NULL);
+            *Tail = NULL;
+            DataPathType == CXPLAT_DATAPATH_TYPE_NORMAL ?
+                RecvDataReturn(Head) : RawRecvDataReturn(Head);
+            Head = NULL;
+            Tail = &Head;
+            DataPathType = RecvDataChain->DatapathType;
+        }
+        *Tail = RecvDataChain;
+        Tail = &RecvDataChain->Next;
+        RecvDataChain = RecvDataChain->Next;        
     }
+    CXPLAT_DBG_ASSERT(Head != NULL);
+    DataPathType == CXPLAT_DATAPATH_TYPE_NORMAL ?
+        RecvDataReturn(Head) : RawRecvDataReturn(Head);
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
