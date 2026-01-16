@@ -280,11 +280,17 @@ CxPlatRecvDataReturn(
     if (RecvDataChain == NULL) {
         return;
     }
-    CXPLAT_DBG_ASSERT(
-        RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_NORMAL ||
-        RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_RAW);
-    RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_NORMAL ?
-        RecvDataReturn(RecvDataChain) : RawRecvDataReturn(RecvDataChain);
+
+    while (RecvDataChain != NULL) {
+        CXPLAT_RECV_DATA* Next = RecvDataChain->Next;
+        RecvDataChain->Next = NULL;
+        CXPLAT_DBG_ASSERT(
+            RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_NORMAL ||
+            RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_RAW);
+        RecvDataChain->DatapathType == CXPLAT_DATAPATH_TYPE_NORMAL ?
+            RecvDataReturn(RecvDataChain) : RawRecvDataReturn(RecvDataChain);
+        RecvDataChain = Next;
+    }
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
