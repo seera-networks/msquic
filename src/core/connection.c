@@ -6252,6 +6252,12 @@ QuicConnRecvDatagrams(
         QuicConnResetIdleTimeout(Connection);
     }
 
+    QuicTraceEvent(
+        ConnReleaseChain,
+        "[conn][%p] ReleaseChain: %p",
+        Connection,
+        ReleaseChain);
+
     if (ReleaseChain != NULL) {
         CxPlatRecvDataReturn((CXPLAT_RECV_DATA*)ReleaseChain);
     }
