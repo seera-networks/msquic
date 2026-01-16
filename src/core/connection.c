@@ -6845,8 +6845,16 @@ QuicConnAddBoundAddress(
         return QUIC_STATUS_OUT_OF_MEMORY;
     }
 
+    CxPlatCopyMemory(&Bound->Address, Param, sizeof(QUIC_ADDR));
+
+    BOOLEAN PortUnspecified = QuicAddrGetPort(Param) == 0;
+    QUIC_ADDR BindingLocalAddress;
+    QuicAddrSetFamily(&BindingLocalAddress, QUIC_ADDRESS_FAMILY_INET6);
+    QuicAddrSetPort(&BindingLocalAddress,
+        PortUnspecified ? 0 : QuicAddrGetPort(Param));
+
     CXPLAT_UDP_CONFIG UdpConfig = {0};
-    UdpConfig.LocalAddress = Param;
+    UdpConfig.LocalAddress = &BindingLocalAddress;
     UdpConfig.RemoteAddress = NULL;
     UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
     UdpConfig.InterfaceIndex = 0;
@@ -6878,7 +6886,12 @@ QuicConnAddBoundAddress(
         return Status;
     }
  
-    QuicBindingGetLocalAddress(Bound->Binding, &Bound->Address);
+    if (PortUnspecified) {
+        QuicBindingGetLocalAddress(Bound->Binding, &BindingLocalAddress);
+        QuicAddrSetPort(
+            &Bound->Address,
+            QuicAddrGetPort(&BindingLocalAddress));
+    }
 
     Bound->ObservedAddressSet = FALSE;
     Bound->SequenceNumberValid = FALSE;
