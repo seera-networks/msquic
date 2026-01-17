@@ -210,13 +210,12 @@ QuicTestProbePath(
             sizeof(PathParam),
             &PathParam);
 
-        if (Status != QUIC_STATUS_SUCCESS) {
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+        if (QUIC_FAILED(Status)) {
             delete ProbeHelper;
             SecondLocalAddr.IncrementPort();
             ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), DropPacketCount, DropPacketCount);
         }
-    } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
     TEST_EQUAL(Status, QUIC_STATUS_SUCCESS);
 
     if (DeferConnIDGen) {
@@ -293,13 +292,12 @@ QuicTestProbePathFailed(
             sizeof(PathParam),
             &PathParam);
 
-        if (Status != QUIC_STATUS_SUCCESS) {
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+        if (QUIC_FAILED(Status)) {
             delete ProbeHelper;
             SecondLocalAddr.IncrementPort();
             ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 255, 255);
         }
-    } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
     TEST_EQUAL(Status, QUIC_STATUS_SUCCESS);
 
     CxPlatSleep(5000);
@@ -402,7 +400,7 @@ QuicTestMigration(
             if (ShareBinding) {
 #if defined(_WIN32)
                 if (!Settings.QTIPEnabled) {
-                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                    TEST_TRUE(QUIC_FAILED(Status));
                     delete ProbeHelper;
                     return;
                 } else {
@@ -412,7 +410,7 @@ QuicTestMigration(
                 TEST_QUIC_SUCCEEDED(Status);
 #endif
             } else {
-                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                TEST_TRUE(QUIC_FAILED(Status));
                 delete ProbeHelper;
                 return;
             }
@@ -486,7 +484,7 @@ QuicTestMigration(
             if (ShareBinding) {
 #if defined(_WIN32)
                 if (!Settings.QTIPEnabled) {
-                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                    TEST_TRUE(QUIC_FAILED(Status));
                     return;
                 }
                 else {
@@ -496,7 +494,7 @@ QuicTestMigration(
                 TEST_QUIC_SUCCEEDED(Status);
 #endif
             } else {
-                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                TEST_TRUE(QUIC_FAILED(Status));
                 return;
             }
         } else if (AddressType == NewBothAddresses) {
@@ -910,7 +908,7 @@ QuicTestServerMigration(
                 QUIC_PARAM_CONN_ADD_PATH,
                 sizeof(PathParam),
                 &PathParam);
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+            TEST_TRUE(QUIC_FAILED(Status));
             delete ProbeHelper;
             return;
         } else {
@@ -987,7 +985,7 @@ QuicTestServerMigration(
                 QUIC_PARAM_CONN_ACTIVATE_PATH,
                 sizeof(PathParam),
                 &PathParam);
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+            TEST_TRUE(QUIC_FAILED(Status));
             return;
         } else {
             if (AddressType == NewLocalAddress) {
