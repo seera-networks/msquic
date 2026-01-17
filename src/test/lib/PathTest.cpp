@@ -342,6 +342,8 @@ QuicTestMigration(
     }
 
     Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(25));
+    MsQuicSettings Settings;
+    Connection.GetSettings(&Settings);
 
     TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
     TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
@@ -353,16 +355,16 @@ QuicTestMigration(
     QUIC_PATH_PARAM PathParam = { 0 };
     if (AddressType == NewLocalAddress) {
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondAddr));
-        SecondAddr.SetPort(rand() % 65536);
+        SecondAddr.SetEphemeralPort();
         TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
     } else if (AddressType == NewRemoteAddress) {
         TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(SecondAddr));
-        SecondAddr.SetPort(rand() % 65536);
+        SecondAddr.SetEphemeralPort();
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(PairAddr));
     } else {
         TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(SecondAddr));
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(PairAddr));
-        PairAddr.SetPort(rand() % 65536);
+        PairAddr.SetEphemeralPort();
     }
 
     if (Type == MigrateWithProbe || Type == DeleteAndMigrate) {
@@ -383,13 +385,12 @@ QuicTestMigration(
                     sizeof(SecondAddr.SockAddr),
                     &SecondAddr.SockAddr);
             }
-            if (!QUIC_SUCCEEDED(Status)) {
-                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+            if (QUIC_FAILED(Status)) {
                 delete ProbeHelper;
-                SecondAddr.SetPort(rand() % 65536);
+                SecondAddr.SetEphemeralPort();
                 ProbeHelper = new(std::nothrow) PathProbeHelper(SecondAddr.GetPort(), 0, 0, AddressType == NewRemoteAddress);
             }
-        } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+        } while (QUIC_FAILED(Status) && ++Try <= 3);
         TEST_QUIC_SUCCEEDED(Status);
 
         if (AddressType == NewRemoteAddress) {
@@ -400,8 +401,13 @@ QuicTestMigration(
                 &PathParam);
             if (ShareBinding) {
 #if defined(_WIN32)
-                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                return;
+                if (!Settings.QTIPEnabled) {
+                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                    delete ProbeHelper;
+                    return;
+                } else {
+                    TEST_QUIC_SUCCEEDED(Status);
+                }
 #else
                 TEST_QUIC_SUCCEEDED(Status);
 #endif
@@ -418,11 +424,10 @@ QuicTestMigration(
                     QUIC_PARAM_CONN_ADD_PATH,
                     sizeof(PathParam),
                     &PathParam);
-                if (!QUIC_SUCCEEDED(Status)) {
-                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                    PairAddr.SetPort(rand() % 65536);
+                if (QUIC_FAILED(Status)) {
+                    PairAddr.SetEphemeralPort();
                 }
-            } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+            } while (QUIC_FAILED(Status) && ++Try <= 3);
         }
 
         TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
@@ -467,11 +472,10 @@ QuicTestMigration(
                     sizeof(SecondAddr.SockAddr),
                     &SecondAddr.SockAddr);
             }
-            if (!QUIC_SUCCEEDED(Status)) {
-                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                SecondAddr.SetPort(rand() % 65536);
+            if (QUIC_FAILED(Status)) {
+                SecondAddr.SetEphemeralPort();
             }
-        } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+        } while (QUIC_FAILED(Status) && ++Try <= 3);
         TEST_QUIC_SUCCEEDED(Status);
         if (AddressType == NewRemoteAddress) {
             PathParam = { &PairAddr.SockAddr, &SecondAddr.SockAddr };
@@ -481,8 +485,14 @@ QuicTestMigration(
                 &PathParam);
             if (ShareBinding) {
 #if defined(_WIN32)
-                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                return;
+                if (!Settings.QTIPEnabled) {
+                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                    delete ProbeHelper;
+                    return;
+                }
+                else {
+                    TEST_QUIC_SUCCEEDED(Status);
+                }
 #else
                 TEST_QUIC_SUCCEEDED(Status);
 #endif
@@ -498,11 +508,10 @@ QuicTestMigration(
                     QUIC_PARAM_CONN_ACTIVATE_PATH,
                     sizeof(PathParam),
                     &PathParam);
-                if (!QUIC_SUCCEEDED(Status)) {
-                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                    PairAddr.SetPort(rand() % 65536);
+                if (QUIC_FAILED(Status)) {
+                    PairAddr.SetEphemeralPort();
                 }
-            } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+            } while (QUIC_FAILED(Status) && ++Try <= 3);
         }
     }
 
@@ -567,14 +576,19 @@ QuicTestMultipleLocalAddresses(
 
     QuicAddr ClientLocalAddrs[4] = {QuicAddrFamily, QuicAddrFamily, QuicAddrFamily, QuicAddrFamily};
     QuicAddr RemoteAddr;
-    if (Family == 4) {
-        QuicAddrFromString("127.0.0.1", ServerLocalAddr.GetPort(), &RemoteAddr.SockAddr);
+    if (UseDuoNic) {
+        QuicAddrSetToDuoNic(&RemoteAddr.SockAddr);
+        RemoteAddr.SetPort(ServerLocalAddr.GetPort());
     } else {
-        QuicAddrFromString("::1", ServerLocalAddr.GetPort(), &RemoteAddr.SockAddr);
-    }    
+        if (Family == 4) {
+            QuicAddrFromString("127.0.0.1", ServerLocalAddr.GetPort(), &RemoteAddr.SockAddr);
+        } else {
+            QuicAddrFromString("::1", ServerLocalAddr.GetPort(), &RemoteAddr.SockAddr);
+        }
+    }
 
     for (uint8_t i = 0; i < 4; i++) {
-        ClientLocalAddrs[i].SetPort(rand() % 65536);
+        ClientLocalAddrs[i].SetEphemeralPort();
         QUIC_PATH_PARAM PathParam = { &ClientLocalAddrs[i].SockAddr, &RemoteAddr.SockAddr };
         QUIC_STATUS Status;
         uint32_t Try = 0;
@@ -583,11 +597,10 @@ QuicTestMultipleLocalAddresses(
                 QUIC_PARAM_CONN_ADD_PATH,
                 sizeof(PathParam),
                 &PathParam);
-            if (Status != QUIC_STATUS_ADDRESS_IN_USE) {
-                TEST_QUIC_SUCCEEDED(Status);
-                break;
+            if (QUIC_FAILED(Status)) {
+                ClientLocalAddrs[i].SetEphemeralPort();
             }
-        } while (++Try < 3);
+        } while (QUIC_FAILED(Status) && ++Try < 3);
         TEST_QUIC_SUCCEEDED(Status);
     }
 
@@ -665,18 +678,25 @@ QuicTestAddressDiscovery(
     MsQuicConnection Connection(Registration, CleanUpManual, AddressDiscoveryTestContext::ConnCallback, &ClientContext);
     TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
 
-    if (Family == 4) {
-        QuicAddrFromString("127.0.0.1", ServerLocalAddr.GetPort(), &ServerContext.ObservedAddress.SockAddr);
-        QuicAddrFromString("127.0.0.1", 0, &ClientLocalAddr.SockAddr);
+    if (UseDuoNic) {
+        QuicAddrSetToDuoNic(&ServerContext.ObservedAddress.SockAddr);
+        ServerContext.ObservedAddress.SetPort(ServerLocalAddr.GetPort());
+        QuicAddrSetToDuoNicClient(&ClientLocalAddr.SockAddr);
     } else {
-        QuicAddrFromString("::1", ServerLocalAddr.GetPort(), &ServerContext.ObservedAddress.SockAddr);
-        QuicAddrFromString("::1", 0, &ClientLocalAddr.SockAddr);
-    }    
+        if (Family == 4) {
+            QuicAddrFromString("127.0.0.1", ServerLocalAddr.GetPort(), &ServerContext.ObservedAddress.SockAddr);
+            QuicAddrFromString("127.0.0.1", 0, &ClientLocalAddr.SockAddr);
+        } else {
+            QuicAddrFromString("::1", ServerLocalAddr.GetPort(), &ServerContext.ObservedAddress.SockAddr);
+            QuicAddrFromString("::1", 0, &ClientLocalAddr.SockAddr);
+        }
+    }
 
     ReplaceAddressHelper* ReplaceHelper = nullptr;
     uint32_t Try = 0;
+    QUIC_STATUS Status;
     do {
-        ClientLocalAddr.SetPort(rand() % 65536);
+        ClientLocalAddr.SetEphemeralPort();
         TEST_QUIC_SUCCEEDED(Connection.SetParam(
             QUIC_PARAM_CONN_LOCAL_ADDRESS,
             sizeof(ClientLocalAddr.SockAddr),
@@ -684,14 +704,11 @@ QuicTestAddressDiscovery(
         ClientContext.ObservedAddress = ClientLocalAddr;
         ClientContext.ObservedAddress.IncrementPort();
         ReplaceHelper = new(std::nothrow) ReplaceAddressHelper(ClientLocalAddr.SockAddr, ClientContext.ObservedAddress.SockAddr);
-        QUIC_STATUS Status = Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort());
-        if (QUIC_SUCCEEDED(Status)) {
-            break;
-        } else {
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+        Status = Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort());
+        if (QUIC_FAILED(Status)) {
             delete ReplaceHelper;
         }
-    } while (++Try < 3);
+    } while (QUIC_FAILED(Status) && ++Try < 3);
 
     TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
@@ -835,6 +852,7 @@ QuicTestServerMigration(
     Connection.SetShareUdpBinding();
 
     Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(25));
+    Connection.GetSettings(&Settings);
 
     TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
     TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
@@ -846,17 +864,17 @@ QuicTestServerMigration(
     QUIC_PATH_PARAM PathParam = { 0 };
     if (AddressType == NewLocalAddress) {
         TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(SecondAddr));
-        SecondAddr.SetPort(rand() % 65536);
+        SecondAddr.SetEphemeralPort();
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(PairAddr));
     } else if (AddressType == NewRemoteAddress) {
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondAddr));
-        SecondAddr.SetPort(rand() % 65536);
+        SecondAddr.SetEphemeralPort();
         TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
     } else {
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondAddr));
-        SecondAddr.SetPort(rand() % 65536);
+        SecondAddr.SetEphemeralPort();
         TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
-        PairAddr.SetPort(rand() % 65536);
+        PairAddr.SetEphemeralPort();
     }
 
     if (Type == MigrateWithProbe || Type == DeleteAndMigrate) {
@@ -870,9 +888,13 @@ QuicTestServerMigration(
                 sizeof(PairAddr.SockAddr),
                 &PairAddr.SockAddr);
 #if defined(_WIN32)
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-            delete ProbeHelper;
-            return;
+            if (!Settings.QTIPEnabled) {
+                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                delete ProbeHelper;
+                return;
+            } else {
+                TEST_QUIC_SUCCEEDED(Status);
+            }
 #endif
         } else {
             do {
@@ -880,13 +902,12 @@ QuicTestServerMigration(
                     QUIC_PARAM_CONN_ADD_BOUND_ADDRESS,
                     sizeof(SecondAddr.SockAddr),
                     &SecondAddr.SockAddr);
-                if (Status != QUIC_STATUS_SUCCESS) {
-                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                if (QUIC_FAILED(Status)) {
                     delete ProbeHelper;
-                    SecondAddr.SetPort(rand() % 65536);
+                    SecondAddr.SetEphemeralPort();
                     ProbeHelper = new(std::nothrow) PathProbeHelper(SecondAddr.GetPort(), 0, 0, AddressType == NewRemoteAddress);
                 }
-            } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+            } while (QUIC_FAILED(Status) && ++Try <= 3);
         }
         TEST_QUIC_SUCCEEDED(Status);
         if (AddressType == NewRemoteAddress) {
@@ -910,11 +931,10 @@ QuicTestServerMigration(
                     QUIC_PARAM_CONN_ADD_PATH,
                     sizeof(PathParam),
                     &PathParam);
-                if (Status != QUIC_STATUS_SUCCESS) {
-                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                    PairAddr.SetPort(rand() % 65536);
+                if (QUIC_FAILED(Status)) {
+                    PairAddr.SetEphemeralPort();
                 }
-            } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+            } while (QUIC_FAILED(Status) && ++Try <= 3);
         }
 
         TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
@@ -952,7 +972,12 @@ QuicTestServerMigration(
                 sizeof(PairAddr.SockAddr),
                 &PairAddr.SockAddr);
 #if defined(_WIN32)
-            TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+            if (!Settings.QTIPEnabled) {
+                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
+                return;
+            } else {
+                TEST_QUIC_SUCCEEDED(Status);
+            }
             return;
 #endif
         } else {
@@ -961,11 +986,11 @@ QuicTestServerMigration(
                     QUIC_PARAM_CONN_ADD_BOUND_ADDRESS,
                     sizeof(SecondAddr.SockAddr),
                     &SecondAddr.SockAddr);
-                if (Status != QUIC_STATUS_SUCCESS) {
+                if (QUIC_FAILED(Status)) {
                     TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                    SecondAddr.SetPort(rand() % 65536);
+                    SecondAddr.SetEphemeralPort();
                 }
-            } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+            } while (QUIC_FAILED(Status) && ++Try <= 3);
         }
         TEST_QUIC_SUCCEEDED(Status);
         if (AddressType == NewRemoteAddress) {
@@ -988,11 +1013,10 @@ QuicTestServerMigration(
                     QUIC_PARAM_CONN_ACTIVATE_PATH,
                     sizeof(PathParam),
                     &PathParam);
-                if (Status != QUIC_STATUS_SUCCESS) {
-                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                    PairAddr.SetPort(rand() % 65536);
+                if (QUIC_FAILED(Status)) {
+                    PairAddr.SetEphemeralPort();
                 }
-            } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+            } while (QUIC_FAILED(Status) && ++Try <= 3);
         }
     }
 
