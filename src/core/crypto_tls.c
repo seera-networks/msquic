@@ -2077,7 +2077,7 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
             break;
 
         case QUIC_TP_ID_NAT_TRAVERSE:
-            if (QuicConnIsServer(Connection)) {
+            if (!IsServerTP) {
                 if (Length != 0) {
                     QuicTraceEvent(
                         ConnErrorStatus,
