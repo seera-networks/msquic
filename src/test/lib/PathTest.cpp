@@ -851,7 +851,6 @@ QuicTestServerMigration(
     Connection.SetShareUdpBinding();
 
     Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(25));
-    Connection.GetSettings(&Settings);
 
     TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
     TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
@@ -887,13 +886,9 @@ QuicTestServerMigration(
                 sizeof(PairAddr.SockAddr),
                 &PairAddr.SockAddr);
 #if defined(_WIN32)
-            if (!Settings.QTIPEnabled) {
-                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                delete ProbeHelper;
-                return;
-            } else {
-                TEST_QUIC_SUCCEEDED(Status);
-            }
+            TEST_TRUE(QUIC_FAILED(Status));
+            delete ProbeHelper;
+            return;
 #endif
         } else {
             do {
@@ -971,12 +966,7 @@ QuicTestServerMigration(
                 sizeof(PairAddr.SockAddr),
                 &PairAddr.SockAddr);
 #if defined(_WIN32)
-            if (!Settings.QTIPEnabled) {
-                TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                return;
-            } else {
-                TEST_QUIC_SUCCEEDED(Status);
-            }
+            TEST_TRUE(QUIC_FAILED(Status));
             return;
 #endif
         } else {
@@ -986,7 +976,6 @@ QuicTestServerMigration(
                     sizeof(SecondAddr.SockAddr),
                     &SecondAddr.SockAddr);
                 if (QUIC_FAILED(Status)) {
-                    TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
                     SecondAddr.SetEphemeralPort();
                 }
             } while (QUIC_FAILED(Status) && ++Try <= 3);
