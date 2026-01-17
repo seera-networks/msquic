@@ -572,7 +572,7 @@ QuicTestMultipleLocalAddresses(
     }
 
     QuicAddr ClientLocalAddrs[4] = {QuicAddrFamily, QuicAddrFamily, QuicAddrFamily, QuicAddrFamily};
-    QuicAddr RemoteAddr;
+    QuicAddr RemoteAddr(QuicAddrFamily);
     if (UseDuoNic) {
         QuicAddrSetToDuoNic(&RemoteAddr.SockAddr);
         RemoteAddr.SetPort(ServerLocalAddr.GetPort());
@@ -676,6 +676,7 @@ QuicTestAddressDiscovery(
     TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
 
     if (UseDuoNic) {
+        ServerContext.ObservedAddress = QuicAddr(QuicAddrFamily);
         QuicAddrSetToDuoNic(&ServerContext.ObservedAddress.SockAddr);
         ServerContext.ObservedAddress.SetPort(ServerLocalAddr.GetPort());
         QuicAddrSetToDuoNicClient(&ClientLocalAddr.SockAddr);
