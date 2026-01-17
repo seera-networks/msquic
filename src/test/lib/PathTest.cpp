@@ -487,7 +487,6 @@ QuicTestMigration(
 #if defined(_WIN32)
                 if (!Settings.QTIPEnabled) {
                     TEST_QUIC_STATUS(Status, QUIC_STATUS_ADDRESS_IN_USE);
-                    delete ProbeHelper;
                     return;
                 }
                 else {
