@@ -6996,7 +6996,7 @@ QuicConnAddPath(
 
     *NewPath = NULL;
 
-    if (QuicAddrCompare(Param->LocalAddress, Param->RemoteAddress)) {
+    if (Param->LocalAddress == NULL || Param->RemoteAddress == NULL) {
         Status = QUIC_STATUS_INVALID_PARAMETER;
         goto Done;
     }
@@ -7338,7 +7338,7 @@ QuicConnRemovePath(
     _In_ QUIC_PATH_PARAM* Param
     )
 {
-    if (Connection->State.ClosedLocally || !Connection->State.HandshakeConfirmed) {
+    if (Connection->State.ClosedLocally) {
         return QUIC_STATUS_INVALID_STATE;
     }
 
