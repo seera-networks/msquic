@@ -1350,7 +1350,7 @@ AllowSendCompleteStreamCallback(
     return QUIC_STATUS_SUCCESS;
 }
 
-void QuicTestValidateStream(bool Connect)
+void QuicTestValidateStream(const bool& Connect)
 {
     MsQuicRegistration Registration;
     TEST_TRUE(Registration.IsValid());
@@ -5663,7 +5663,7 @@ TestTlsHandshakeInfoListenerCallback(
 
 void
 QuicTestTlsHandshakeInfo(
-    _In_ bool EnableResumption
+    const bool& EnableResumption
     )
 {
     MsQuicRegistration Registration;
@@ -6466,7 +6466,7 @@ RejectListenerCallback(
 
 void
 QuicTestConnectionRejection(
-    bool RejectByClosing
+    const bool& RejectByClosing
     )
 {
     CxPlatEvent ShutdownEvent;
