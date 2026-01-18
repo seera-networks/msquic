@@ -29,7 +29,7 @@ pub use types::{
     StreamStartFlags, TlsProvider,
 };
 mod settings;
-pub use settings::{ServerResumptionLevel, Settings};
+pub use settings::{ServerResumptionLevel, AddAddressMode, Settings};
 mod config;
 pub use config::{
     AllowedCipherSuiteFlags, CertificateFile, CertificateFileProtected, CertificateHash,

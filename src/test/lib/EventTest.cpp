@@ -385,15 +385,17 @@ QuicTestValidateConnectionEvents1(
     TEST_TRUE(ClientConfiguration.IsValid());
 
     ConnValidator Client(
-        new(std::nothrow) ConnEventValidator* [4] {
+        new(std::nothrow) ConnEventValidator* [5] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, QUIC_EVENT_ACTION_SHUTDOWN_CONNECTION),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         }
     );
     ConnValidator Server(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [5] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -441,9 +443,10 @@ QuicTestValidateConnectionEvents2(
     TEST_TRUE(ClientConfiguration.IsValid());
 
     ConnValidator Client(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [7] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -451,8 +454,10 @@ QuicTestValidateConnectionEvents2(
         }
     );
     ConnValidator Server(
-        new(std::nothrow) ConnEventValidator* [4] {
+        new(std::nothrow) ConnEventValidator* [5] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, QUIC_EVENT_ACTION_SHUTDOWN_CONNECTION),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         },
@@ -509,16 +514,18 @@ QuicTestValidateConnectionEvents3(
     }
 
     ConnValidator Client(
-        new(std::nothrow) ConnEventValidator* [4] {
+        new(std::nothrow) ConnEventValidator* [5] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, QUIC_EVENT_ACTION_SHUTDOWN_CONNECTION, false, true),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         }
     );
     ConnValidator Server(
-        new(std::nothrow) ConnEventValidator* [8] {
+        new(std::nothrow) ConnEventValidator* [6] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, 0, true, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -612,15 +619,17 @@ QuicTestValidateNetStatsConnEvent1(
     TEST_TRUE(ClientConfiguration.IsValid());
 
     ConnValidator Client(
-        new(std::nothrow) ConnEventValidator* [4] {
+        new(std::nothrow) ConnEventValidator* [5] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, QUIC_EVENT_ACTION_SHUTDOWN_CONNECTION),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         }
     );
     ConnValidator Server(
-        new(std::nothrow) ConnEventValidator* [4] {
+        new(std::nothrow) ConnEventValidator* [5] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -687,15 +696,17 @@ QuicTestValidateNetStatsConnEvent2(
     TEST_TRUE(ClientConfiguration.IsValid());
 
     ConnValidator Client(
-        new(std::nothrow) ConnEventValidator* [4] {
+        new(std::nothrow) ConnEventValidator* [5] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, QUIC_EVENT_ACTION_SHUTDOWN_CONNECTION),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         }
     );
     ConnValidator Server(
-        new(std::nothrow) ConnEventValidator* [4] {
+        new(std::nothrow) ConnEventValidator* [5] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -829,18 +840,21 @@ QuicTestValidateStreamEvents1(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [7] {
+        new(std::nothrow) ConnEventValidator* [8] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         });
     Server.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [7] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) NewStreamEventValidator(&ServerStream),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -921,11 +935,12 @@ QuicTestValidateStreamEvents2(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [8] {
+        new(std::nothrow) ConnEventValidator* [9] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, QUIC_EVENT_ACTION_SHUTDOWN_CONNECTION),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -933,6 +948,7 @@ QuicTestValidateStreamEvents2(
         });
     Server.SetExpectedEvents(
         new(std::nothrow) ConnEventValidator* [6] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -1020,18 +1036,21 @@ QuicTestValidateStreamEvents3(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [7] {
+        new(std::nothrow) ConnEventValidator* [8] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         });
     Server.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [7] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) NewStreamEventValidator(&ServerStream),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -1143,18 +1162,21 @@ QuicTestValidateStreamEvents4(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [7] {
+        new(std::nothrow) ConnEventValidator* [8] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         });
     Server.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [7] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) NewStreamEventValidator(&ServerStream),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -1266,18 +1288,21 @@ QuicTestValidateStreamEvents5(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [7] {
+        new(std::nothrow) ConnEventValidator* [8] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         });
     Server.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [7] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) NewStreamEventValidator(&ServerStream),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -1368,18 +1393,21 @@ QuicTestValidateStreamEvents6(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [7] {
+        new(std::nothrow) ConnEventValidator* [8] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         });
     Server.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [7] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) NewStreamEventValidator(&ServerStream),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -1483,18 +1511,21 @@ QuicTestValidateStreamEvents7(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [7] {
+        new(std::nothrow) ConnEventValidator* [8] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         });
     Server.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [7] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) NewStreamEventValidator(&ServerStream),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -1598,18 +1629,21 @@ QuicTestValidateStreamEvents8(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [7] {
+        new(std::nothrow) ConnEventValidator* [8] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         });
     Server.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [7] {
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) NewStreamEventValidator(&ServerStream),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
@@ -1721,20 +1755,23 @@ QuicTestValidateStreamEvents9(
         });
 
     Client.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [8] {
+        new(std::nothrow) ConnEventValidator* [9] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RELIABLE_RESET_NEGOTIATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE, 0, true),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED, 0, true), // TODO - Schannel does resumption regardless
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),
             nullptr
         });
     Server.SetExpectedEvents(
-        new(std::nothrow) ConnEventValidator* [6] {
+        new(std::nothrow) ConnEventValidator* [8] {
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_RELIABLE_RESET_NEGOTIATED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_PATH_VALIDATED),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_CONNECTED),
+            new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS),
             new(std::nothrow) NewStreamEventValidator(&ServerStream),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER),
             new(std::nothrow) ConnEventValidator(QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE),

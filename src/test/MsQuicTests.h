@@ -411,6 +411,18 @@ QuicTestProbePath(
     _In_ uint32_t DropPacketCount
     );
 
+void
+QuicTestProbePathFailed(
+    _In_ int Family,
+    _In_ BOOLEAN ShareBinding
+    );
+
+typedef enum QUIC_MIGRATION_ADDRESS_TYPE {
+    NewLocalAddress,
+    NewRemoteAddress,
+    NewBothAddresses,
+} QUIC_MIGRATION_ADDRESS_TYPE;
+
 typedef enum QUIC_MIGRATION_TYPE {
     MigrateWithProbe,
     MigrateWithoutProbe,
@@ -421,6 +433,7 @@ void
 QuicTestMigration(
     _In_ int Family,
     _In_ BOOLEAN ShareBinding,
+    _In_ QUIC_MIGRATION_ADDRESS_TYPE AddressType,
     _In_ QUIC_MIGRATION_TYPE Type
     );
 
@@ -430,6 +443,25 @@ QuicTestMultipleLocalAddresses(
     _In_ BOOLEAN ShareBinding,
     _In_ BOOLEAN DeferConnIDGen,
     _In_ uint32_t DropPacketCount
+    );
+
+void
+QuicTestAddressDiscovery(
+    _In_ int Family
+    );
+
+void
+QuicTestServerProbePath(
+    _In_ int Family,
+    _In_ BOOLEAN DeferConnIDGen,
+    _In_ uint32_t DropPacketCount
+    );
+
+void
+QuicTestServerMigration(
+    _In_ int Family,
+    _In_ QUIC_MIGRATION_ADDRESS_TYPE AddressType,
+    _In_ QUIC_MIGRATION_TYPE Type
     );
 
 void
@@ -1499,14 +1531,40 @@ typedef struct {
 typedef struct {
     int Family;
     BOOLEAN ShareBinding;
+} QUIC_RUN_PROBE_PATH_FAILED_PARAMS;
+
+#define IOCTL_QUIC_RUN_PROBE_PATH_FAILED \
+    QUIC_CTL_CODE(140, METHOD_BUFFERED, FILE_WRITE_DATA)
+    // QUIC_RUN_PROBE_PATH_FAILED_PARAMS
+
+typedef struct {
+    int Family;
+    BOOLEAN ShareBinding;
+    QUIC_MIGRATION_ADDRESS_TYPE AddressType;
     QUIC_MIGRATION_TYPE Type;
 } QUIC_RUN_MIGRATION_PARAMS;
 
 #define IOCTL_QUIC_RUN_MIGRATION \
-    QUIC_CTL_CODE(140, METHOD_BUFFERED, FILE_WRITE_DATA)
+    QUIC_CTL_CODE(141, METHOD_BUFFERED, FILE_WRITE_DATA)
     // QUIC_RUN_MIGRATION_PARAMS
 
-#define QUIC_MAX_IOCTL_FUNC_CODE 140
+#define IOCTL_QUIC_RUN_MULTIPLE_LOCAL_ADDRESSES \
+    QUIC_CTL_CODE(142, METHOD_BUFFERED, FILE_WRITE_DATA)
+    // QUIC_RUN_PROBE_PATH_PARAMS
+
+#define IOCTL_QUIC_RUN_ADDRESS_DISCOVERY \
+    QUIC_CTL_CODE(143, METHOD_BUFFERED, FILE_WRITE_DATA)
+    // int - Family
+
+#define IOCTL_QUIC_RUN_SERVER_PROBE_PATH \
+    QUIC_CTL_CODE(144, METHOD_BUFFERED, FILE_WRITE_DATA)
+    // QUIC_RUN_PROBE_PATH_PARAMS
+
+#define IOCTL_QUIC_RUN_SERVER_MIGRATION \
+    QUIC_CTL_CODE(145, METHOD_BUFFERED, FILE_WRITE_DATA)
+    // QUIC_RUN_MIGRATION_PARAMS
+
+#define QUIC_MAX_IOCTL_FUNC_CODE 145
 
 // Generic IOCTL for invoking functions 
 
