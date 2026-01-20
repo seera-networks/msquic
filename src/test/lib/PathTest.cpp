@@ -410,9 +410,13 @@ QuicTestMigration(
                 TEST_QUIC_SUCCEEDED(Status);
 #endif
             } else {
-                TEST_TRUE(QUIC_FAILED(Status));
-                delete ProbeHelper;
-                return;
+                if (!Settings.QTIPEnabled) {
+                    TEST_TRUE(QUIC_FAILED(Status));
+                    delete ProbeHelper;
+                    return;
+                } else {
+                    TEST_QUIC_SUCCEEDED(Status);
+                }
             }
         } else if (AddressType == NewBothAddresses) {
             PathParam = { &PairAddr.SockAddr, &SecondAddr.SockAddr };
@@ -494,8 +498,13 @@ QuicTestMigration(
                 TEST_QUIC_SUCCEEDED(Status);
 #endif
             } else {
-                TEST_TRUE(QUIC_FAILED(Status));
-                return;
+                if (!Settings.QTIPEnabled) {
+                    TEST_TRUE(QUIC_FAILED(Status));
+                    return;
+                }
+                else {
+                    TEST_QUIC_SUCCEEDED(Status);
+                }
             }
         } else if (AddressType == NewBothAddresses) {
             PathParam = { &PairAddr.SockAddr, &SecondAddr.SockAddr };
@@ -653,7 +662,9 @@ QuicTestAddressDiscovery(
     _In_ int Family
     )
 {
-    AddressDiscoveryTestContext ServerContext, ClientContext;
+    AddressDiscoveryTestContext ServerContext;
+    AddressDiscoveryTestContext* ClientContext;
+    ClientContext = new(std::nothrow) AddressDiscoveryTestContext();
     MsQuicRegistration Registration(true);
     TEST_TRUE(Registration.IsValid());
 
@@ -672,20 +683,22 @@ QuicTestAddressDiscovery(
     TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
     TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
 
-    MsQuicConnection Connection(Registration, CleanUpManual, AddressDiscoveryTestContext::ConnCallback, &ClientContext);
-    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    MsQuicConnection* Connection = nullptr;
+    Connection = new(std::nothrow) MsQuicConnection(Registration, CleanUpManual, AddressDiscoveryTestContext::ConnCallback, ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection->GetInitStatus());
 
+    QuicAddr ServerObservedAddr(QuicAddrFamily);
+    QuicAddr ClientObservedAddr(QuicAddrFamily);
     if (UseDuoNic) {
-        ServerContext.ObservedAddress = QuicAddr(QuicAddrFamily);
-        QuicAddrSetToDuoNic(&ServerContext.ObservedAddress.SockAddr);
-        ServerContext.ObservedAddress.SetPort(ServerLocalAddr.GetPort());
+        QuicAddrSetToDuoNic(&ServerObservedAddr.SockAddr);
+        ServerObservedAddr.SetPort(ServerLocalAddr.GetPort());
         QuicAddrSetToDuoNicClient(&ClientLocalAddr.SockAddr);
     } else {
         if (Family == 4) {
-            QuicAddrFromString("127.0.0.1", ServerLocalAddr.GetPort(), &ServerContext.ObservedAddress.SockAddr);
+            QuicAddrFromString("127.0.0.1", ServerLocalAddr.GetPort(), &ServerObservedAddr.SockAddr);
             QuicAddrFromString("127.0.0.1", 0, &ClientLocalAddr.SockAddr);
         } else {
-            QuicAddrFromString("::1", ServerLocalAddr.GetPort(), &ServerContext.ObservedAddress.SockAddr);
+            QuicAddrFromString("::1", ServerLocalAddr.GetPort(), &ServerObservedAddr.SockAddr);
             QuicAddrFromString("::1", 0, &ClientLocalAddr.SockAddr);
         }
     }
@@ -695,29 +708,40 @@ QuicTestAddressDiscovery(
     QUIC_STATUS Status;
     do {
         ClientLocalAddr.SetEphemeralPort();
-        TEST_QUIC_SUCCEEDED(Connection.SetParam(
+        TEST_QUIC_SUCCEEDED(Connection->SetParam(
             QUIC_PARAM_CONN_LOCAL_ADDRESS,
             sizeof(ClientLocalAddr.SockAddr),
             &ClientLocalAddr.SockAddr));
-        ClientContext.ObservedAddress = ClientLocalAddr;
-        ClientContext.ObservedAddress.IncrementPort();
-        ReplaceHelper = new(std::nothrow) ReplaceAddressHelper(ClientLocalAddr.SockAddr, ClientContext.ObservedAddress.SockAddr);
-        Status = Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort());
-        if (QUIC_FAILED(Status)) {
+        ClientObservedAddr = ClientLocalAddr;
+        ClientObservedAddr.IncrementPort();
+        ReplaceHelper = new(std::nothrow) ReplaceAddressHelper(ClientLocalAddr.SockAddr, ClientObservedAddr.SockAddr);
+        TEST_QUIC_SUCCEEDED(Connection->Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+        TEST_TRUE(Connection->HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+        if (Connection->TransportShutdownStatus == 0) {
+            break;
+        } else {
+            Status = Connection->TransportShutdownStatus;
             delete ReplaceHelper;
+            delete Connection;
+            delete ClientContext;
+            ClientContext = new(std::nothrow) AddressDiscoveryTestContext();
+            Connection = new(std::nothrow) MsQuicConnection(Registration, CleanUpManual, AddressDiscoveryTestContext::ConnCallback, ClientContext);
         }
     } while (QUIC_FAILED(Status) && ++Try < 3);
 
-    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
-    TEST_NOT_EQUAL(nullptr, ClientContext.Connection);
+    TEST_NOT_EQUAL(nullptr, ClientContext->Connection);
     TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
-    TEST_TRUE(ClientContext.ObservedAddrEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ClientContext->ObservedAddrEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(QuicAddrCompare(&ClientObservedAddr.SockAddr, &ClientContext->ObservedAddress.SockAddr));
     TEST_TRUE(ServerContext.ObservedAddrEvent.WaitTimeout(TestWaitTimeout));
-    Connection.Shutdown(QUIC_TEST_NO_ERROR);
-    TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(QuicAddrCompare(&ServerObservedAddr.SockAddr, &ServerContext.ObservedAddress.SockAddr));
+    Connection->Shutdown(QUIC_TEST_NO_ERROR);
+    TEST_TRUE(ClientContext->ShutdownEvent.WaitTimeout(TestWaitTimeout));
     TEST_TRUE(ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
     delete ReplaceHelper;
+    delete Connection;
+    delete ClientContext;
 }
 
 void
