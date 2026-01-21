@@ -5361,7 +5361,9 @@ void QuicTestConnectionParam()
     MsQuicRegistration Registration;
     TEST_TRUE(Registration.IsValid());
     MsQuicSettings Settings;
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
     Settings.SetIgnoreUnreachable(TRUE);
+#endif
     MsQuicCredentialConfig ClientCredConfig;
     MsQuicConfiguration ClientConfiguration(Registration, Alpn, Settings, ClientCertCredConfig);
 
