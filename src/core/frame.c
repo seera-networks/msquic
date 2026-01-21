@@ -1353,7 +1353,6 @@ QuicObservedAddressFrameEncode(
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv4.sin_addr, sizeof(Frame->Address.Ipv4.sin_addr));
         Buffer += sizeof(Frame->Address.Ipv4.sin_addr);
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv4.sin_port, sizeof(Frame->Address.Ipv4.sin_port));
-        Buffer += sizeof(Frame->Address.Ipv4.sin_port);
         *Offset += RequiredLength;
 
     } else {
@@ -1373,7 +1372,6 @@ QuicObservedAddressFrameEncode(
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv6.sin6_addr, sizeof(Frame->Address.Ipv6.sin6_addr));
         Buffer += sizeof(Frame->Address.Ipv6.sin6_addr);
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv6.sin6_port, sizeof(Frame->Address.Ipv6.sin6_port));
-        Buffer += sizeof(Frame->Address.Ipv6.sin6_port);
         *Offset += RequiredLength;
     }
 
@@ -1448,7 +1446,6 @@ QuicAddAddressFrameEncode(
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv4.sin_addr, sizeof(Frame->Address.Ipv4.sin_addr));
         Buffer += sizeof(Frame->Address.Ipv4.sin_addr);
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv4.sin_port, sizeof(Frame->Address.Ipv4.sin_port));
-        Buffer += sizeof(Frame->Address.Ipv4.sin_port);
         *Offset += RequiredLength;
 
     } else {
@@ -1468,7 +1465,6 @@ QuicAddAddressFrameEncode(
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv6.sin6_addr, sizeof(Frame->Address.Ipv6.sin6_addr));
         Buffer += sizeof(Frame->Address.Ipv6.sin6_addr);
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv6.sin6_port, sizeof(Frame->Address.Ipv6.sin6_port));
-        Buffer += sizeof(Frame->Address.Ipv6.sin6_port);
         *Offset += RequiredLength;
     }
 
@@ -1545,7 +1541,6 @@ QuicPunchMeNowFrameEncode(
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv4.sin_addr, sizeof(Frame->Address.Ipv4.sin_addr));
         Buffer += sizeof(Frame->Address.Ipv4.sin_addr);
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv4.sin_port, sizeof(Frame->Address.Ipv4.sin_port));
-        Buffer += sizeof(Frame->Address.Ipv4.sin_port);
         *Offset += RequiredLength;
 
     } else {
@@ -1567,7 +1562,6 @@ QuicPunchMeNowFrameEncode(
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv6.sin6_addr, sizeof(Frame->Address.Ipv6.sin6_addr));
         Buffer += sizeof(Frame->Address.Ipv6.sin6_addr);
         CxPlatCopyMemory(Buffer, &Frame->Address.Ipv6.sin6_port, sizeof(Frame->Address.Ipv6.sin6_port));
-        Buffer += sizeof(Frame->Address.Ipv6.sin6_port);
         *Offset += RequiredLength;
     }
 

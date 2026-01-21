@@ -2783,6 +2783,7 @@ INSTANTIATE_TEST_SUITE_P(
     WithRebindPaddingArgs,
     ::testing::ValuesIn(RebindPaddingArgs::Generate()));
 
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 INSTANTIATE_TEST_SUITE_P(
     Basic,
     WithProbePathArgs,
@@ -2807,6 +2808,7 @@ INSTANTIATE_TEST_SUITE_P(
     Basic,
     WithServerMigrationArgs,
     ::testing::ValuesIn(ServerMigrationArgs::Generate()));
+#endif
 
 #endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
 

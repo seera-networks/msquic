@@ -6831,9 +6831,8 @@ QuicConnAddBoundAddress(
                 Link);
         if (!QuicAddrCompare(&Bound->Address, Param)) {
             continue;
-        } else {
-            return QUIC_STATUS_ADDRESS_IN_USE;
         }
+        return QUIC_STATUS_ADDRESS_IN_USE;
     }
 
     if (Connection->BoundAddressesCount >= QUIC_MAX_LOCAL_ADDRESS_COUNT) {
@@ -7497,9 +7496,8 @@ QuicConnAddCandidateAddress(
         if (!QuicAddrCompare(&Candidate->Address, Param->HostAddress) ||
             !QuicAddrCompare(&Candidate->ObservedAddress, Param->ObservedAddress)) {
             continue;
-        } else {
-            return QUIC_STATUS_ADDRESS_IN_USE;
         }
+        return QUIC_STATUS_ADDRESS_IN_USE;
     }
 
     QUIC_CANDIDATE_ADDRESS_LIST_ENTRY* Candidate =
@@ -7713,7 +7711,6 @@ QuicConnProcessRemoveAddressOper(
             Status,
             "Process REMOVE_ADDRESS frame");
     }
-    return;
 }
 
 // Sends a punch probe to the specified remote address using the specified bound address.

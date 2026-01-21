@@ -1768,7 +1768,7 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicConnSendPunchProbe(
     _In_ QUIC_CONNECTION* Connection,
-    _In_ QUIC_BOUND_ADDRESS_LIST_ENTRY* LocalAddress,
+    _In_ QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound,
     _In_ QUIC_ADDR* RemoteAddress
     );
 
