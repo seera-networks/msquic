@@ -2808,8 +2808,7 @@ INSTANTIATE_TEST_SUITE_P(
     Basic,
     WithServerMigrationArgs,
     ::testing::ValuesIn(ServerMigrationArgs::Generate()));
-#endif
-
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 #endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
 
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
