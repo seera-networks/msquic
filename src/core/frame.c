@@ -1633,7 +1633,7 @@ QuicRemoveAddressFrameEncode(
 
     Buffer = Buffer + *Offset;
     Buffer = QuicVarIntEncode(QUIC_FRAME_REMOVE_ADDRESS, Buffer);
-    Buffer = QuicVarIntEncode(Frame->SequenceNumber, Buffer);
+    QuicVarIntEncode(Frame->SequenceNumber, Buffer);
     *Offset += RequiredLength;
 
     return TRUE;

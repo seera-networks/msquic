@@ -7254,9 +7254,8 @@ QuicConnRemoveBoundAddress(
                 Link);
         if (QuicAddrCompare(&Bound->Address, Param)) {
             break;
-        } else {
-            Bound = NULL;
         }
+        Bound = NULL;
     }
 
     if (Bound != NULL && !Bound->Removing) {
@@ -7308,19 +7307,18 @@ QuicConnRemoveBoundAddress(
                     "Last Path Removed!");
                 QuicConnSilentlyAbort(Connection);
                 return QUIC_STATUS_ABORTED;
-            } else {
-                if (Path->IsActive) {
-                    // Server cannot remove an active path because it cannot switch to a new one.
-                    QuicTraceEvent(
-                        ConnError,
-                        "[conn][%p] ERROR, %s.",
-                        Connection,
-                        "Server cannot remove an active path");
-                    QuicConnSilentlyAbort(Connection);
-                    return QUIC_STATUS_ABORTED;
-                }
-                QuicPathRemove(Connection, RemovingPathIndex);
             }
+            if (Path->IsActive) {
+                // Server cannot remove an active path because it cannot switch to a new one.
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Server cannot remove an active path");
+                QuicConnSilentlyAbort(Connection);
+                return QUIC_STATUS_ABORTED;
+            }
+            QuicPathRemove(Connection, RemovingPathIndex);
             PathRemoved = TRUE;
         }
     }
@@ -7547,9 +7545,8 @@ QuicConnRemoveCandidateAddress(
         if (QuicAddrCompare(&Candidate->Address, Param->HostAddress) &&
             QuicAddrCompare(&Candidate->ObservedAddress, Param->ObservedAddress)) {
             break;
-        } else {
-            Candidate = NULL;
         }
+        Candidate = NULL;
     }
 
     if (Candidate == NULL) {
