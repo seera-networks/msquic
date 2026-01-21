@@ -1797,22 +1797,20 @@ TEST_P(WithMigrationArgs, Migration) {
     }
 }
 
-TEST_P(WithProbePathArgs, MultipleLocalAddresses) {
-    TestLoggerT<ParamType> Logger("QuicTestMultipleLocalAddresses", GetParam());
+TEST_P(WithAddPathBeforeStartArgs, AddPathBeforeStart) {
+    TestLoggerT<ParamType> Logger("QuicTestAddPathBeforeStart", GetParam());
     if (TestingKernelMode) {
-        QUIC_RUN_PROBE_PATH_PARAMS Params = {
+        QUIC_RUN_ADD_PATH_BEFORE_START_PARAMS Params = {
             GetParam().Family,
             GetParam().ShareBinding,
-            GetParam().DeferConnIDGen,
-            GetParam().DropPacketCount
+            GetParam().DeferConnIDGen
         };
-        ASSERT_TRUE(DriverClient.Run(IOCTL_QUIC_RUN_MULTIPLE_LOCAL_ADDRESSES, Params));
+        ASSERT_TRUE(DriverClient.Run(IOCTL_QUIC_RUN_ADD_PATH_BEFORE_START, Params));
     } else {
-        QuicTestMultipleLocalAddresses(
+        QuicTestAddPathBeforeStart(
             GetParam().Family,
             GetParam().ShareBinding,
-            GetParam().DeferConnIDGen,
-            GetParam().DropPacketCount);
+            GetParam().DeferConnIDGen);
     }
 }
 
@@ -2798,6 +2796,11 @@ INSTANTIATE_TEST_SUITE_P(
     Basic,
     WithMigrationArgs,
     ::testing::ValuesIn(MigrationArgs::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    Basic,
+    WithAddPathBeforeStartArgs,
+    ::testing::ValuesIn(AddPathBeforeStartArgs::Generate()));
 
 INSTANTIATE_TEST_SUITE_P(
     Basic,

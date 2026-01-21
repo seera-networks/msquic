@@ -542,7 +542,7 @@ size_t QUIC_IOCTL_BUFFER_SIZES[] =
     sizeof(QUIC_RUN_PROBE_PATH_PARAMS),
     sizeof(QUIC_RUN_PROBE_PATH_FAILED_PARAMS),
     sizeof(QUIC_RUN_MIGRATION_PARAMS),
-    sizeof(QUIC_RUN_PROBE_PATH_PARAMS),
+    sizeof(QUIC_RUN_ADD_PATH_BEFORE_START_PARAMS),
     sizeof(INT32),
     sizeof(QUIC_RUN_PROBE_PATH_PARAMS),
     sizeof(QUIC_RUN_MIGRATION_PARAMS)
@@ -579,6 +579,7 @@ typedef union {
     QUIC_RUN_PROBE_PATH_PARAMS ProbePathParams;
     QUIC_RUN_PROBE_PATH_FAILED_PARAMS ProbePathFailedParams;
     QUIC_RUN_MIGRATION_PARAMS MigrationParams;
+    QUIC_RUN_ADD_PATH_BEFORE_START_PARAMS AddPathBeforeStartParams;
     QUIC_RUN_REBIND_PARAMS RebindParams;
     UINT8 RejectByClosing;
     QUIC_RUN_CIBIR_EXTENSION CibirParams;
@@ -1123,14 +1124,13 @@ QuicTestCtlEvtIoDeviceControl(
                 Params->MigrationParams.Type));
         break;
 
-    case IOCTL_QUIC_RUN_MULTIPLE_LOCAL_ADDRESSES:
+    case IOCTL_QUIC_RUN_ADD_PATH_BEFORE_START:
         CXPLAT_FRE_ASSERT(Params != nullptr);
         QuicTestCtlRun(
-            QuicTestMultipleLocalAddresses(
-                Params->ProbePathParams.Family,
-                Params->ProbePathParams.ShareBinding,
-                Params->ProbePathParams.DeferConnIDGen,
-                Params->ProbePathParams.DropPacketCount));
+            QuicTestAddPathBeforeStart(
+                Params->AddPathBeforeStartParams.Family,
+                Params->AddPathBeforeStartParams.ShareBinding,
+                Params->AddPathBeforeStartParams.DeferConnIDGen));
         break;
 
     case IOCTL_QUIC_RUN_ADDRESS_DISCOVERY:

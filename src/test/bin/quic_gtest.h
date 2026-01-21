@@ -988,6 +988,30 @@ class WithProbePathFailedArgs : public testing::Test,
     public testing::WithParamInterface<ProbePathFailedArgs> {
 };
 
+struct AddPathBeforeStartArgs {
+    int Family;
+    BOOLEAN ShareBinding;
+    BOOLEAN DeferConnIDGen;
+    static ::std::vector<AddPathBeforeStartArgs> Generate() {
+        ::std::vector<AddPathBeforeStartArgs> list;
+        for (int Family : { 4, 6 })
+        for (BOOLEAN ShareBinding : { TRUE, FALSE })
+        for (BOOLEAN DeferConnIDGen : { TRUE, FALSE })
+            list.push_back({ Family, ShareBinding, DeferConnIDGen });
+        return list;
+    }
+};
+
+std::ostream& operator << (std::ostream& o, const AddPathBeforeStartArgs& args) {
+    return o << (args.Family == 4 ? "v4" : "v6") << "/"
+        << (args.ShareBinding ? "ShareBinding" : "not ShareBinding") << "/"
+        << (args.DeferConnIDGen ? "DeferConnIDGen" : "not DeferConnIDGen");
+}
+
+class WithAddPathBeforeStartArgs : public testing::Test,
+    public testing::WithParamInterface<AddPathBeforeStartArgs> {
+};
+
 struct MigrationArgs {
     int Family;
     BOOLEAN ShareBinding;

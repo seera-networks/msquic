@@ -438,11 +438,10 @@ QuicTestMigration(
     );
 
 void
-QuicTestMultipleLocalAddresses(
+QuicTestAddPathBeforeStart(
     _In_ int Family,
     _In_ BOOLEAN ShareBinding,
-    _In_ BOOLEAN DeferConnIDGen,
-    _In_ uint32_t DropPacketCount
+    _In_ BOOLEAN DeferConnIDGen
     );
 
 void
@@ -1548,9 +1547,15 @@ typedef struct {
     QUIC_CTL_CODE(141, METHOD_BUFFERED, FILE_WRITE_DATA)
     // QUIC_RUN_MIGRATION_PARAMS
 
-#define IOCTL_QUIC_RUN_MULTIPLE_LOCAL_ADDRESSES \
+typedef struct {
+    int Family;
+    BOOLEAN ShareBinding;
+    BOOLEAN DeferConnIDGen;
+} QUIC_RUN_ADD_PATH_BEFORE_START_PARAMS;
+
+#define IOCTL_QUIC_RUN_ADD_PATH_BEFORE_START \
     QUIC_CTL_CODE(142, METHOD_BUFFERED, FILE_WRITE_DATA)
-    // QUIC_RUN_PROBE_PATH_PARAMS
+    // QUIC_RUN_ADD_PATH_BEFORE_START_PARAMS
 
 #define IOCTL_QUIC_RUN_ADDRESS_DISCOVERY \
     QUIC_CTL_CODE(143, METHOD_BUFFERED, FILE_WRITE_DATA)
