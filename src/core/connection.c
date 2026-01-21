@@ -6803,7 +6803,18 @@ QuicConnOpenNewPaths(
     return Assigned;
 }
 
+//
 // Adds a new bound address to the connection.
+//
+// The function validates the current connection state and role (client/server)
+// against server migration negotiation before allowing an additional local
+// address to be registered. It enforces uniqueness of bound addresses per
+// connection, ensures the per-connection bound-address limit is not exceeded,
+// allocates and stores a new bound-address entry, and creates a corresponding
+// UDP binding using the connection's partition. The local binding is always
+// created with an IPv6 family; if the caller does not specify a port, an
+// ephemeral port is used.
+//
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
 QUIC_STATUS
@@ -6811,20 +6822,38 @@ QuicConnAddBoundAddress(
     _In_ QUIC_CONNECTION* Connection,
     _In_ QUIC_ADDR* Param
     )
+    //
+    // Once the connection has been locally closed, its configuration (including
+    // bound addresses) must not be modified.
+    //
 {
     if (Connection->State.ClosedLocally) {
         return QUIC_STATUS_INVALID_STATE;
     }
+    //
+    // Only allow additional bound addresses when server migration is in a
+    // valid state for the endpoint role:
+    //   - Clients require successful negotiation before adding addresses.
+    //   - Servers must not add addresses once migration has been negotiated.
+    //
 
     if ((QuicConnIsClient(Connection) && !Connection->State.ServerMigrationNegotiated) ||
         (QuicConnIsServer(Connection) && Connection->State.ServerMigrationNegotiated)) {
         return QUIC_STATUS_INVALID_STATE;
     }
+    //
+    // Reject adding a bound address that is already present on the connection.
+    // Comparison is performed against the existing bound-address list.
+    //
 
     for (CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
             Entry != &Connection->BoundAddresses;
             Entry = Entry->Flink) {
         QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound =
+    //
+    // Enforce the maximum number of local addresses that may be associated
+    // with a single connection before attempting allocation.
+    //
             CXPLAT_CONTAINING_RECORD(
                 Entry,
                 QUIC_BOUND_ADDRESS_LIST_ENTRY,
@@ -6838,14 +6867,28 @@ QuicConnAddBoundAddress(
     if (Connection->BoundAddressesCount >= QUIC_MAX_LOCAL_ADDRESS_COUNT) {
         return QUIC_STATUS_OUT_OF_MEMORY;
     }
+    //
+    // Cache the caller-provided address in the new bound-address entry.
+    //
 
     QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound =
+    //
+    // Construct the local address used for the UDP binding. The family is
+    // always set to IPv6; the port is copied from the caller when specified,
+    // otherwise an ephemeral port is requested by passing zero.
+    //
         (QUIC_BOUND_ADDRESS_LIST_ENTRY*)
         CXPLAT_ALLOC_NONPAGED(
             sizeof(QUIC_BOUND_ADDRESS_LIST_ENTRY),
             QUIC_POOL_BOUND_ADDRESS_LIST);
     if (Bound == NULL) {
         return QUIC_STATUS_OUT_OF_MEMORY;
+    //
+    // Initialize the UDP configuration for the new binding. Only the local
+    // address is used here; the socket is created without a specific remote
+    // peer and with default flags, bound to the same partition as the
+    // connection in order to preserve locality and affinity.
+    //
     }
 
     CxPlatCopyMemory(&Bound->Address, Param, sizeof(QUIC_ADDR));
