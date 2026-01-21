@@ -285,7 +285,7 @@ impl<'a> From<&'a QUIC_CONNECTION_EVENT> for ConnectionEvent<'a> {
             crate::ffi::QUIC_CONNECTION_EVENT_TYPE_QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED => {
               let ev = unsafe { value.__bindgen_anon_1.NOTIFY_REMOTE_ADDRESS_REMOVED };
               Self::NotifyRemoteAddressRemoved { sequence_number: ev.SequenceNumber }
-            }            
+            }
             _ => {
                 todo!("unknown event. maybe preview feature.")
             }
