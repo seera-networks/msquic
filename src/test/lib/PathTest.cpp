@@ -19,7 +19,9 @@ struct PathTestContext {
     CxPlatEvent ShutdownEvent;
     MsQuicConnection* Connection {nullptr};
     CxPlatEvent PeerAddrChangedEvent;
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
     CxPlatEvent AddedPathValidatedEvent;
+#endif
 
     static QUIC_STATUS ConnCallback(_In_ MsQuicConnection* Conn, _In_opt_ void* Context, _Inout_ QUIC_CONNECTION_EVENT* Event) {
         PathTestContext* Ctx = static_cast<PathTestContext*>(Context);
@@ -39,7 +41,9 @@ struct PathTestContext {
             Settings.SetPeerBidiStreamCount(Settings.PeerBidiStreamCount + 1);
             Conn->SetSettings(Settings);
             Ctx->PeerAddrChangedEvent.Set();
-        } else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_VALIDATED) {
+        }
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
+        else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_VALIDATED) {
             QuicAddr LocalAddr, RemoteAddr;
             Conn->GetLocalAddr(LocalAddr);
             Conn->GetRemoteAddr(RemoteAddr);
@@ -48,6 +52,7 @@ struct PathTestContext {
                 Ctx->AddedPathValidatedEvent.Set();
             }
         }
+#endif
         return QUIC_STATUS_SUCCESS;
     }
 };
@@ -91,30 +96,6 @@ ClientCallback(
     } else if (Event->Type == QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE) {
         CxPlatEvent* StreamCountEvent = static_cast<CxPlatEvent*>(Context);
         StreamCountEvent->Set();
-    }
-    return QUIC_STATUS_SUCCESS;
-}
-
-static
-QUIC_STATUS
-QUIC_API
-ClientCallback2(
-    _In_ MsQuicConnection* Connection,
-    _In_opt_ void* Context,
-    _Inout_ QUIC_CONNECTION_EVENT* Event
-    ) noexcept
-{
-    if (Event->Type == QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED) {
-        MsQuic->StreamClose(Event->PEER_STREAM_STARTED.Stream);
-    } else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_VALIDATED) {
-        CxPlatEvent* AddedPathValidatedEvent = static_cast<CxPlatEvent*>(Context);
-        QuicAddr LocalAddr, RemoteAddr;
-        Connection->GetLocalAddr(LocalAddr);
-        Connection->GetRemoteAddr(RemoteAddr);
-        if (!QuicAddrCompare(&LocalAddr.SockAddr, Event->PATH_VALIDATED.LocalAddress) ||
-            !QuicAddrCompare(&RemoteAddr.SockAddr, Event->PATH_VALIDATED.RemoteAddress)) {
-            AddedPathValidatedEvent->Set();
-        }
     }
     return QUIC_STATUS_SUCCESS;
 }
@@ -181,6 +162,30 @@ QuicTestLocalPathChanges(
 }
 
 #if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
+static
+QUIC_STATUS
+QUIC_API
+ClientCallback2(
+    _In_ MsQuicConnection* Connection,
+    _In_opt_ void* Context,
+    _Inout_ QUIC_CONNECTION_EVENT* Event
+    ) noexcept
+{
+    if (Event->Type == QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED) {
+        MsQuic->StreamClose(Event->PEER_STREAM_STARTED.Stream);
+    } else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_VALIDATED) {
+        CxPlatEvent* AddedPathValidatedEvent = static_cast<CxPlatEvent*>(Context);
+        QuicAddr LocalAddr, RemoteAddr;
+        Connection->GetLocalAddr(LocalAddr);
+        Connection->GetRemoteAddr(RemoteAddr);
+        if (!QuicAddrCompare(&LocalAddr.SockAddr, Event->PATH_VALIDATED.LocalAddress) ||
+            !QuicAddrCompare(&RemoteAddr.SockAddr, Event->PATH_VALIDATED.RemoteAddress)) {
+            AddedPathValidatedEvent->Set();
+        }
+    }
+    return QUIC_STATUS_SUCCESS;
+}
+
 void
 QuicTestProbePath(
     _In_ int Family,
