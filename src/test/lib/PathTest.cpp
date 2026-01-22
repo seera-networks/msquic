@@ -234,9 +234,14 @@ QuicTestProbePath(
     TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_NOT_EQUAL(nullptr, Context.Connection);
 
+    //
+    // Wait for handshake confirmation.
+    //
+    CxPlatSleep(100);
+
     QuicAddr SecondLocalAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
-    SecondLocalAddr.IncrementPort();
+    SecondLocalAddr.SetEphemeralPort();
     QuicAddr RemoteAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(RemoteAddr));
     QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &RemoteAddr.SockAddr };
@@ -252,7 +257,7 @@ QuicTestProbePath(
 
         if (QUIC_FAILED(Status)) {
             delete ProbeHelper;
-            SecondLocalAddr.IncrementPort();
+            SecondLocalAddr.SetEphemeralPort();
             ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), DropPacketCount, DropPacketCount);
         }
     } while (QUIC_FAILED(Status) && ++Try <= 3);
@@ -316,9 +321,14 @@ QuicTestProbePathFailed(
     TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_NOT_EQUAL(nullptr, Context.Connection);
 
+    //
+    // Wait for handshake confirmation.
+    //
+    CxPlatSleep(100);
+
     QuicAddr SecondLocalAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
-    SecondLocalAddr.IncrementPort();
+    SecondLocalAddr.SetEphemeralPort();
     QuicAddr RemoteAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(RemoteAddr));
     QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &RemoteAddr.SockAddr };
@@ -334,7 +344,7 @@ QuicTestProbePathFailed(
 
         if (QUIC_FAILED(Status)) {
             delete ProbeHelper;
-            SecondLocalAddr.IncrementPort();
+            SecondLocalAddr.SetEphemeralPort();
             ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 255, 255);
         }
     } while (QUIC_FAILED(Status) && ++Try <= 3);
@@ -387,6 +397,11 @@ QuicTestMigration(
     TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // Wait for handshake confirmation.
+    //
+    CxPlatSleep(100);
 
     QuicAddr SecondAddr;
     QuicAddr PairAddr;
@@ -494,10 +509,6 @@ QuicTestMigration(
                     &PathParam));
         }
     } else {
-        //
-        // Wait for handshake confirmation.
-        //
-        CxPlatSleep(100);
 
         QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
         int Try = 0;
@@ -826,6 +837,7 @@ QuicTestServerProbePath(
     TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
+
     //
     // Wait for handshake confirmation.
     //
@@ -916,6 +928,11 @@ QuicTestServerMigration(
     TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
+
+    //
+    // Wait for handshake confirmation.
+    //
+    CxPlatSleep(100);
 
     QuicAddr SecondAddr;
     QuicAddr PairAddr;
@@ -1013,11 +1030,6 @@ QuicTestServerMigration(
                     &PathParam));
         }
     } else {
-        //
-        // Wait for handshake confirmation.
-        //
-        CxPlatSleep(100);
-
         QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
         int Try = 0;
         if (AddressType == NewLocalAddress) {
