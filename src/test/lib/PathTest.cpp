@@ -29,7 +29,9 @@ struct PathTestContext {
         if (Event->Type == QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE) {
             Ctx->Connection = nullptr;
             Ctx->PeerAddrChangedEvent.Set();
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
             Ctx->AddedPathValidatedEvent.Set();
+#endif
             Ctx->ShutdownEvent.Set();
             Ctx->HandshakeCompleteEvent.Set();
         } else if (Event->Type == QUIC_CONNECTION_EVENT_CONNECTED) {
