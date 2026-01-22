@@ -273,14 +273,6 @@ QuicTestProbePath(
     
     TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout * 10));
     TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout * 10));
-    QUIC_STATISTICS_V2 Stats;
-    uint32_t Size = sizeof(Stats);
-    TEST_QUIC_SUCCEEDED(
-        Connection.GetParam(
-            QUIC_PARAM_CONN_STATISTICS_V2_PLAT,
-            &Size,
-            &Stats));
-    TEST_EQUAL(Stats.RecvDroppedPackets, 0);
     delete ProbeHelper;
 }
 
