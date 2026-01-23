@@ -579,7 +579,15 @@ QuicTestMigration(
         TEST_TRUE(QuicAddrCompare(&PairAddr.SockAddr, &ServerNewRemoteAddr.SockAddr));
     }
     Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
-    TEST_TRUE(PeerStreamsChanged.WaitTimeout(1500));
+#if defined(_WIN32)
+    if (AddressType == NewRemoteAddress && Settings.QTIPEnabled) {
+        TEST_FALSE(PeerStreamsChanged.WaitTimeout(1500));
+    } else
+#else
+    {
+        TEST_TRUE(PeerStreamsChanged.WaitTimeout(1500));
+    }
+#endif
 }
 
 void

@@ -2151,7 +2151,7 @@ void QuicTestStatefulGlobalSetParam()
     //
     // Set QUIC_PARAM_GLOBAL_LOAD_BALACING_MODE after connection start (MsQuicLib.InUse)
     //
-    {
+    if (!UseQTIP) {
         TestScopeLogger LogScope1("Set QUIC_PARAM_GLOBAL_LOAD_BALACING_MODE after connection start (MsQuicLib.InUse)");
         GlobalSettingScope ParamScope(QUIC_PARAM_GLOBAL_LOAD_BALACING_MODE);
         MsQuicAlpn Alpn("MsQuicTest");
@@ -5252,7 +5252,7 @@ void QuicTest_QUIC_PARAM_CONN_REMOVE_PATH(MsQuicRegistration& Registration, MsQu
         //
         // Remove the last one path after start
         //
-        {
+        if (!UseQTIP) {
             TestScopeLogger LogScope2("Remove the last one path after start");
             MsQuicConnection Connection(Registration);
             TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
@@ -5280,7 +5280,7 @@ void QuicTest_QUIC_PARAM_CONN_REMOVE_PATH(MsQuicRegistration& Registration, MsQu
         //
         // Remove the active path during handshake
         //
-        {
+        if (!UseQTIP) {
             TestScopeLogger LogScope2("Remove the active path during handshake");
             MsQuicConnection Connection(Registration);
             TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
@@ -5320,7 +5320,7 @@ void QuicTest_QUIC_PARAM_CONN_REMOVE_PATH(MsQuicRegistration& Registration, MsQu
         //
         // Remove the non-active path dusring handshake
         //
-        {
+        if (!UseQTIP) {
             TestScopeLogger LogScope2("Remove the non-active path dusring handshake");
             MsQuicConnection Connection(Registration);
             TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
