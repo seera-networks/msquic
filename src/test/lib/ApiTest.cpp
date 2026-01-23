@@ -2151,7 +2151,10 @@ void QuicTestStatefulGlobalSetParam()
     //
     // Set QUIC_PARAM_GLOBAL_LOAD_BALACING_MODE after connection start (MsQuicLib.InUse)
     //
-    if (!UseQTIP) {
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
+    if (!UseQTIP)
+#endif
+    {
         TestScopeLogger LogScope1("Set QUIC_PARAM_GLOBAL_LOAD_BALACING_MODE after connection start (MsQuicLib.InUse)");
         GlobalSettingScope ParamScope(QUIC_PARAM_GLOBAL_LOAD_BALACING_MODE);
         MsQuicAlpn Alpn("MsQuicTest");
