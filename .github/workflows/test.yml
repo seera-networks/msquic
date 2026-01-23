@@ -186,7 +186,7 @@ jobs:
       if: matrix.vec.plat == 'linux' || matrix.vec.plat == 'macos'
       run: |
         sudo chmod -R 777 artifacts
-    - name Setup .NET 10 SDK
+    - name: Setup .NET 10 SDK
       if: matrix.vec.plat == 'linux' || matrix.vec.plat == 'macos'
       uses: actions/setup-dotnet@v4
       with:
