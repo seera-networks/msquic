@@ -583,11 +583,10 @@ QuicTestMigration(
     if (AddressType == NewRemoteAddress && Settings.QTIPEnabled) {
         TEST_FALSE(PeerStreamsChanged.WaitTimeout(1500));
     } else
-#else
+#endif
     {
         TEST_TRUE(PeerStreamsChanged.WaitTimeout(1500));
     }
-#endif
 }
 
 void
