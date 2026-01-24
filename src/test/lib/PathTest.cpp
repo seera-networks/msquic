@@ -580,7 +580,7 @@ QuicTestMigration(
     }
     Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
 #if defined(_WIN32)
-    if (AddressType == NewRemoteAddress && Settings.QTIPEnabled) {
+    if (Type != MigrateWithProbe && AddressType == NewRemoteAddress && Settings.QTIPEnabled) {
         TEST_FALSE(PeerStreamsChanged.WaitTimeout(1500));
     } else
 #endif
@@ -850,7 +850,6 @@ QuicTestServerProbePath(
     QuicAddr SecondRemoteAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondRemoteAddr));
     SecondRemoteAddr.SetEphemeralPort();
-    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &SecondRemoteAddr.SockAddr };
     PathProbeHelper *ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), DropPacketCount, DropPacketCount);
 
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
@@ -869,6 +868,7 @@ QuicTestServerProbePath(
 
     Try = 0;
     do {
+        QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &SecondRemoteAddr.SockAddr };
         Status = ServerContext.Connection->SetParam(
             QUIC_PARAM_CONN_ADD_PATH,
             sizeof(PathParam),
