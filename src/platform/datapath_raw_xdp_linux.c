@@ -1056,9 +1056,6 @@ CxPlatDpRawTxAlloc(
     CXPLAT_DBG_ASSERT(Config->MaxPacketSize <= MAX_UDP_PAYLOAD_LENGTH);
     XDP_TX_PACKET* Packet = NULL;
     CXPLAT_QUEUE* Queue = Config->Route->Queue;
-    if (Queue == NULL) {
-        goto Error;
-    }
     struct XskSocketInfo* XskInfo = Queue->XskInfo;
     CxPlatLockAcquire(&XskInfo->UmemLock);
     uint64_t BaseAddr = XskUmemFrameAlloc(XskInfo);
