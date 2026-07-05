@@ -53,10 +53,9 @@ QuicPathIDFree(
     )
 {
     QUIC_CONNECTION* Connection = PathID->Connection;
-    QUIC_WORKER* Worker = Connection->Worker;
 
     PathID->Flags.Freed = TRUE;
-    CxPlatPoolFree(&Worker->PathIDPool, PathID);
+    CxPlatPoolFree(PathID);
 
     QuicConnRelease(Connection, QUIC_CONN_REF_PATHID);
 }

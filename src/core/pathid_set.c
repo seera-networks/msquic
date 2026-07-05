@@ -127,7 +127,7 @@ QuicPathIDSetNewLocalPathID(
         Info->MaxCurrentPathIDCount = Info->CurrentPathIDCount;
     }
     if (PathID->ID > Type + (Info->MaxPathID << 2)) {
-        PathID->Flags.BlockedByPeer = TRUE;
+        PathID->Flags.PeerBlocked = TRUE;
     }
 Exit:
     return Status;
