@@ -328,7 +328,6 @@ QuicConnGetPathForPacket(
         }
     }
 
-
     QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound = NULL;
     for (CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
             Entry != &Connection->BoundAddresses;

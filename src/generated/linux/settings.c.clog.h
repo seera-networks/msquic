@@ -753,36 +753,6 @@ tracepoint(CLOG_SETTINGS_C, SettingReliableResetEnabled , arg2);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SettingXdpEnabled
-// [sett] XdpEnabled             = %hhu
-// QuicTraceLogVerbose(SettingXdpEnabled,                  "[sett] XdpEnabled             = %hhu", Settings->XdpEnabled);
-// arg2 = arg2 = Settings->XdpEnabled = arg2
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_SettingXdpEnabled
-#define _clog_3_ARGS_TRACE_SettingXdpEnabled(uniqueId, encoded_arg_string, arg2)\
-tracepoint(CLOG_SETTINGS_C, SettingXdpEnabled , arg2);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingQTIPEnabled
-// [sett] QTIPEnabled            = %hhu
-// QuicTraceLogVerbose(SettingQTIPEnabled,                 "[sett] QTIPEnabled            = %hhu", Settings->QTIPEnabled);
-// arg2 = arg2 = Settings->QTIPEnabled = arg2
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_SettingQTIPEnabled
-#define _clog_3_ARGS_TRACE_SettingQTIPEnabled(uniqueId, encoded_arg_string, arg2)\
-tracepoint(CLOG_SETTINGS_C, SettingQTIPEnabled , arg2);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for SettingOneWayDelayEnabled
 // [sett] OneWayDelayEnabled     = %hhu
 // QuicTraceLogVerbose(SettingOneWayDelayEnabled,          "[sett] OneWayDelayEnabled     = %hhu", Settings->OneWayDelayEnabled);
@@ -813,14 +783,14 @@ tracepoint(CLOG_SETTINGS_C, SettingNetStatsEventEnabled , arg2);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SettingServerMigrationEnabled
-// [sett] ServerMigrationEnabled = %hhu
-// QuicTraceLogVerbose(SettingServerMigrationEnabled,      "[sett] ServerMigrationEnabled = %hhu", Settings->ServerMigrationEnabled);
-// arg2 = arg2 = Settings->ServerMigrationEnabled = arg2
+// Decoder Ring for SettingConnIDGenDisabled
+// [sett] NetStatsEventEnabled   = %hhu
+// QuicTraceLogVerbose(SettingConnIDGenDisabled,        "[sett] ConnIDGenDisabled   = %hhu", Settings->ConnIDGenDisabled);
+// arg2 = arg2 = Settings->ConnIDGenDisabled = arg2
 ----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_SettingServerMigrationEnabled
-#define _clog_3_ARGS_TRACE_SettingServerMigrationEnabled(uniqueId, encoded_arg_string, arg2)\
-tracepoint(CLOG_SETTINGS_C, SettingServerMigrationEnabled , arg2);\
+#ifndef _clog_3_ARGS_TRACE_SettingConnIDGenDisabled
+#define _clog_3_ARGS_TRACE_SettingConnIDGenDisabled(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_SETTINGS_C, SettingConnIDGenDisabled , arg2);\
 
 #endif
 
@@ -828,29 +798,14 @@ tracepoint(CLOG_SETTINGS_C, SettingServerMigrationEnabled , arg2);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SettingAddAddress
-// [sett] AddAddressMode         = %hhu
-// QuicTraceLogVerbose(SettingAddAddress,                  "[sett] AddAddressMode         = %hhu", Settings->AddAddressMode);
-// arg2 = arg2 = Settings->AddAddressMode = arg2
+// Decoder Ring for SettingMultipathEnabled
+// [sett] MultipathEnabled   = %hhu
+// QuicTraceLogVerbose(SettingMultipathEnabled,            "[sett] MultipathEnabled       = %hhu", Settings->MultipathEnabled);
+// arg2 = arg2 = Settings->MultipathEnabled = arg2
 ----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_SettingAddAddress
-#define _clog_3_ARGS_TRACE_SettingAddAddress(uniqueId, encoded_arg_string, arg2)\
-tracepoint(CLOG_SETTINGS_C, SettingAddAddress , arg2);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingIgnoreUnreachable
-// [sett] IgnoreUnreachable      = %hhu
-// QuicTraceLogVerbose(SettingIgnoreUnreachable,           "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);
-// arg2 = arg2 = Settings->IgnoreUnreachable = arg2
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_SettingIgnoreUnreachable
-#define _clog_3_ARGS_TRACE_SettingIgnoreUnreachable(uniqueId, encoded_arg_string, arg2)\
-tracepoint(CLOG_SETTINGS_C, SettingIgnoreUnreachable , arg2);\
+#ifndef _clog_3_ARGS_TRACE_SettingMultipathEnabled
+#define _clog_3_ARGS_TRACE_SettingMultipathEnabled(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_SETTINGS_C, SettingMultipathEnabled , arg2);\
 
 #endif
 
@@ -881,52 +836,6 @@ tracepoint(CLOG_SETTINGS_C, SettingDumpLFixedServerID , arg2);\
 #ifndef _clog_3_ARGS_TRACE_SettingDumpStreamRecvBufferDefault
 #define _clog_3_ARGS_TRACE_SettingDumpStreamRecvBufferDefault(uniqueId, encoded_arg_string, arg2)\
 tracepoint(CLOG_SETTINGS_C, SettingDumpStreamRecvBufferDefault , arg2);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingStreamMultiReceiveEnabled
-// [sett] StreamMultiReceiveEnabled  = %hhu
-// QuicTraceLogVerbose(SettingStreamMultiReceiveEnabled,       "[sett] StreamMultiReceiveEnabled  = %hhu", Settings->StreamMultiReceiveEnabled);
-// arg2 = arg2 = Settings->StreamMultiReceiveEnabled = arg2
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_SettingStreamMultiReceiveEnabled
-#define _clog_3_ARGS_TRACE_SettingStreamMultiReceiveEnabled(uniqueId, encoded_arg_string, arg2)\
-tracepoint(CLOG_SETTINGS_C, SettingStreamMultiReceiveEnabled , arg2);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingConnIDGenDisabled
-// [sett] ConnIDGenDisabled          = %hhu
-// QuicTraceLogVerbose(SettingConnIDGenDisabled,               "[sett] ConnIDGenDisabled          = %hhu", Settings->ConnIDGenDisabled);
-// arg2 = arg2 = Settings->ConnIDGenDisabled = arg2
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_SettingConnIDGenDisabled
-#define _clog_3_ARGS_TRACE_SettingConnIDGenDisabled(uniqueId, encoded_arg_string, arg2)\
-tracepoint(CLOG_SETTINGS_C, SettingConnIDGenDisabled , arg2);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingXdpDisabledInMapMode
-// [ lib] Error: Xdp must be enabled when an XDP map was configured.
-// QuicTraceLogError(
-            SettingXdpDisabledInMapMode,
-            "[ lib] Error: Xdp must be enabled when an XDP map was configured.");
-----------------------------------------------------------*/
-#ifndef _clog_2_ARGS_TRACE_SettingXdpDisabledInMapMode
-#define _clog_2_ARGS_TRACE_SettingXdpDisabledInMapMode(uniqueId, encoded_arg_string)\
-tracepoint(CLOG_SETTINGS_C, SettingXdpDisabledInMapMode );\
 
 #endif
 

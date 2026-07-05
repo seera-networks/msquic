@@ -1407,6 +1407,68 @@ QuicSendPathChallenges(
             Path->SendChallenge = FALSE;
         }
 
+        if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_NEW_CONNECTION_ID)) {
+
+            BOOLEAN HasMoreCidsToSend = FALSE;
+            BOOLEAN MaxFrameLimitHit = FALSE;
+            for (CXPLAT_SLIST_ENTRY* Entry = Connection->SourceCids.Next;
+                    Entry != NULL;
+                    Entry = Entry->Next) {
+                QUIC_CID_SLIST_ENTRY* SourceCid =
+                    CXPLAT_CONTAINING_RECORD(
+                        Entry,
+                        QUIC_CID_SLIST_ENTRY,
+                        Link);
+                if (!SourceCid->CID.NeedsToSend) {
+                    continue;
+                }
+                if (MaxFrameLimitHit) {
+                    HasMoreCidsToSend = TRUE;
+                    break;
+                }
+
+                QUIC_NEW_CONNECTION_ID_EX Frame1 = {
+                    SourceCid->CID.Length,
+                    SourceCid->CID.SequenceNumber,
+                    0,
+                    { 0 } };
+                CXPLAT_DBG_ASSERT(Connection->SourceCidLimit >= QUIC_TP_ACTIVE_CONNECTION_ID_LIMIT_MIN);
+                if (Frame1.Sequence >= Connection->SourceCidLimit) {
+                    Frame1.RetirePriorTo = Frame1.Sequence + 1 - Connection->SourceCidLimit;
+                }
+                CxPlatCopyMemory(
+                    Frame1.Buffer,
+                    SourceCid->CID.Data,
+                    SourceCid->CID.Length);
+                CXPLAT_DBG_ASSERT(SourceCid->CID.Length == MsQuicLib.CidTotalLength);
+                QuicLibraryGenerateStatelessResetToken(
+                    Connection->Partition,
+                    SourceCid->CID.Data,
+                    Frame1.Buffer + SourceCid->CID.Length);
+
+                if (QuicNewConnectionIDFrameEncode(
+                        &Frame1,
+                        &Builder.DatagramLength,
+                        AvailableBufferLength,
+                        Builder.Datagram->Buffer)) {
+
+                    SourceCid->CID.NeedsToSend = FALSE;
+                    Builder.Metadata->Frames[
+                        Builder.Metadata->FrameCount].NEW_CONNECTION_ID.Sequence =
+                            SourceCid->CID.SequenceNumber;
+                    MaxFrameLimitHit =
+                        QuicPacketBuilderAddFrame(
+                            &Builder, QUIC_FRAME_NEW_CONNECTION_ID, TRUE);
+                } else {
+                    HasMoreCidsToSend = TRUE;
+                    break;
+                }
+            }
+            if (!HasMoreCidsToSend) {
+                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_NEW_CONNECTION_ID;
+            }
+        }
+
         QuicPacketBuilderFinalize(&Builder, TRUE);
         QuicPacketBuilderCleanup(&Builder);
     }

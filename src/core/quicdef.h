@@ -406,6 +406,11 @@ CXPLAT_STATIC_ASSERT(
     "Should always have enough CIDs for all paths");
 
 //
+// Maximum number of PATH IDs accepted from the peer.
+//
+#define QUIC_ACTIVE_PATH_ID_LIMIT               4
+
+//
 // The default value for pacing being enabled or not.
 //
 #define QUIC_DEFAULT_SEND_PACING                TRUE
@@ -610,6 +615,11 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_DEFAULT_IGNORE_UNREACHABLE              FALSE
 
 //
+// The default settings for allowing multipath.
+//
+#define QUIC_DEFAULT_MULTIPATH_ENABLED               FALSE
+
+//
 // The number of rounds in Cubic Slow Start to sample RTT.
 //
 #define QUIC_HYSTART_DEFAULT_N_SAMPLING             8
@@ -669,6 +679,8 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_TP_FLAG_OBSERVED_ADDRESS                       0x04000000
 #define QUIC_TP_FLAG_SERVER_MIGRATION                       0x08000000
 #define QUIC_TP_FLAG_NAT_TRAVERSE                           0x10000000
+#define QUIC_TP_FLAG_INITIAL_MAX_CLIENT_PATHS               0x20000000
+#define QUIC_TP_FLAG_INITIAL_MAX_SERVER_PATHS               0x40000000
 
 #define QUIC_TP_MAX_PACKET_SIZE_DEFAULT                     65527
 #define QUIC_TP_MAX_UDP_PAYLOAD_SIZE_MIN                    1200
@@ -690,6 +702,12 @@ CXPLAT_STATIC_ASSERT(
 // as a variable-length integer.
 //
 #define QUIC_TP_MAX_STREAMS_MAX                             ((1ULL << 60) - 1)
+
+//
+// Max allowed value of a MAX_{CLIENT, SERVER}_PATHS frame or transport parameter.
+// Any larger value would allow a max path ID that cannot be used in the nonce.
+//
+#define QUIC_TP_MAX_PATHS_MAX                               ((1ULL << 32) - 1)
 
 /*************************************************************
                   PERSISTENT SETTINGS
@@ -724,7 +742,7 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_SETTING_SERVER_MIGRATION_ENABLED       "ServerMigrationEnabled"
 #define QUIC_SETTING_ADD_ADDRESS_MODE               "AddAddressMode"
 #define QUIC_SETTING_IGNORE_UNREACHABLE             "IgnoreUnreachable"
-
+#define QUIC_SETTING_MULTIPATH_ENABLED              "MultipathEnabled"
 
 #define QUIC_SETTING_INITIAL_WINDOW_PACKETS         "InitialWindowPackets"
 #define QUIC_SETTING_SEND_IDLE_TIMEOUT_MS           "SendIdleTimeoutMs"

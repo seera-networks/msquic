@@ -845,7 +845,8 @@ typedef struct QUIC_SETTINGS {
             uint64_t ServerMigrationEnabled                 : 1;
             uint64_t AddAddressMode                         : 1;
             uint64_t IgnoreUnreachable                      : 1;
-            uint64_t RESERVED                               : 15;
+            uint64_t MultipathEnabled                       : 1;
+            uint64_t RESERVED                               : 14;
 #else
             uint64_t RESERVED                               : 26;
 #endif
@@ -901,7 +902,8 @@ typedef struct QUIC_SETTINGS {
             uint64_t ReservedRioEnabled        : 1;
             uint64_t ServerMigrationEnabled    : 1;
             uint64_t IgnoreUnreachable         : 1;
-            uint64_t ReservedFlags             : 53;
+            uint64_t MultipathEnabled          : 1;
+            uint64_t ReservedFlags             : 52;
 #else
             uint64_t ReservedFlags             : 63;
 #endif
@@ -1103,17 +1105,19 @@ typedef struct QUIC_SCHANNEL_CREDENTIAL_ATTRIBUTE_W {
 #define QUIC_PARAM_CONN_STATISTICS_V2_PLAT              0x05000017  // QUIC_STATISTICS_V2
 #define QUIC_PARAM_CONN_ORIG_DEST_CID                   0x05000018  // uint8_t[]
 #define QUIC_PARAM_CONN_SEND_DSCP                       0x05000019  // uint8_t
+#define QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS               0x0500001A  // QUIC_ADDR
+#define QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS            0x0500001B  // QUIC_ADDR
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
-#define QUIC_PARAM_CONN_NETWORK_STATISTICS              0x05000020  // struct QUIC_NETWORK_STATISTICS
-#define QUIC_PARAM_CONN_CLOSE_ASYNC                     0x0500001A  // uint8_t
-#define QUIC_PARAM_CONN_ADD_BOUND_ADDRESS               0x0500001B  // QUIC_ADDR
-#define QUIC_PARAM_CONN_ADD_OBSERVED_ADDRESS            0x0500001C  // QUIC_ADD_OBSERVED_ADDRESS
-#define QUIC_PARAM_CONN_REMOVE_BOUND_ADDRESS            0x0500001D  // QUIC_ADDR
-#define QUIC_PARAM_CONN_ADD_PATH                        0x0500001E  // QUIC_PATH_PARAM
-#define QUIC_PARAM_CONN_ACTIVATE_PATH                   0x0500001F  // QUIC_PATH_PARAM
-#define QUIC_PARAM_CONN_REMOVE_PATH                     0x05000021  // QUIC_PATH_PARAM
-#define QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS           0x05000022  // QUIC_CANDIDATE_ADDRESS
-#define QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS        0x05000023  // QUIC_CANDIDATE_ADDRESS
+#define QUIC_PARAM_CONN_CLOSE_ASYNC                     0x0500001C  // uint8_t
+#define QUIC_PARAM_CONN_ADD_BOUND_ADDRESS               0x0500001D  // QUIC_ADDR
+#define QUIC_PARAM_CONN_ADD_OBSERVED_ADDRESS            0x0500001E  // QUIC_ADD_OBSERVED_ADDRESS
+#define QUIC_PARAM_CONN_REMOVE_BOUND_ADDRESS            0x0500001F  // QUIC_ADDR
+#define QUIC_PARAM_CONN_ADD_PATH                        0x05000020  // QUIC_PATH_PARAM
+#define QUIC_PARAM_CONN_ACTIVATE_PATH                   0x05000021  // QUIC_PATH_PARAM
+#define QUIC_PARAM_CONN_NETWORK_STATISTICS              0x05000022  // struct QUIC_NETWORK_STATISTICS
+#define QUIC_PARAM_CONN_REMOVE_PATH                     0x05000023  // QUIC_PATH_PARAM
+#define QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS           0x05000024  // QUIC_CANDIDATE_ADDRESS
+#define QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS        0x05000025  // QUIC_CANDIDATE_ADDRESS
 #endif
 
 //

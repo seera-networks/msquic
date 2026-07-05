@@ -245,6 +245,7 @@ typedef enum QUIC_CONNECTION_REF {
     QUIC_CONN_REF_TIMER_WHEEL,          // The timer wheel is tracking the connection.
     QUIC_CONN_REF_ROUTE,                // Route resolution is undergoing.
     QUIC_CONN_REF_STREAM,               // A stream depends on the connection.
+    QUIC_CONN_REF_PATHID,               // A path id depends on the connection.
 
     QUIC_CONN_REF_COUNT
 
@@ -755,6 +756,7 @@ typedef struct QUIC_CONNECTION {
         QUIC_FLOW_BLOCKED_TIMING_TRACKER FlowControl;
     } BlockedTimings;
 
+    QUIC_PATHID_SET PathIDs;
 } QUIC_CONNECTION;
 
 typedef struct QUIC_BOUND_ADDRESS_LIST_ENTRY {
@@ -928,6 +930,19 @@ QuicDatagramGetConnection(
     )
 {
     return CXPLAT_CONTAINING_RECORD(Datagram, QUIC_CONNECTION, Datagram);
+}
+
+//
+// Helper to get the owning QUIC_CONNECTION for the path ID set module.
+//
+QUIC_INLINE
+_Ret_notnull_
+QUIC_CONNECTION*
+QuicPathIDSetGetConnection(
+    _In_ QUIC_PATHID_SET* PathIDSet
+    )
+{
+    return CXPLAT_CONTAINING_RECORD(PathIDSet, QUIC_CONNECTION, PathIDs);
 }
 
 QUIC_INLINE
@@ -1797,7 +1812,6 @@ QuicConnSendPunchProbe(
     _In_ QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound,
     _In_ QUIC_ADDR* RemoteAddress
     );
-
 //
 // Sets a connection parameter.
 //

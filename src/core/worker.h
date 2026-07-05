@@ -84,6 +84,15 @@ typedef struct QUIC_CACHEALIGN QUIC_WORKER {
     uint32_t OperationCount;
     uint64_t DroppedOperationCount;
 
+    CXPLAT_POOL StreamPool; // QUIC_STREAM
+    CXPLAT_POOL PathIDPool; // QUIC_PATHID
+    CXPLAT_POOL DefaultReceiveBufferPool; // QUIC_DEFAULT_STREAM_RECV_BUFFER_SIZE
+    CXPLAT_POOL SendRequestPool; // QUIC_SEND_REQUEST
+    QUIC_SENT_PACKET_POOL SentPacketPool; // QUIC_SENT_PACKET_METADATA
+    CXPLAT_POOL ApiContextPool; // QUIC_API_CONTEXT
+    CXPLAT_POOL StatelessContextPool; // QUIC_STATELESS_CONTEXT
+    CXPLAT_POOL OperPool; // QUIC_OPERATION
+
 } QUIC_WORKER;
 
 //

@@ -2222,6 +2222,54 @@ TEST_P(WithMigrationArgs, ServerMigration) {
     }
 }
 
+struct WithMultipleLocalAddressesArgs :
+    public testing::TestWithParam<ProbePathArgs> {
+
+    static ::std::vector<ProbePathArgs> Generate() {
+        ::std::vector<ProbePathArgs> list;
+        for (int Family : { 4, 6 })
+        for (BOOLEAN DeferConnIDGen : { TRUE, FALSE })
+        for (uint32_t DropPacketCount : { 0, 1 })
+            list.push_back({ Family, DeferConnIDGen, DropPacketCount });
+        return list;
+    }
+};
+
+TEST_P(WithMultipleLocalAddressesArgs, MultipleLocalAddresses) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipleLocalAddresses_NoShareBinding", GetParam());
+    if (TestingKernelMode) {
+        QUIC_RUN_PROBE_PATH_PARAMS Params = {
+            GetParam().Family, FALSE,
+            GetParam().DeferConnIDGen, GetParam().DropPacketCount
+        };
+        ASSERT_TRUE(DriverClient.Run(IOCTL_QUIC_RUN_PROBE_PATH, Params));
+    } else {
+        QuicTestMultipleLocalAddresses(
+            GetParam().Family, FALSE,
+            GetParam().DeferConnIDGen, GetParam().DropPacketCount);
+    }
+}
+
+TEST_P(WithMultipleLocalAddressesArgs, MultipleLocalAddressesShareBinding) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipleLocalAddresses_WithShareBinding", GetParam());
+    if (TestingKernelMode) {
+        QUIC_RUN_PROBE_PATH_PARAMS Params = {
+            GetParam().Family, TRUE,
+            GetParam().DeferConnIDGen, GetParam().DropPacketCount
+        };
+        ASSERT_TRUE(DriverClient.Run(IOCTL_QUIC_RUN_PROBE_PATH, Params));
+    } else {
+        QuicTestMultipleLocalAddresses(
+            GetParam().Family, TRUE,
+            GetParam().DeferConnIDGen, GetParam().DropPacketCount);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Basic,
+    WithMultipleLocalAddressesArgs,
+    ::testing::ValuesIn(WithMultipleLocalAddressesArgs::Generate()));
+
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 #endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
 

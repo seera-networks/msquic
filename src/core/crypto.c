@@ -498,6 +498,10 @@ QuicCryptoHandshakeConfirmed(
         QuicBindingOnConnectionHandshakeConfirmed(Path->Binding, Connection);
     }
 
+    if (QuicConnOpenNewPaths(Connection)) {
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
+    }
+
     QuicCryptoDiscardKeys(Crypto, QUIC_PACKET_KEY_HANDSHAKE);
 
     if (QuicConnOpenNewPaths(Connection)) {

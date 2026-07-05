@@ -154,6 +154,18 @@ typedef struct QUIC_TRANSPORT_PARAMETERS {
 
     QUIC_VAR_INT NatTraverseConcurrencyLimit;
 
+    //
+    // The initial maximum number of client-initiated paths allowed.
+    //
+    _Field_range_(0, QUIC_TP_MAX_PATHS_MAX)
+    QUIC_VAR_INT InitialMaxClientPaths;
+
+    //
+    // The initial maximum number of server-initiated paths allowed.
+    //
+    _Field_range_(0, QUIC_TP_MAX_PATHS_MAX)
+    QUIC_VAR_INT InitialMaxServerPaths;
+
 } QUIC_TRANSPORT_PARAMETERS;
 
 //

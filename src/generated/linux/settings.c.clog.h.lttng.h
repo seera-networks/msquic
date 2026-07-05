@@ -779,38 +779,6 @@ TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingReliableResetEnabled,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SettingXdpEnabled
-// [sett] XdpEnabled             = %hhu
-// QuicTraceLogVerbose(SettingXdpEnabled,                  "[sett] XdpEnabled             = %hhu", Settings->XdpEnabled);
-// arg2 = arg2 = Settings->XdpEnabled = arg2
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingXdpEnabled,
-    TP_ARGS(
-        unsigned char, arg2), 
-    TP_FIELDS(
-        ctf_integer(unsigned char, arg2, arg2)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingQTIPEnabled
-// [sett] QTIPEnabled            = %hhu
-// QuicTraceLogVerbose(SettingQTIPEnabled,                 "[sett] QTIPEnabled            = %hhu", Settings->QTIPEnabled);
-// arg2 = arg2 = Settings->QTIPEnabled = arg2
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingQTIPEnabled,
-    TP_ARGS(
-        unsigned char, arg2), 
-    TP_FIELDS(
-        ctf_integer(unsigned char, arg2, arg2)
-    )
-)
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for SettingOneWayDelayEnabled
 // [sett] OneWayDelayEnabled     = %hhu
 // QuicTraceLogVerbose(SettingOneWayDelayEnabled,          "[sett] OneWayDelayEnabled     = %hhu", Settings->OneWayDelayEnabled);
@@ -843,12 +811,12 @@ TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingNetStatsEventEnabled,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SettingServerMigrationEnabled
-// [sett] ServerMigrationEnabled = %hhu
-// QuicTraceLogVerbose(SettingServerMigrationEnabled,      "[sett] ServerMigrationEnabled = %hhu", Settings->ServerMigrationEnabled);
-// arg2 = arg2 = Settings->ServerMigrationEnabled = arg2
+// Decoder Ring for SettingConnIDGenDisabled
+// [sett] NetStatsEventEnabled   = %hhu
+// QuicTraceLogVerbose(SettingConnIDGenDisabled,        "[sett] ConnIDGenDisabled   = %hhu", Settings->ConnIdGenDisabled);
+// arg2 = arg2 = Settings->ConnIDGenDisabled = arg2
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingServerMigrationEnabled,
+TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingConnIDGenDisabled,
     TP_ARGS(
         unsigned char, arg2), 
     TP_FIELDS(
@@ -859,28 +827,12 @@ TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingServerMigrationEnabled,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SettingAddAddress
-// [sett] AddAddressMode         = %hhu
-// QuicTraceLogVerbose(SettingAddAddress,                  "[sett] AddAddressMode         = %hhu", Settings->AddAddressMode);
-// arg2 = arg2 = Settings->AddAddressMode = arg2
+// Decoder Ring for SettingMultipathEnabled
+// [sett] NetStatsEventEnabled   = %hhu
+// QuicTraceLogVerbose(SettingMultipathEnabled,            "[sett] MultipathEnabled       = %hhu", Settings->MultipathEnabled);
+// arg2 = arg2 = Settings->MultipathEnabled = arg2
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingAddAddress,
-    TP_ARGS(
-        unsigned char, arg2), 
-    TP_FIELDS(
-        ctf_integer(unsigned char, arg2, arg2)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingIgnoreUnreachable
-// [sett] IgnoreUnreachable      = %hhu
-// QuicTraceLogVerbose(SettingIgnoreUnreachable,           "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);
-// arg2 = arg2 = Settings->IgnoreUnreachable = arg2
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingIgnoreUnreachable,
+TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingMultipathEnabled,
     TP_ARGS(
         unsigned char, arg2), 
     TP_FIELDS(
@@ -917,54 +869,6 @@ TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingDumpStreamRecvBufferDefault,
         unsigned int, arg2), 
     TP_FIELDS(
         ctf_integer(unsigned int, arg2, arg2)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingStreamMultiReceiveEnabled
-// [sett] StreamMultiReceiveEnabled  = %hhu
-// QuicTraceLogVerbose(SettingStreamMultiReceiveEnabled,       "[sett] StreamMultiReceiveEnabled  = %hhu", Settings->StreamMultiReceiveEnabled);
-// arg2 = arg2 = Settings->StreamMultiReceiveEnabled = arg2
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingStreamMultiReceiveEnabled,
-    TP_ARGS(
-        unsigned char, arg2), 
-    TP_FIELDS(
-        ctf_integer(unsigned char, arg2, arg2)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingConnIDGenDisabled
-// [sett] ConnIDGenDisabled          = %hhu
-// QuicTraceLogVerbose(SettingConnIDGenDisabled,               "[sett] ConnIDGenDisabled          = %hhu", Settings->ConnIDGenDisabled);
-// arg2 = arg2 = Settings->ConnIDGenDisabled = arg2
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingConnIDGenDisabled,
-    TP_ARGS(
-        unsigned char, arg2), 
-    TP_FIELDS(
-        ctf_integer(unsigned char, arg2, arg2)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for SettingXdpDisabledInMapMode
-// [ lib] Error: Xdp must be enabled when an XDP map was configured.
-// QuicTraceLogError(
-            SettingXdpDisabledInMapMode,
-            "[ lib] Error: Xdp must be enabled when an XDP map was configured.");
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingXdpDisabledInMapMode,
-    TP_ARGS(
-), 
-    TP_FIELDS(
     )
 )
 

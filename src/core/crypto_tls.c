@@ -71,6 +71,8 @@ typedef enum eSniNameType {
 #define QUIC_TP_ID_OBSERVED_ADDRESS                         0x9f81a176      // varint
 #define QUIC_TP_ID_SERVER_MIGRATION                         0x3e764478      // N/A
 #define QUIC_TP_ID_NAT_TRAVERSE                             0x3d7e9f0bca12fea6 // varint
+#define QUIC_TP_ID_INITIAL_MAX_CLIENT_PATHS                 0x0f739bbc1b666d08  // varint
+#define QUIC_TP_ID_INITIAL_MAX_SERVER_PATHS                 0x0f739bbc1b666d09  // varint
 
 BOOLEAN
 QuicTpIdIsReserved(
@@ -897,16 +899,6 @@ QuicCryptoTlsEncodeTransportParameters(
                 QUIC_TP_ID_RELIABLE_RESET_ENABLED,
                 0);
     }
-    if (TransportParams->Flags & (QUIC_TP_FLAG_TIMESTAMP_SEND_ENABLED | QUIC_TP_FLAG_TIMESTAMP_RECV_ENABLED)) {
-        const uint32_t value =
-            (TransportParams->Flags &
-             (QUIC_TP_FLAG_TIMESTAMP_SEND_ENABLED | QUIC_TP_FLAG_TIMESTAMP_RECV_ENABLED))
-            >> QUIC_TP_FLAG_TIMESTAMP_SHIFT;
-        RequiredTPLen +=
-            TlsTransportParamLength(
-                QUIC_TP_ID_ENABLE_TIMESTAMP,
-                QuicVarIntSize(value));
-    }
     if (TransportParams->Flags & QUIC_TP_FLAG_OBSERVED_ADDRESS) {
         RequiredTPLen +=
             TlsTransportParamLength(
@@ -931,6 +923,18 @@ QuicCryptoTlsEncodeTransportParameters(
             TlsTransportParamLength(
                 QUIC_TP_ID_SERVER_MIGRATION,
                 0);
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_CLIENT_PATHS) {
+        RequiredTPLen +=
+            TlsTransportParamLength(
+                QUIC_TP_ID_INITIAL_MAX_CLIENT_PATHS,
+                QuicVarIntSize(TransportParams->InitialMaxClientPaths));
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_SERVER_PATHS) {
+        RequiredTPLen +=
+            TlsTransportParamLength(
+                QUIC_TP_ID_INITIAL_MAX_SERVER_PATHS,
+                QuicVarIntSize(TransportParams->InitialMaxServerPaths));
     }
     if (TestParam != NULL) {
         RequiredTPLen +=
@@ -1323,6 +1327,28 @@ QuicCryptoTlsEncodeTransportParameters(
             EncodeTPServerMigration,
             Connection,
             "TP: Server Migration");
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_CLIENT_PATHS) {
+        TPBuf =
+            TlsWriteTransportParamVarInt(
+                QUIC_TP_ID_INITIAL_MAX_CLIENT_PATHS,
+                TransportParams->InitialMaxClientPaths, TPBuf);
+        QuicTraceLogConnVerbose(
+            EncodeTPInitMaxClientPaths,
+            Connection,
+            "TP: Max Client Paths (%llu)",
+            TransportParams->InitialMaxClientPaths);
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_SERVER_PATHS) {
+        TPBuf =
+            TlsWriteTransportParamVarInt(
+                QUIC_TP_ID_INITIAL_MAX_SERVER_PATHS,
+                TransportParams->InitialMaxServerPaths, TPBuf);
+        QuicTraceLogConnVerbose(
+            EncodeTPInitMaxServerPaths,
+            Connection,
+            "TP: Max Server Paths (%llu)",
+            TransportParams->InitialMaxServerPaths);
     }
     if (TestParam != NULL) {
         TPBuf =
@@ -2058,6 +2084,42 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
             TransportParams->Flags |= QUIC_TP_FLAG_OBSERVED_ADDRESS; // TODO - Pass value?
             break;
         }
+
+        case QUIC_TP_ID_INITIAL_MAX_CLIENT_PATHS:
+            if (!TRY_READ_VAR_INT(TransportParams->InitialMaxClientPaths)) {
+                QuicTraceEvent(
+                    ConnErrorStatus,
+                    "[conn][%p] ERROR, %u, %s.",
+                    Connection,
+                    Length,
+                    "Invalid length of QUIC_TP_ID_INITIAL_MAX_CLIENT_PATHS");
+                goto Exit;
+            }
+            TransportParams->Flags |= QUIC_TP_FLAG_INITIAL_MAX_CLIENT_PATHS;
+            QuicTraceLogConnVerbose(
+                DecodeTPInitMaxClientPaths,
+                Connection,
+                "TP: Max Client Paths (%llu)",
+                TransportParams->InitialMaxClientPaths);
+            break;
+
+        case QUIC_TP_ID_INITIAL_MAX_SERVER_PATHS:
+            if (!TRY_READ_VAR_INT(TransportParams->InitialMaxServerPaths)) {
+                QuicTraceEvent(
+                    ConnErrorStatus,
+                    "[conn][%p] ERROR, %u, %s.",
+                    Connection,
+                    Length,
+                    "Invalid length of QUIC_TP_ID_INITIAL_MAX_SERVER_PATHS");
+                goto Exit;
+            }
+            TransportParams->Flags |= QUIC_TP_FLAG_INITIAL_MAX_SERVER_PATHS;
+            QuicTraceLogConnVerbose(
+                DecodeTPInitMaxServerPaths,
+                Connection,
+                "TP: Max Server Paths (%llu)",
+                TransportParams->InitialMaxServerPaths);
+            break;
 
         case QUIC_TP_ID_SERVER_MIGRATION:
             if (Length != 0) {
