@@ -22,15 +22,6 @@ typedef struct QUIC_CACHEALIGN QUIC_PARTITIONED_HASHTABLE {
 } QUIC_PARTITIONED_HASHTABLE;
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
-BOOLEAN
-QuicLookupInsertLocalCid(
-    _In_ QUIC_LOOKUP* Lookup,
-    _In_ uint32_t Hash,
-    _In_ QUIC_CID_HASH_ENTRY* SourceCid,
-    _In_ BOOLEAN UpdateRefCount
-    );
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
 void
 QuicLookupInitialize(
     _Inout_ QUIC_LOOKUP* Lookup

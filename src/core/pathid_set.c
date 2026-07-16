@@ -330,7 +330,8 @@ QuicPathIDSetGenerateNewSourceCids(
             QUIC_STATUS Status = QuicPathIDSetNewLocalPathID(PathIDSet, &PathID);
             if (Status == QUIC_STATUS_PATHID_LIMIT_REACHED) {
                 break;
-            } else if (QUIC_FAILED(Status)) {
+            }
+            if (QUIC_FAILED(Status)) {
                 QuicTraceEvent(
                     ConnError,
                     "[conn][%p] ERROR, %s.",
