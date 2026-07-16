@@ -51,7 +51,17 @@ TEST(SpinFrame, SpinFrame1000000)
     BOOLEAN InvalidFrame;
     uint8_t Buffer[255];
     uint8_t BufferLength = 0;
-    uint64_t FrameType;
+
+    //
+    // FrameType is intentionally uint16_t: the loop below searches for a random
+    // value that satisfies QUIC_FRAME_IS_KNOWN, which only terminates in a
+    // reasonable time over a bounded (16-bit) space. (Frame types wider than
+    // 16 bits — e.g. the address/multipath frames — aren't fuzzed here.)
+    //
+    uint16_t FrameType;
+    CXPLAT_STATIC_ASSERT(
+        QUIC_FRAME_MAX_SUPPORTED <= (uint64_t)UINT32_MAX,
+        "Tests below assumes frames fit in 32-bits");
 
     QuicRangeInitialize(QUIC_MAX_RANGE_DECODE_ACKS, &AckBlocks);
 

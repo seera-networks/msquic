@@ -2326,6 +2326,14 @@ QuicSettingsGetSettings(
         *SettingsLength,
         InternalSettings);
 
+    SETTING_COPY_FLAG_FROM_INTERNAL_SIZED(
+        Flags,
+        MultipathEnabled,
+        QUIC_SETTINGS,
+        Settings,
+        *SettingsLength,
+        InternalSettings);
+
     *SettingsLength = CXPLAT_MIN(*SettingsLength, sizeof(QUIC_SETTINGS));
 
     return QUIC_STATUS_SUCCESS;
