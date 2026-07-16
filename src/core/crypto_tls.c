@@ -71,7 +71,7 @@ typedef enum eSniNameType {
 #define QUIC_TP_ID_OBSERVED_ADDRESS                         0x9f81a176      // varint
 #define QUIC_TP_ID_SERVER_MIGRATION                         0x3e764478      // N/A
 #define QUIC_TP_ID_NAT_TRAVERSE                             0x3d7e9f0bca12fea6 // varint
-#define QUIC_TP_ID_INITIAL_MAX_PATH_ID                      0x0f739bbc1b666d11 // varint
+#define QUIC_TP_ID_INITIAL_MAX_PATH_ID                      0x3e // varint (draft-ietf-quic-multipath-21, suggested)
 
 BOOLEAN
 QuicTpIdIsReserved(

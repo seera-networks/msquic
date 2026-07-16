@@ -257,6 +257,22 @@ TEST(SpinFrame, SpinFrame1000000)
                     FailedDecodes++;
                 }
                 break;
+            case QUIC_FRAME_PATH_ACK:
+            case QUIC_FRAME_PATH_ACK_1:
+            case QUIC_FRAME_PATH_ABANDON:
+            case QUIC_FRAME_PATH_BACKUP:
+            case QUIC_FRAME_PATH_AVAILABLE:
+            case QUIC_FRAME_PATH_NEW_CONNECTION_ID:
+            case QUIC_FRAME_PATH_RETIRE_CONNECTION_ID:
+            case QUIC_FRAME_MAX_PATH_ID:
+            case QUIC_FRAME_PATHS_BLOCKED:
+            case QUIC_FRAME_PATH_CIDS_BLOCKED:
+                //
+                // Multipath (draft-ietf-quic-multipath) frames. Their draft-21
+                // codepoints now fall within the 16-bit fuzz range; they are not
+                // decode-fuzzed here (covered by the Multipath end-to-end test).
+                //
+                break;
             default:
                 ASSERT_TRUE(FALSE) << "You have a test bug. FrameType: " << (QUIC_FRAME_TYPE) FrameType << " doesn't have a matching case.";
                 break;
