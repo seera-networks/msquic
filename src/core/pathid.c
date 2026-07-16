@@ -246,9 +246,12 @@ QuicPathIDGenerateNewSourceCid(
     CXPLAT_DBG_ASSERT(QuicPathIDSourceCidsCount(PathID) < PathID->SourceCidLimit);
 
     //
-    // Find all the bindings that are currently in use by this connection.
+    // Find all the bindings that are currently in use by this connection —
+    // both the per-path bindings and the bindings created for seera's
+    // bound-address (multi-local-address / NAT-traversal / server-migration)
+    // feature, so the new source CID is registered with every one of them.
     //
-    QUIC_BINDING* Bindings[QUIC_MAX_PATH_COUNT] = {NULL};
+    QUIC_BINDING* Bindings[QUIC_MAX_PATH_COUNT + QUIC_MAX_LOCAL_ADDRESS_COUNT] = {NULL};
     uint8_t BindingsCount = 0;
 
     for (uint8_t i = 0; i < PathID->Connection->PathsCount; ++i) {
@@ -262,6 +265,28 @@ QuicPathIDGenerateNewSourceCid(
             }
             if (NewBinding) {
                 Bindings[BindingsCount++] = PathID->Connection->Paths[i].Binding;
+            }
+        }
+    }
+
+    for (CXPLAT_LIST_ENTRY* Entry = PathID->Connection->BoundAddresses.Flink;
+            Entry != &PathID->Connection->BoundAddresses;
+            Entry = Entry->Flink) {
+        QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound =
+            CXPLAT_CONTAINING_RECORD(
+                Entry,
+                QUIC_BOUND_ADDRESS_LIST_ENTRY,
+                Link);
+        if (Bound->Binding != NULL) {
+            BOOLEAN NewBinding = TRUE;
+            for (uint8_t j = 0; j < BindingsCount; ++j) {
+                if (Bound->Binding == Bindings[j]) {
+                    NewBinding = FALSE;
+                    break;
+                }
+            }
+            if (NewBinding) {
+                Bindings[BindingsCount++] = Bound->Binding;
             }
         }
     }

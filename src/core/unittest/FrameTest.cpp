@@ -23,7 +23,7 @@ TEST_P(AckFrameTest, AckFrameEncodeDecode)
     const uint64_t ContigPktCount = 4;
     const uint64_t MinPktNum = 5;
     const uint64_t AckDelay = 0;
-    uint32_t PathId;
+    QUIC_VAR_INT PathId;
     QUIC_ACK_ECN_EX Ecn = {4, 4, 4};
     QUIC_ACK_ECN_EX DecodedEcn = {0, 0, 0};
     QUIC_RANGE AckRange;
@@ -73,7 +73,7 @@ TEST_P(AckFrameTest, AckFrameEncodeDecode)
 }
 
 TEST_P(AckFrameTest, DecodeAckFrameFail) {
-    uint32_t PathId;
+    QUIC_VAR_INT PathId;
     QUIC_ACK_ECN_EX DecodedEcn;
     uint8_t Buffer[18];
     uint16_t BufferLength;

@@ -259,7 +259,7 @@ QuicAckFrameDecode(
         const uint8_t * const Buffer,
     _Inout_ uint16_t* Offset,
     _Out_ BOOLEAN* InvalidFrame,
-    _Out_ uint32_t* PathId,
+    _Out_ QUIC_VAR_INT* PathId,
     _Inout_ QUIC_RANGE* AckRanges, // Pre-Initialized by caller
     _When_(FrameType == QUIC_FRAME_ACK_1, _Out_)
         QUIC_ACK_ECN_EX* Ecn,

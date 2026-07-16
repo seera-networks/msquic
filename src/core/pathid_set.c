@@ -441,7 +441,7 @@ QuicPathIDSetProcessAckFrame(
     // ACK blocks, each of which acknowledges a contiguous range of packets.
     //
 
-    uint32_t PathId;
+    QUIC_VAR_INT PathId;
     uint64_t AckDelay; // microsec
     QUIC_ACK_ECN_EX Ecn;
 
@@ -491,7 +491,8 @@ QuicPathIDSetProcessAckFrame(
                     AckDelay,
                     &Connection->DecodedAckRanges,
                     InvalidFrame,
-                    FrameType == QUIC_FRAME_ACK_1 ? &Ecn : NULL);
+                    (FrameType == QUIC_FRAME_ACK_1 ||
+                     FrameType == QUIC_FRAME_PATH_ACK_1) ? &Ecn : NULL);
             }
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
         } else {
@@ -515,12 +516,14 @@ QuicPathIDSetInitializeTransportParameters(
 {
     CXPLAT_DBG_ASSERT(PathIDSet->CurrentPathIDCount == 1);
     CXPLAT_DBG_ASSERT(SourceCidLimit >= QUIC_TP_ACTIVE_CONNECTION_ID_LIMIT_MIN);
+    //
+    // Clamp the per-path source-CID limit to the smaller of our supported
+    // maximum and the peer's advertised active_connection_id_limit.
+    //
     if (PathIDSet->SINGLE.PathID->SourceCidLimit > SourceCidLimit) {
         PathIDSet->SINGLE.PathID->SourceCidLimit = SourceCidLimit;
     }
 
-    PathIDSet->SINGLE.PathID->SourceCidLimit = SourceCidLimit;
- 
     if (MaxPathID != UINT32_MAX) {
         PathIDSet->Flags.InitialMaxPathRecvd = TRUE;
         PathIDSet->MaxPathID = QUIC_ACTIVE_PATH_ID_LIMIT - 1;
@@ -552,6 +555,87 @@ QuicPathIDSetUpdateMaxPathID(
     }
 }
 
+//
+// Allocates a new QUIC_PATHID with the given ID, initializes its packet
+// spaces, inserts it into the set and bumps the path id counters. On success
+// the returned path id holds a QUIC_PATHID_REF_PATHID_SET reference (plus a
+// QUIC_PATHID_REF_LOOKUP reference when AddLookupRef is TRUE). On failure no
+// reference is returned and *NewPathID is left untouched.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+QuicPathIDSetCreatePathID(
+    _Inout_ QUIC_PATHID_SET* PathIDSet,
+    _In_ uint32_t PathId,
+    _In_ BOOLEAN AddLookupRef,
+    _Outptr_ QUIC_PATHID** NewPathID
+    )
+{
+    QUIC_CONNECTION* Connection = QuicPathIDSetGetConnection(PathIDSet);
+    QUIC_PATHID* PathID = NULL;
+
+    QUIC_STATUS Status = QuicPathIDInitialize(Connection, &PathID);
+    if (QUIC_FAILED(Status)) {
+        goto Error;
+    }
+
+    PathID->ID = PathId;
+    if (PathID->ID == 0) {
+        for (uint32_t i = 0; i < ARRAYSIZE(PathID->Packets); i++) {
+            Status =
+                QuicPacketSpaceInitialize(
+                    PathID,
+                    (QUIC_ENCRYPT_LEVEL)i,
+                    &PathID->Packets[i]);
+            if (QUIC_FAILED(Status)) {
+                break;
+            }
+        }
+    } else {
+        Status =
+            QuicPacketSpaceInitialize(
+                PathID,
+                QUIC_ENCRYPT_LEVEL_1_RTT,
+                &PathID->Packets[QUIC_ENCRYPT_LEVEL_1_RTT]);
+    }
+    if (QUIC_FAILED(Status)) {
+        goto Error;
+    }
+
+    CxPlatDispatchRwLockAcquireExclusive(&PathIDSet->RwLock, PrevIrql);
+    if (!QuicPathIDSetInsertPathID(PathIDSet, PathID)) {
+        CxPlatDispatchRwLockReleaseExclusive(&PathIDSet->RwLock, PrevIrql);
+        Status = QUIC_STATUS_OUT_OF_MEMORY;
+        goto Error;
+    }
+    if (AddLookupRef) {
+        QuicPathIDAddRef(PathID, QUIC_PATHID_REF_LOOKUP);
+    }
+    CxPlatDispatchRwLockReleaseExclusive(&PathIDSet->RwLock, PrevIrql);
+
+    PathIDSet->CurrentPathIDCount++;
+    PathIDSet->TotalPathIDCount++;
+
+    QuicTraceEvent(
+        ConnPathIDAdd,
+        "[conn][%p] Added New PathID %u",
+        Connection,
+        PathID->ID);
+
+    if (PathIDSet->MaxCurrentPathIDCount < PathIDSet->CurrentPathIDCount) {
+        PathIDSet->MaxCurrentPathIDCount = PathIDSet->CurrentPathIDCount;
+    }
+
+    *NewPathID = PathID;
+    return QUIC_STATUS_SUCCESS;
+
+Error:
+    if (PathID != NULL) {
+        QuicPathIDRelease(PathID, QUIC_PATHID_REF_PATHID_SET);
+    }
+    return Status;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 QuicPathIDSetNewLocalPathID(
@@ -573,55 +657,13 @@ QuicPathIDSetNewLocalPathID(
         goto Exit;
     }
 
-    Status = QuicPathIDInitialize(QuicPathIDSetGetConnection(PathIDSet), &PathID);
+    Status =
+        QuicPathIDSetCreatePathID(
+            PathIDSet, PathIDSet->TotalPathIDCount, FALSE, &PathID);
     if (QUIC_FAILED(Status)) {
         goto Exit;
     }
 
-    PathID->ID = PathIDSet->TotalPathIDCount;
-    if (PathID->ID == 0) {
-        for (uint32_t i = 0; i < ARRAYSIZE(PathID->Packets); i++) {
-            Status =
-                QuicPacketSpaceInitialize(
-                    PathID,
-                    (QUIC_ENCRYPT_LEVEL)i,
-                    &PathID->Packets[i]);
-            if (QUIC_FAILED(Status)) {
-                break;
-            }
-        }
-    } else {
-        Status =
-            QuicPacketSpaceInitialize(
-                PathID,
-                QUIC_ENCRYPT_LEVEL_1_RTT,
-                &PathID->Packets[QUIC_ENCRYPT_LEVEL_1_RTT]);
-    }
-    if (QUIC_FAILED(Status)) {
-        QuicPathIDRelease(PathID, QUIC_PATHID_REF_PATHID_SET);
-        goto Exit;
-    }
-
-    CxPlatDispatchRwLockAcquireExclusive(&PathIDSet->RwLock, PrevIrql);
-    if (!QuicPathIDSetInsertPathID(PathIDSet, PathID)) {
-        CxPlatDispatchRwLockReleaseExclusive(&PathIDSet->RwLock, PrevIrql);
-        QuicPathIDRelease(PathID, QUIC_PATHID_REF_PATHID_SET);
-        Status = QUIC_STATUS_OUT_OF_MEMORY;
-        goto Exit;
-    }
-    CxPlatDispatchRwLockReleaseExclusive(&PathIDSet->RwLock, PrevIrql);
-    PathIDSet->CurrentPathIDCount++;
-    PathIDSet->TotalPathIDCount++;
-
-    QuicTraceEvent(
-        ConnPathIDAdd,
-        "[conn][%p] Added New PathID %u",
-        QuicPathIDSetGetConnection(PathIDSet),
-        PathID->ID);
-
-    if (PathIDSet->MaxCurrentPathIDCount < PathIDSet->CurrentPathIDCount) {
-        PathIDSet->MaxCurrentPathIDCount = PathIDSet->CurrentPathIDCount;
-    }
     *NewPathID = PathID;
 Exit:
     return Status;
@@ -632,7 +674,7 @@ _Success_(return != NULL)
 QUIC_PATHID*
 QuicPathIDSetGetPathIDForLocal(
     _Inout_ QUIC_PATHID_SET* PathIDSet,
-    _In_ uint32_t PathId,
+    _In_ QUIC_VAR_INT PathId,
     _Out_ BOOLEAN* FatalError
     )
 {
@@ -641,7 +683,7 @@ QuicPathIDSetGetPathIDForLocal(
     *FatalError = FALSE;
 
     //
-    // Validate the stream ID isn't above the allowed max.
+    // Validate the path id isn't above the allowed max.
     //
     if (PathId > PathIDSet->PeerMaxPathID) {
         QuicTraceEvent(
@@ -656,19 +698,19 @@ QuicPathIDSetGetPathIDForLocal(
 
     QUIC_PATHID* PathID = NULL;
     //
-    // If the stream ID is in the acceptable range of already opened streams,
+    // If the path id is in the acceptable range of already opened path ids,
     // look for it; but note it could be missing because it has been closed.
     //
     if (PathId + 1 <= PathIDSet->TotalPathIDCount) {
 
         //
-        // Find the stream for the ID.
+        // Find the path id.
         //
-        PathID = QuicPathIDSetLookupPathID(PathIDSet, PathId);
+        PathID = QuicPathIDSetLookupPathID(PathIDSet, (uint32_t)PathId);
 
     } else {
         //
-        // Local tried to open stream that it wasn't allowed to.
+        // Local tried to open a path id it wasn't allowed to.
         //
         QuicTraceEvent(
             ConnError,
@@ -691,7 +733,7 @@ _Success_(return != NULL)
 QUIC_PATHID*
 QuicPathIDSetGetPathIDForPeer(
     _Inout_ QUIC_PATHID_SET* PathIDSet,
-    _In_ uint32_t PathId,
+    _In_ QUIC_VAR_INT PathId,
     _In_ BOOLEAN CreateIfMissing,
     _Out_ BOOLEAN* FatalError
     )
@@ -701,7 +743,7 @@ QuicPathIDSetGetPathIDForPeer(
     *FatalError = FALSE;
 
     //
-    // Validate the stream ID isn't above the allowed max.
+    // Validate the path id isn't above the allowed max.
     //
     if (PathId > PathIDSet->MaxPathID) {
         QuicTraceEvent(
@@ -716,15 +758,15 @@ QuicPathIDSetGetPathIDForPeer(
 
     QUIC_PATHID* PathID = NULL;
     //
-    // If the stream ID is in the acceptable range of already opened streams,
+    // If the path id is in the acceptable range of already opened path ids,
     // look for it; but note it could be missing because it has been closed.
     //
     if (PathId + 1 <= PathIDSet->TotalPathIDCount) {
 
         //
-        // Find the stream for the ID.
+        // Find the path id.
         //
-        PathID = QuicPathIDSetLookupPathID(PathIDSet, PathId);
+        PathID = QuicPathIDSetLookupPathID(PathIDSet, (uint32_t)PathId);
 
     } else if (CreateIfMissing) {
 
@@ -734,70 +776,24 @@ QuicPathIDSetGetPathIDForPeer(
                 PathID = NULL;
             }
             //
-            // Calculate the next Path ID.
+            // Create the next Path ID (with a lookup reference), filling any
+            // gap up to the requested path id.
             //
-            uint32_t NewPathId = PathIDSet->TotalPathIDCount;
-
-            QUIC_STATUS Status = QuicPathIDInitialize(QuicPathIDSetGetConnection(PathIDSet), &PathID);
+            QUIC_STATUS Status =
+                QuicPathIDSetCreatePathID(
+                    PathIDSet, PathIDSet->TotalPathIDCount, TRUE, &PathID);
             if (QUIC_FAILED(Status)) {
                 *FatalError = TRUE;
                 QuicConnTransportError(Connection, QUIC_ERROR_INTERNAL_ERROR);
-                goto Exit;
-            }
-
-            PathID->ID = NewPathId;
-            if (PathID->ID == 0) {
-                for (uint32_t i = 0; i < ARRAYSIZE(PathID->Packets); i++) {
-                    Status =
-                        QuicPacketSpaceInitialize(
-                            PathID,
-                            (QUIC_ENCRYPT_LEVEL)i,
-                            &PathID->Packets[i]);
-                    if (QUIC_FAILED(Status)) {
-                        break;
-                    }
-                }
-            } else {
-                Status =
-                    QuicPacketSpaceInitialize(
-                        PathID,
-                        QUIC_ENCRYPT_LEVEL_1_RTT,
-                        &PathID->Packets[QUIC_ENCRYPT_LEVEL_1_RTT]);
-            }
-            if (QUIC_FAILED(Status)) {
-                *FatalError = TRUE;
-                QuicConnTransportError(Connection, QUIC_ERROR_INTERNAL_ERROR);
-                QuicPathIDRelease(PathID, QUIC_PATHID_REF_PATHID_SET);
                 PathID = NULL;
                 goto Exit;
             }
-
-            CxPlatDispatchRwLockAcquireExclusive(&PathIDSet->RwLock, PrevIrql);
-            if (!QuicPathIDSetInsertPathID(PathIDSet, PathID)) {
-                CxPlatDispatchRwLockReleaseExclusive(&PathIDSet->RwLock, PrevIrql);
-                *FatalError = TRUE;
-                QuicConnTransportError(Connection, QUIC_ERROR_INTERNAL_ERROR);
-                QuicPathIDRelease(PathID, QUIC_PATHID_REF_PATHID_SET);
-                PathID = NULL;
-                goto Exit;
-            }
-            QuicPathIDAddRef(PathID, QUIC_PATHID_REF_LOOKUP);
-            CxPlatDispatchRwLockReleaseExclusive(&PathIDSet->RwLock, PrevIrql);
-
-            PathIDSet->CurrentPathIDCount++;
-            PathIDSet->TotalPathIDCount++;
-
-            QuicTraceEvent(
-                ConnPathIDAdd,
-                "[conn][%p] Added New PathID %u",
-                Connection,
-                PathID->ID);
 
         } while (PathIDSet->TotalPathIDCount != PathId + 1);
     } else {
 
         //
-        // Remote tried to open stream that it wasn't allowed to.
+        // Remote tried to open a path id it wasn't allowed to.
         //
         QuicTraceEvent(
             ConnError,

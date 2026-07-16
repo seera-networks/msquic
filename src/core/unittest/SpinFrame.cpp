@@ -41,7 +41,7 @@ union QuicV1Frames {
 TEST(SpinFrame, SpinFrame1000000)
 {
     QuicV1Frames DecodedFrame;
-    uint32_t PathId;
+    QUIC_VAR_INT PathId;
     QUIC_ACK_ECN_EX Ecn;
     QUIC_RANGE AckBlocks;
     uint64_t AckDelay;

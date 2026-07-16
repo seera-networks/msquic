@@ -225,19 +225,16 @@ QuicSendUpdateStreamPriority(
     CxPlatListInsertHead(Entry, &Stream->SendLink); // Insert after current Entry
 }
 
-#if DEBUG
+//
+// Returns TRUE if any packet space on any path id has ack-eliciting packets
+// that still need to be acknowledged.
+//
 _IRQL_requires_max_(DISPATCH_LEVEL)
-void
-QuicSendValidate(
-    _In_ QUIC_SEND* Send
+BOOLEAN
+QuicSendHasAckElicitingPacketsToAcknowledge(
+    _In_ QUIC_CONNECTION* Connection
     )
 {
-    if (Send->Uninitialized) {
-        return;
-    }
-
-    QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
-
     BOOLEAN HasAckElicitingPacketsToAcknowledge = FALSE;
     QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
     uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
@@ -255,6 +252,70 @@ QuicSendValidate(
         }
         QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
     }
+
+    return HasAckElicitingPacketsToAcknowledge;
+}
+
+//
+// Writes ACK frames for every eligible path id into the packet builder. Sets
+// *WroteFrames to TRUE when at least one ACK frame was written. When
+// StopOnRoomFailure is TRUE, iteration halts and TRUE is returned as soon as
+// an encode fails for lack of room; otherwise it always returns FALSE.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
+QuicSendWritePathAckFrames(
+    _In_ QUIC_CONNECTION* Connection,
+    _Inout_ QUIC_PACKET_BUILDER* Builder,
+    _In_ BOOLEAN StopOnRoomFailure,
+    _Out_ BOOLEAN* WroteFrames
+    )
+{
+    *WroteFrames = FALSE;
+
+    uint8_t ZeroRttPacketType =
+        Connection->Stats.QuicVersion == QUIC_VERSION_2 ?
+            QUIC_0_RTT_PROTECTED_V2 : QUIC_0_RTT_PROTECTED_V1;
+    if (Builder->PacketType == ZeroRttPacketType) {
+        return FALSE;
+    }
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        QUIC_PATHID* TempPathID = Connection->Paths[i].PathID;
+        if (TempPathID == NULL) {
+            continue;
+        }
+        if (!Connection->State.MultipathNegotiated && i > 0) {
+            break;
+        }
+        QUIC_PACKET_SPACE* Packets = TempPathID->Packets[Builder->EncryptLevel];
+        if (Packets != NULL && QuicAckTrackerHasPacketsToAck(&Packets->AckTracker)) {
+            if (QuicAckTrackerAckFrameEncode(&Packets->AckTracker, Builder)) {
+                *WroteFrames = TRUE;
+            } else if (StopOnRoomFailure) {
+                return TRUE;
+            }
+        }
+    }
+
+    return FALSE;
+}
+
+#if DEBUG
+_IRQL_requires_max_(DISPATCH_LEVEL)
+void
+QuicSendValidate(
+    _In_ QUIC_SEND* Send
+    )
+{
+    if (Send->Uninitialized) {
+        return;
+    }
+
+    QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
+
+    BOOLEAN HasAckElicitingPacketsToAcknowledge =
+        QuicSendHasAckElicitingPacketsToAcknowledge(Connection);
 
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_ACK) {
         CXPLAT_DBG_ASSERT(!Send->DelayedAckTimerActive);
@@ -367,23 +428,8 @@ QuicSendUpdateAckState(
 {
     QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
 
-    BOOLEAN HasAckElicitingPacketsToAcknowledge = FALSE;
-    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
-    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
-    QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
-
-    for (uint8_t i = 0; i < PathIDCount; i++) {
-        if (!HasAckElicitingPacketsToAcknowledge) {
-            for (uint32_t j = 0; j < QUIC_ENCRYPT_LEVEL_COUNT; ++j) {
-                if (PathIDs[i]->Packets[j] != NULL &&
-                    PathIDs[i]->Packets[j]->AckTracker.AckElicitingPacketsToAcknowledge) {
-                    HasAckElicitingPacketsToAcknowledge = TRUE;
-                    break;
-                }
-            }
-        }
-        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
-    }
+    BOOLEAN HasAckElicitingPacketsToAcknowledge =
+        QuicSendHasAckElicitingPacketsToAcknowledge(Connection);
 
     if (!HasAckElicitingPacketsToAcknowledge) {
         if (Send->SendFlags & QUIC_CONN_SEND_FLAG_ACK) {
@@ -525,26 +571,10 @@ QuicSendWriteFrames(
     // specific frames.
     //
 
-    uint8_t ZeroRttPacketType =
-        Connection->Stats.QuicVersion == QUIC_VERSION_2 ?
-            QUIC_0_RTT_PROTECTED_V2 : QUIC_0_RTT_PROTECTED_V1;
-    if (Builder->PacketType != ZeroRttPacketType) {
-        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-            QUIC_PATHID* TempPathID = Connection->Paths[i].PathID;
-            if (TempPathID == NULL) {
-                continue;
-            }
-            if (!Connection->State.MultipathNegotiated && i > 0) {
-                break;
-            }
-            QUIC_PACKET_SPACE* Packets = TempPathID->Packets[Builder->EncryptLevel];
-            if (Packets != NULL && QuicAckTrackerHasPacketsToAck(&Packets->AckTracker)) {
-                if (!QuicAckTrackerAckFrameEncode(&Packets->AckTracker, Builder)) {
-                    RanOutOfRoom = TRUE;
-                    goto Exit;
-                }
-            }
-        }
+    BOOLEAN WroteAckFrames;
+    if (QuicSendWritePathAckFrames(Connection, Builder, TRUE, &WroteAckFrames)) {
+        RanOutOfRoom = TRUE;
+        goto Exit;
     }
 
     if (!IsCongestionControlBlocked &&
@@ -1764,27 +1794,9 @@ QuicSendFlush(
             //
             // Write any ACK frames if we have them.
             //
-            uint8_t ZeroRttPacketType =
-                Connection->Stats.QuicVersion == QUIC_VERSION_2 ?
-                    QUIC_0_RTT_PROTECTED_V2 : QUIC_0_RTT_PROTECTED_V1;
-            
-            if (Builder.PacketType != ZeroRttPacketType) {
-                for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-                    QUIC_PATHID* TempPathID = Connection->Paths[i].PathID;
-                    if (TempPathID == NULL) {
-                        continue;
-                    }
-                    if (!Connection->State.MultipathNegotiated && i > 0) {
-                        break;
-                    }
-                    QUIC_PACKET_SPACE* Packets = TempPathID->Packets[Builder.EncryptLevel];
-                    if (Packets != NULL && QuicAckTrackerHasPacketsToAck(&Packets->AckTracker)) {
-                        if (QuicAckTrackerAckFrameEncode(&Packets->AckTracker, &Builder)) {
-                            WrotePacketFrames = TRUE;
-                        }
-                    }
-                }
-            }
+            BOOLEAN WroteAckFrames;
+            QuicSendWritePathAckFrames(Connection, &Builder, FALSE, &WroteAckFrames);
+            WrotePacketFrames |= WroteAckFrames;
 
             //
             // Write the stream frames.
@@ -1941,23 +1953,8 @@ QuicSendProcessDelayedAckTimer(
 
     QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
 
-    BOOLEAN AckElicitingPacketsToAcknowledge = FALSE;
-    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
-    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
-    QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
-
-    for (uint8_t i = 0; i < PathIDCount; i++) {
-        if (!AckElicitingPacketsToAcknowledge) {
-            for (uint32_t j = 0; j < QUIC_ENCRYPT_LEVEL_COUNT; ++j) {
-                if (PathIDs[i]->Packets[j] != NULL &&
-                    PathIDs[i]->Packets[j]->AckTracker.AckElicitingPacketsToAcknowledge) {
-                    AckElicitingPacketsToAcknowledge = TRUE;
-                    break;
-                }
-            }
-        }
-        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
-    }
+    BOOLEAN AckElicitingPacketsToAcknowledge =
+        QuicSendHasAckElicitingPacketsToAcknowledge(Connection);
 
     CXPLAT_DBG_ASSERT(AckElicitingPacketsToAcknowledge);
     if (AckElicitingPacketsToAcknowledge) {

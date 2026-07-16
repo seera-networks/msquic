@@ -921,12 +921,12 @@ QuicStreamParamGet(
                 Stats->ConnBlockedByPacingUs +=
                     CxPlatTimeDiff64(Connection->Paths[i].PathID->BlockedTimings.Pacing.LastStartTimeUs, Now);
             }
-            Stats->ConnBlockedByAmplificationProtUs = Connection->Paths[i].PathID->BlockedTimings.AmplificationProt.CumulativeTimeUs;
+            Stats->ConnBlockedByAmplificationProtUs += Connection->Paths[i].PathID->BlockedTimings.AmplificationProt.CumulativeTimeUs;
             if (Connection->Paths[i].PathID->BlockedTimings.AmplificationProt.LastStartTimeUs != 0) {
                 Stats->ConnBlockedByAmplificationProtUs +=
                     CxPlatTimeDiff64(Connection->Paths[i].PathID->BlockedTimings.AmplificationProt.LastStartTimeUs, Now);
             }
-            Stats->ConnBlockedByCongestionControlUs = Connection->Paths[i].PathID->BlockedTimings.CongestionControl.CumulativeTimeUs;
+            Stats->ConnBlockedByCongestionControlUs += Connection->Paths[i].PathID->BlockedTimings.CongestionControl.CumulativeTimeUs;
             if (Connection->Paths[i].PathID->BlockedTimings.CongestionControl.LastStartTimeUs != 0) {
                 Stats->ConnBlockedByCongestionControlUs +=
                     CxPlatTimeDiff64(Connection->Paths[i].PathID->BlockedTimings.CongestionControl.LastStartTimeUs, Now);
