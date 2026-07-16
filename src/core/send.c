@@ -1721,7 +1721,7 @@ QuicSendFlush(
         //   3. Stream (control and application) data.
         //
 
-        BOOLEAN WrotePacketFrames;
+        BOOLEAN WrotePacketFrames = FALSE;
         BOOLEAN FlushBatchedDatagrams = FALSE;
         BOOLEAN SendConnectionControlData =
             (SendFlags & ~(QUIC_CONN_SEND_FLAG_DPLPMTUD |

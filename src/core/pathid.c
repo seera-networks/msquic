@@ -243,8 +243,7 @@ QuicPathIDGenerateNewSourceCid(
         return NULL;
     }
 
-    uint8_t CurrentCidCount = QuicPathIDSourceCidsCount(PathID);
-    CXPLAT_DBG_ASSERT(CurrentCidCount < PathID->SourceCidLimit);
+    CXPLAT_DBG_ASSERT(QuicPathIDSourceCidsCount(PathID) < PathID->SourceCidLimit);
 
     //
     // Find all the bindings that are currently in use by this connection.
