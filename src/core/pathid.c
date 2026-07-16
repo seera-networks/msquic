@@ -541,9 +541,14 @@ QuicPathIDReplaceRetiredCids(
     )
 {
     CXPLAT_DBG_ASSERT(PathID->Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
-    for (uint8_t i = 0; i < PathID->Connection->PathsCount; ++i) {
+    //
+    // The loop index is advanced manually: when a path is removed the array
+    // shifts down, so the slot at 'i' must be re-examined rather than skipped.
+    //
+    for (uint8_t i = 0; i < PathID->Connection->PathsCount; ) {
         QUIC_PATH* Path = &PathID->Connection->Paths[i];
         if (Path->PathID != PathID || Path->DestCid == NULL || !Path->DestCid->CID.Retired) {
+            ++i;
             continue;
         }
 
@@ -566,7 +571,7 @@ QuicPathIDReplaceRetiredCids(
             CXPLAT_DBG_ASSERT(PathID->Connection->Paths[i].Binding != NULL);
             QuicLibraryReleaseBinding(PathID->Connection->Paths[i].Binding);
             PathID->Connection->Paths[i].Binding = NULL;
-            QuicPathRemove(PathID->Connection, i--);
+            QuicPathRemove(PathID->Connection, i);
             continue;
         }
 
@@ -586,6 +591,7 @@ QuicPathIDReplaceRetiredCids(
             Path->DestCid->CID.SequenceNumber,
             CASTED_CLOG_BYTEARRAY(Path->DestCid->CID.Length, Path->DestCid->CID.Data));
 
+        ++i;
     }
 
 #if DEBUG

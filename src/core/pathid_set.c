@@ -641,13 +641,6 @@ QuicPathIDSetGetPathIDForLocal(
     *FatalError = FALSE;
 
     //
-    // Connection is closed. No more pathids are open.
-    //
-    // if (QuicConnIsClosed(Connection)) {
-    //     return NULL;
-    // }
-
-    //
     // Validate the stream ID isn't above the allowed max.
     //
     if (PathId > PathIDSet->PeerMaxPathID) {
@@ -706,13 +699,6 @@ QuicPathIDSetGetPathIDForPeer(
     QUIC_CONNECTION* Connection = QuicPathIDSetGetConnection(PathIDSet);
 
     *FatalError = FALSE;
-
-    //
-    // Connection is closed. No more pathids are open.
-    //
-    // if (QuicConnIsClosed(Connection)) {
-    //     return NULL;
-    // }
 
     //
     // Validate the stream ID isn't above the allowed max.

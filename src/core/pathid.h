@@ -82,7 +82,7 @@ typedef struct QUIC_PATHID {
     QUIC_PATH* Path;
 
     //
-    // Unique identifier;
+    // Unique identifier.
     //
     uint32_t ID;
 
