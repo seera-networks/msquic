@@ -254,7 +254,7 @@ _Success_(return != NULL)
 QUIC_PATHID*
 QuicPathIDSetGetPathIDForLocal(
     _Inout_ QUIC_PATHID_SET* PathIDSet,
-    _In_ QUIC_VAR_INT PathId,
+    _In_ uint64_t PathId,
     _Out_ BOOLEAN* FatalError
     );
 
@@ -265,7 +265,7 @@ _Success_(return != NULL)
 QUIC_PATHID*
 QuicPathIDSetGetPathIDForPeer(
     _Inout_ QUIC_PATHID_SET* PathIDSet,
-    _In_ QUIC_VAR_INT PathId,
+    _In_ uint64_t PathId,
     _In_ BOOLEAN CreateIfMissing,
     _Out_ BOOLEAN* FatalError
     );
