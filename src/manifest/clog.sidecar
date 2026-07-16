@@ -1931,10 +1931,6 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] Set active (rebind=%hhu)",
       "UniqueId": "ConnPathActive",
-    "ConnPathIDAdd": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Added New PathID %u",
-      "UniqueId": "ConnPathIDAdd",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -1947,6 +1943,54 @@
         {
           "DefinationEncoding": "hhu",
           "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceEvent"
+    },
+    "ConnPathIDAdd": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Added New PathID %u",
+      "UniqueId": "ConnPathIDAdd",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceEvent"
+    },
+    "ConnPathIDCloseTimerExpired": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p][pathid][%u] Close Timer expired",
+      "UniqueId": "ConnPathIDCloseTimerExpired",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceEvent"
+    },
+    "ConnPathIDRemove": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Removed PathID %u",
+      "UniqueId": "ConnPathIDRemove",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
         }
       ],
       "macroName": "QuicTraceEvent"
@@ -1962,7 +2006,6 @@
         },
         {
           "DefinationEncoding": "hhu",
-          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -1972,10 +2015,6 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] Removed",
       "UniqueId": "ConnPathRemoved",
-    "ConnPathIDCloseTimerExpired": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p][pathid][%u] Close Timer expired",
-      "UniqueId": "ConnPathIDCloseTimerExpired",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -1983,7 +2022,6 @@
         },
         {
           "DefinationEncoding": "hhu",
-          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -1993,10 +2031,6 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] Validated (%hhu)",
       "UniqueId": "ConnPathValidated",
-    "ConnPathIDCreated": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] New PathID %u",
-      "UniqueId": "ConnPathIDCreated",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -2009,8 +2043,6 @@
         {
           "DefinationEncoding": "hhu",
           "MacroVariableName": "arg4"
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg3"
         }
       ],
       "macroName": "QuicTraceEvent"
@@ -2019,10 +2051,6 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] validation timed out",
       "UniqueId": "ConnPathValidationTimeout",
-    "ConnPathIDRemove": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Removed PathID %u",
-      "UniqueId": "ConnPathIDRemove",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -2030,7 +2058,6 @@
         },
         {
           "DefinationEncoding": "hhu",
-          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -5626,59 +5653,6 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
-    "FrameLogPunchMeNow": {
-      "ModuleProperites": {},
-      "TraceString": "[%c][%cX][%llu]   PUNCH_ME_NOW %llu %llu %s",
-      "UniqueId": "FrameLogPunchMeNow",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg5"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg6"
-        },
-        {
-          "DefinationEncoding": "s",
-          "MacroVariableName": "arg7"
-        }
-      ],
-      "macroName": "QuicTraceLogVerbose"
-    },
-    "FrameLogPunchMeNowInvalid": {
-      "ModuleProperites": {},
-      "TraceString": "[%c][%cX][%llu]   PUNCH_ME_NOW [Invalid]",
-      "UniqueId": "FrameLogPunchMeNowInvalid",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        }
-      ],
-      "macroName": "QuicTraceLogVerbose"
-    },
-    "FrameLogReliableResetStream": {
     "FrameLogPathAvailable": {
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   PATH_AVAILABLE PathID:%llu SSN:0x%llX",
@@ -5727,51 +5701,6 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
-    "FrameLogRemoveAddress": {
-      "ModuleProperites": {},
-      "TraceString": "[%c][%cX][%llu]   REMOVE_ADDRESS %llu",
-      "UniqueId": "FrameLogRemoveAddress",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg5"
-        }
-      ],
-      "macroName": "QuicTraceLogVerbose"
-    },
-    "FrameLogRemoveAddressInvalid": {
-      "ModuleProperites": {},
-      "TraceString": "[%c][%cX][%llu]   REMOVE_ADDRESS [Invalid]",
-      "UniqueId": "FrameLogRemoveAddressInvalid",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        }
-      ],
-      "macroName": "QuicTraceLogVerbose"
-    },
-    "FrameLogResetStream": {
     "FrameLogPathBackup": {
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   PATH_BACKUP PathID:%llu SSN:0x%llX",
@@ -6128,6 +6057,58 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "FrameLogPunchMeNow": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   PUNCH_ME_NOW %llu %llu %s",
+      "UniqueId": "FrameLogPunchMeNow",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg5"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg6"
+        },
+        {
+          "DefinationEncoding": "s",
+          "MacroVariableName": "arg7"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogPunchMeNowInvalid": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   PUNCH_ME_NOW [Invalid]",
+      "UniqueId": "FrameLogPunchMeNowInvalid",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "FrameLogReliableResetStream": {
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   RELIABLE_RESET_STREAM ID:%llu ErrorCode:0x%llX FinalSize:%llu ReliableSize:%llu",
@@ -6168,6 +6149,50 @@
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   RELIABLE_RESET_STREAM [Invalid]",
       "UniqueId": "FrameLogReliableResetStreamInvalid",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogRemoveAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   REMOVE_ADDRESS %llu",
+      "UniqueId": "FrameLogRemoveAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogRemoveAddressInvalid": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   REMOVE_ADDRESS [Invalid]",
+      "UniqueId": "FrameLogRemoveAddressInvalid",
       "splitArgs": [
         {
           "DefinationEncoding": "c",
@@ -6888,6 +6913,42 @@
       ],
       "macroName": "QuicTraceLogStreamVerbose"
     },
+    "IndicateNotifyObservedAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS",
+      "UniqueId": "IndicateNotifyObservedAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "IndicateNotifyRemoteAddressAdded": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_ADDED",
+      "UniqueId": "IndicateNotifyRemoteAddressAdded",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "IndicateNotifyRemoteAddressRemoved": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED",
+      "UniqueId": "IndicateNotifyRemoteAddressRemoved",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "IndicateOneWayDelayNegotiated": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_ONE_WAY_DELAY_NEGOTIATED [Send=%hhu,Recv=%hhu]",
@@ -6932,43 +6993,6 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
-    "IndicateNotifyObservedAddress": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS",
-      "UniqueId": "IndicateNotifyObservedAddress",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        }
-      ],
-      "macroName": "QuicTraceLogConnVerbose"
-    },
-    "IndicateNotifyRemoteAddressAdded": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_ADDED",
-      "UniqueId": "IndicateNotifyRemoteAddressAdded",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        }
-      ],
-      "macroName": "QuicTraceLogConnVerbose"
-    },
-    "IndicateNotifyRemoteAddressRemoved": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED",
-      "UniqueId": "IndicateNotifyRemoteAddressRemoved",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        }
-      ],
-      "macroName": "QuicTraceLogConnVerbose"
-    },
-    "IndicateOneWayDelayNegotiated": {
     "IndicatePathStatusChanged": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED",
@@ -9561,102 +9585,6 @@
         }
       ],
       "macroName": "QuicTraceEvent"
-    },
-    "PathIDDestCidAdded": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] [pathid][%u] (SeqNum=%llu) New Destination CID: %!CID!",
-      "UniqueId": "PathIDDestCidAdded",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        },
-        {
-          "DefinationEncoding": "!CID!",
-          "MacroVariableName": "arg5"
-        }
-      ],
-      "macroName": "QuicTraceLogConnInfo"
-    },
-    "PathIDDestCidRemoved": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] [pathid][%u] (SeqNum=%llu) Removed Destination CID: %!CID!",
-      "UniqueId": "PathIDDestCidRemoved",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        },
-        {
-          "DefinationEncoding": "!CID!",
-          "MacroVariableName": "arg5"
-        }
-      ],
-      "macroName": "QuicTraceLogConnInfo"
-    },
-    "PathIDSourceCidAdded": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] [pathid][%u] (SeqNum=%llu) New Source CID: %!CID!",
-      "UniqueId": "PathIDSourceCidAdded",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        },
-        {
-          "DefinationEncoding": "!CID!",
-          "MacroVariableName": "arg5"
-        }
-      ],
-      "macroName": "QuicTraceLogConnInfo"
-    },
-    "PathIDSourceCidRemoved": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] [pathid][%u] (SeqNum=%llu) Removed Source CID: %!CID!",
-      "UniqueId": "PathIDSourceCidRemoved",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        },
-        {
-          "DefinationEncoding": "!CID!",
-          "MacroVariableName": "arg5"
-        }
-      ],
-      "macroName": "QuicTraceLogConnInfo"
     },
     "PathInFlowStats": {
       "ModuleProperites": {},
@@ -12549,6 +12477,14 @@
       "ModuleProperites": {},
       "TraceString": "[sett] IgnoreUnreachable      = %hhu",
       "UniqueId": "SettingIgnoreUnreachable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "SettingMultipathEnabled": {
       "ModuleProperites": {},
       "TraceString": "[sett] MultipathEnabled       = %hhu",
@@ -13770,7 +13706,7 @@
     },
     "WarnNoXdpForCibirSockets": {
       "ModuleProperites": {},
-      "TraceString": "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. \"\r\n                \"Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation.",
+      "TraceString": "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. \"\n                \"Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation.",
       "UniqueId": "WarnNoXdpForCibirSockets",
       "splitArgs": [],
       "macroName": "QuicTraceLogWarning"
@@ -15456,6 +15392,21 @@
         "EncodingString": "[conn][%p] Path[%hhu] Set active (rebind=%hhu)"
       },
       {
+        "UniquenessHash": "4ca3aeb8-2919-6c50-9c9b-db8d0d8d910a",
+        "TraceID": "ConnPathIDAdd",
+        "EncodingString": "[conn][%p] Added New PathID %u"
+      },
+      {
+        "UniquenessHash": "b79e53fd-ca11-f041-12c6-bc12d51453cb",
+        "TraceID": "ConnPathIDCloseTimerExpired",
+        "EncodingString": "[conn][%p][pathid][%u] Close Timer expired"
+      },
+      {
+        "UniquenessHash": "9f64af53-b5e1-7f8e-0808-31005e9bf4ce",
+        "TraceID": "ConnPathIDRemove",
+        "EncodingString": "[conn][%p] Removed PathID %u"
+      },
+      {
         "UniquenessHash": "a324b00e-cfc4-4104-a6cf-c8e9b9cb2b01",
         "TraceID": "ConnPathInitialized",
         "EncodingString": "[conn][%p] Path[%hhu] Initialized"
@@ -15474,24 +15425,6 @@
         "UniquenessHash": "6ef76f38-b4df-cf7d-3197-b7e4d86471da",
         "TraceID": "ConnPathValidationTimeout",
         "EncodingString": "[conn][%p] Path[%hhu] validation timed out"
-        "UniquenessHash": "4ca3aeb8-2919-6c50-9c9b-db8d0d8d910a",
-        "TraceID": "ConnPathIDAdd",
-        "EncodingString": "[conn][%p] Added New PathID %u"
-      },
-      {
-        "UniquenessHash": "b79e53fd-ca11-f041-12c6-bc12d51453cb",
-        "TraceID": "ConnPathIDCloseTimerExpired",
-        "EncodingString": "[conn][%p][pathid][%u] Close Timer expired"
-      },
-      {
-        "UniquenessHash": "03ab7814-30a8-e2f0-69bc-24a671996e5b",
-        "TraceID": "ConnPathIDCreated",
-        "EncodingString": "[conn][%p] New PathID %u"
-      },
-      {
-        "UniquenessHash": "9f64af53-b5e1-7f8e-0808-31005e9bf4ce",
-        "TraceID": "ConnPathIDRemove",
-        "EncodingString": "[conn][%p] Removed PathID %u"
       },
       {
         "UniquenessHash": "c339eadc-2eef-8e45-4a51-1fc84a3c198e",
@@ -16849,9 +16782,6 @@
         "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_ONE_WAY_DELAY_NEGOTIATED [Send=%hhu,Recv=%hhu]"
       },
       {
-        "UniquenessHash": "b7f5143d-068d-377b-034b-2277f9f6604b",
-        "TraceID": "IndicatePathValidated",
-        "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED"
         "UniquenessHash": "e59e9b10-d76e-af58-77ce-02c0a4aed7b8",
         "TraceID": "IndicatePathAdded",
         "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_ADDED"
@@ -16865,6 +16795,11 @@
         "UniquenessHash": "ce9f8559-14a7-f7ea-79d0-d66df91fb31b",
         "TraceID": "IndicatePathStatusChanged",
         "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED"
+      },
+      {
+        "UniquenessHash": "b7f5143d-068d-377b-034b-2277f9f6604b",
+        "TraceID": "IndicatePathValidated",
+        "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED"
       },
       {
         "UniquenessHash": "446a0073-26fb-eed7-4ed4-fa9838fbd654",
@@ -17630,6 +17565,8 @@
         "UniquenessHash": "dbe0fbfc-98b0-3033-000e-dd52c892d6e1",
         "TraceID": "PathActiveFallback",
         "EncodingString": "[conn][%p] Path[%hhu] removed; falling back to Path[%hhu]"
+      },
+      {
         "UniquenessHash": "327a7afe-ed73-6a7f-9a19-c69fcb4b2e0a",
         "TraceID": "PathBbr",
         "EncodingString": "[conn][%p][pathid][%hhu] BBR: State=%u RState=%u CongestionWindow=%u BytesInFlight=%u BytesInFlightMax=%u MinRttEst=%lu EstBw=%lu AppLimited=%u"
@@ -17658,26 +17595,6 @@
         "UniquenessHash": "bdd8ce5d-e489-65db-7c1a-dc483295d1b0",
         "TraceID": "PathHyStartStateChange",
         "EncodingString": "[conn][%p][pathid][%u] HyStart: State=%u CongestionWindow=%u SlowStartThreshold=%u"
-      },
-      {
-        "UniquenessHash": "266baddf-b44e-90a5-2343-1fba327c0c28",
-        "TraceID": "PathIDDestCidAdded",
-        "EncodingString": "[conn][%p] [pathid][%u] (SeqNum=%llu) New Destination CID: %!CID!"
-      },
-      {
-        "UniquenessHash": "37bfc3f5-ad53-bdc8-1e09-2b5c74d59de7",
-        "TraceID": "PathIDDestCidRemoved",
-        "EncodingString": "[conn][%p] [pathid][%u] (SeqNum=%llu) Removed Destination CID: %!CID!"
-      },
-      {
-        "UniquenessHash": "283ebf8f-59cb-eeb8-9eb6-c1f2373815ed",
-        "TraceID": "PathIDSourceCidAdded",
-        "EncodingString": "[conn][%p] [pathid][%u] (SeqNum=%llu) New Source CID: %!CID!"
-      },
-      {
-        "UniquenessHash": "fe26463b-ece6-ec42-38cc-3b59e48930fb",
-        "TraceID": "PathIDSourceCidRemoved",
-        "EncodingString": "[conn][%p] [pathid][%u] (SeqNum=%llu) Removed Source CID: %!CID!"
       },
       {
         "UniquenessHash": "894e7ef6-f0d0-5ee0-bfd0-f63945bfa39a",
@@ -18623,6 +18540,8 @@
         "UniquenessHash": "77ab1610-2ec3-cabb-48c6-b873e735a6c3",
         "TraceID": "SettingIgnoreUnreachable",
         "EncodingString": "[sett] IgnoreUnreachable      = %hhu"
+      },
+      {
         "UniquenessHash": "025f13c0-6d85-2f19-a68e-e80104f42f1f",
         "TraceID": "SettingMultipathEnabled",
         "EncodingString": "[sett] MultipathEnabled       = %hhu"
@@ -19058,9 +18977,9 @@
         "EncodingString": "[sock] Warning: XDP successfully initialized but failed to plumb XDP rules. Falling back to using normal OS sockets."
       },
       {
-        "UniquenessHash": "f64bb75f-b263-c56d-d94f-57e933a7ff4f",
+        "UniquenessHash": "d304c2a7-b78d-312e-c635-02deec55eb50",
         "TraceID": "WarnNoXdpForCibirSockets",
-        "EncodingString": "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. \"\r\n                \"Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation."
+        "EncodingString": "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. \"\n                \"Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation."
       },
       {
         "UniquenessHash": "09622250-6902-8f51-16a4-41a81d9cfc14",

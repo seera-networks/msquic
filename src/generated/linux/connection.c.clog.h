@@ -1311,17 +1311,6 @@ tracepoint(CLOG_CONNECTION_C, IndicatePeerNeedStreamsV2 , arg1, arg3);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for IndicateNotifyObservedAddress
-// [conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS
-// QuicTraceLogConnVerbose(
-                IndicateNotifyObservedAddress,
-                Connection,
-                "Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_IndicateNotifyObservedAddress
-#define _clog_3_ARGS_TRACE_IndicateNotifyObservedAddress(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, IndicateNotifyObservedAddress , arg1);\
 // Decoder Ring for IndicatePathAdded
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_ADDED
 // QuicTraceLogConnVerbose(
@@ -1369,6 +1358,24 @@ tracepoint(CLOG_CONNECTION_C, IndicatePathRemoved , arg1);\
 #ifndef _clog_3_ARGS_TRACE_IndicatePathStatusChanged
 #define _clog_3_ARGS_TRACE_IndicatePathStatusChanged(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, IndicatePathStatusChanged , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateNotifyObservedAddress
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS
+// QuicTraceLogConnVerbose(
+                IndicateNotifyObservedAddress,
+                Connection,
+                "Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_IndicateNotifyObservedAddress
+#define _clog_3_ARGS_TRACE_IndicateNotifyObservedAddress(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, IndicateNotifyObservedAddress , arg1);\
 
 #endif
 
@@ -2173,6 +2180,26 @@ tracepoint(CLOG_CONNECTION_C, ConnReleaseChain , arg2, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ConnPathValidationTimeout
+// [conn][%p] Path[%hhu] validation timed out
+// QuicTraceEvent(
+            ConnPathValidationTimeout,
+            "[conn][%p] Path[%hhu] validation timed out",
+            Connection,
+            Path->ID);
+// arg2 = arg2 = Connection = arg2
+// arg3 = arg3 = Path->ID = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ConnPathValidationTimeout
+#define _clog_4_ARGS_TRACE_ConnPathValidationTimeout(uniqueId, encoded_arg_string, arg2, arg3)\
+tracepoint(CLOG_CONNECTION_C, ConnPathValidationTimeout , arg2, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ConnBoundAddrAdded
 // [conn][%p] New Bound IP: %!ADDR!
 // QuicTraceEvent(
@@ -2208,26 +2235,6 @@ tracepoint(CLOG_CONNECTION_C, ConnBoundAddrAdded , arg2, arg3_len, arg3);\
 #ifndef _clog_7_ARGS_TRACE_ConnObservedAddrAdded
 #define _clog_7_ARGS_TRACE_ConnObservedAddrAdded(uniqueId, encoded_arg_string, arg2, arg3, arg3_len, arg4, arg4_len)\
 tracepoint(CLOG_CONNECTION_C, ConnObservedAddrAdded , arg2, arg3_len, arg3, arg4_len, arg4);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for ConnPathValidationTimeout
-// [conn][%p] Path[%hhu] validation timed out
-// QuicTraceEvent(
-            ConnPathValidationTimeout,
-            "[conn][%p] Path[%hhu] validation timed out",
-            Connection,
-            Path->ID);
-// arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = Path->ID = arg3
-----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_ConnPathValidationTimeout
-#define _clog_4_ARGS_TRACE_ConnPathValidationTimeout(uniqueId, encoded_arg_string, arg2, arg3)\
-tracepoint(CLOG_CONNECTION_C, ConnPathValidationTimeout , arg2, arg3);\
 
 #endif
 

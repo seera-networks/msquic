@@ -707,17 +707,6 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPObservedAddress,
 // arg3 = arg3 = TransportParams->NatTraverseConcurrencyLimit = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPNatTraverseServer,
-// Decoder Ring for EncodeTPInitMaxPathId
-// [conn][%p] TP: Max Path Id (%llu)
-// QuicTraceLogConnVerbose(
-            EncodeTPInitMaxPathId,
-            Connection,
-            "TP: Max Path Id (%llu)",
-            TransportParams->InitialMaxPathId);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = TransportParams->InitialMaxPathId = arg3
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPInitMaxPathId,
     TP_ARGS(
         const void *, arg1,
         unsigned long long, arg3), 
@@ -762,6 +751,29 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPServerMigration,
         const void *, arg1), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for EncodeTPInitMaxPathId
+// [conn][%p] TP: Max Path Id (%llu)
+// QuicTraceLogConnVerbose(
+            EncodeTPInitMaxPathId,
+            Connection,
+            "TP: Max Path Id (%llu)",
+            TransportParams->InitialMaxPathId);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TransportParams->InitialMaxPathId = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPInitMaxPathId,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 
@@ -1397,6 +1409,29 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPReliableReset,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for DecodeTPInitMaxPathId
+// [conn][%p] TP: Max Path Id (%llu)
+// QuicTraceLogConnVerbose(
+                DecodeTPInitMaxPathId,
+                Connection,
+                "TP: Max Path Id (%llu)",
+                TransportParams->InitialMaxPathId);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TransportParams->InitialMaxPathId = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPInitMaxPathId,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for DecodeTPObservedAddress
 // [conn][%p] TP: Observed Address (%u)
 // QuicTraceLogConnVerbose(
@@ -1469,17 +1504,6 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseServer,
 // arg3 = arg3 = value = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseClient,
-// Decoder Ring for DecodeTPInitMaxPathId
-// [conn][%p] TP: Max Path Id (%llu)
-// QuicTraceLogConnVerbose(
-                DecodeTPInitMaxPathId,
-                Connection,
-                "TP: Max Path Id (%llu)",
-                TransportParams->InitialMaxPathId);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = TransportParams->InitialMaxPathId = arg3
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPInitMaxPathId,
     TP_ARGS(
         const void *, arg1,
         unsigned long long, arg3), 

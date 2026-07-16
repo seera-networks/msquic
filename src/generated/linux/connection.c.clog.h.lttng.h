@@ -1452,15 +1452,6 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicatePeerNeedStreamsV2,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for IndicateNotifyObservedAddress
-// [conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS
-// QuicTraceLogConnVerbose(
-                IndicateNotifyObservedAddress,
-                Connection,
-                "Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyObservedAddress,
 // Decoder Ring for IndicatePathAdded
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_ADDED
 // QuicTraceLogConnVerbose(
@@ -1508,6 +1499,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicatePathRemoved,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicatePathStatusChanged,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateNotifyObservedAddress
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS
+// QuicTraceLogConnVerbose(
+                IndicateNotifyObservedAddress,
+                Connection,
+                "Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyObservedAddress,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -2437,6 +2447,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnReleaseChain,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ConnPathValidationTimeout
+// [conn][%p] Path[%hhu] validation timed out
+// QuicTraceEvent(
+            ConnPathValidationTimeout,
+            "[conn][%p] Path[%hhu] validation timed out",
+            Connection,
+            Path->ID);
+// arg2 = arg2 = Connection = arg2
+// arg3 = arg3 = Path->ID = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnPathValidationTimeout,
+    TP_ARGS(
+        const void *, arg2,
+        unsigned char, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg2, (uint64_t)arg2)
+        ctf_integer(unsigned char, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ConnBoundAddrAdded
 // [conn][%p] New Bound IP: %!ADDR!
 // QuicTraceEvent(
@@ -2487,30 +2520,6 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnObservedAddrAdded,
         ctf_sequence(char, arg3, arg3, unsigned int, arg3_len)
         ctf_integer(unsigned int, arg4_len, arg4_len)
         ctf_sequence(char, arg4, arg4, unsigned int, arg4_len)
-    )
-)
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for ConnPathValidationTimeout
-// [conn][%p] Path[%hhu] validation timed out
-// QuicTraceEvent(
-            ConnPathValidationTimeout,
-            "[conn][%p] Path[%hhu] validation timed out",
-            Connection,
-            Path->ID);
-// arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = Path->ID = arg3
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnPathValidationTimeout,
-    TP_ARGS(
-        const void *, arg2,
-        unsigned char, arg3), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg2, (uint64_t)arg2)
-        ctf_integer(unsigned char, arg3, arg3)
     )
 )
 
