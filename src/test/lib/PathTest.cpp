@@ -1255,7 +1255,7 @@ QuicTestMultipath(
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
     SecondLocalAddr.IncrementPort();
 
-    PathProbeHelper* ProbeHelper = new PathProbeHelper(SecondLocalAddr.GetPort());
+    PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
 
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
     int Try = 0;
@@ -1268,7 +1268,7 @@ QuicTestMultipath(
         if (Status != QUIC_STATUS_SUCCESS) {
             delete ProbeHelper;
             SecondLocalAddr.IncrementPort();
-            ProbeHelper = new PathProbeHelper(SecondLocalAddr.GetPort());
+            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
         }
     } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
     TEST_QUIC_SUCCEEDED(Status);

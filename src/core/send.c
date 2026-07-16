@@ -606,7 +606,7 @@ QuicSendWriteFrames(
             // We potentially send the close frame on multiple protection
             // levels, in increasing encryption order, so clear the flag only
             // once we send on the current protection level. CONNECTION_CLOSE
-            // is not allowed in 0-RTT packets (RFC 9000 §12.5), so when
+            // is not allowed in 0-RTT packets (RFC 9000 Section 12.5), so when
             // WriteKey is 0-RTT, the frame just got written at Initial and
             // that is the only level it can ever go out at.
             //
