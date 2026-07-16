@@ -281,8 +281,12 @@
                 value="5"
                 />
             <map
-                message="$(string.Enum.QUIC_CONN_TIMER_TYPE.PATH_VALIDATION)"
+                message="$(string.Enum.QUIC_CONN_TIMER_TYPE.SHUTDOWN)"
                 value="6"
+                />
+            <map
+                message="$(string.Enum.QUIC_CONN_TIMER_TYPE.PATH_VALIDATION)"
+                value="7"
                 />
           </valueMap>
           <valueMap name="map_QUIC_PATH_VALID_REASON">
@@ -297,9 +301,6 @@
             <map
                 message="$(string.Enum.QUIC_PATH_VALID_REASON.PATH_RESPONSE)"
                 value="2"
-                />
-                message="$(string.Enum.QUIC_CONN_TIMER_TYPE.SHUTDOWN)"
-                value="6"
                 />
           </valueMap>
           <valueMap name="map_QUIC_LOSS_TIMER_TYPE">
@@ -3565,10 +3566,6 @@
               opcode="Connection"
               symbol="QuicConnPathInitialized"
               template="tid_CONN_PATH"
-              message="$(string.Etw.ConnPathIDAdd)"
-              opcode="Connection"
-              symbol="QuicConnPathIDAdd"
-              template="tid_CONN_UINT32"
               value="5196"
               />
           <event
@@ -3578,10 +3575,6 @@
               opcode="Connection"
               symbol="QuicConnPathRemoved"
               template="tid_CONN_PATH"
-              message="$(string.Etw.ConnPathIDRemove)"
-              opcode="Connection"
-              symbol="QuicConnPathIDRemove"
-              template="tid_CONN_UINT32"
               value="5197"
               />
           <event
@@ -3647,11 +3640,32 @@
               template="tid_RELEASE_CHAIN"
               value="5204"
               />
+          <event
+              keywords="ut:Connection ut:LowVolume"
+              level="win:Informational"
+              message="$(string.Etw.ConnPathIDAdd)"
+              opcode="Connection"
+              symbol="QuicConnPathIDAdd"
+              template="tid_CONN_UINT32"
+              value="5205"
+              />
+          <event
+              keywords="ut:Connection ut:LowVolume"
+              level="win:Informational"
+              message="$(string.Etw.ConnPathIDRemove)"
+              opcode="Connection"
+              symbol="QuicConnPathIDRemove"
+              template="tid_CONN_UINT32"
+              value="5206"
+              />
+          <event
+              keywords="ut:Connection ut:LowVolume"
+              level="win:Informational"
               message="$(string.Etw.ConnPathIDCloseTimerExpired)"
               opcode="Connection"
               symbol="QuicConnPathIDCloseTimerExpired"
               template="tid_CONN_UINT32"
-              value="5198"
+              value="5207"
               />
           <event
               keywords="ut:Connection ut:LowVolume ut:RPS"
@@ -3660,9 +3674,8 @@
               opcode="Connection"
               symbol="QuicConnDestCidUpdated"
               template="tid_CONN_CID"
-              value="5199"
+              value="5208"
               />
-
           <!-- 6144 - 7167 | Stream Events -->
           <event
               keywords="ut:Stream ut:LowVolume ut:RPS"
@@ -5331,6 +5344,22 @@
             value="[conn][%1] Received APPLICATION_ERROR error, delaying close in expectation of a 1-RTT CONNECTION_CLOSE frame."
             />
         <string
+            id="Etw.ConnPathIDAdd"
+            value="[conn][%1] Added New PathID %2"
+            />
+        <string
+            id="Etw.ConnPathIDRemove"
+            value="[conn][%1] Removed PathID %2"
+            />
+        <string
+            id="Etw.ConnPathIDCloseTimerExpired"
+            value="[conn][%1][pathid][%2] Close Timer expired"
+            />
+        <string
+            id="Etw.ConnDestCidUpdate"
+            value="[conn][%1][pathid][%2] (SeqNum=%3) Updated Destination CID: %5"
+            />
+        <string
             id="Etw.ConnPathInitialized"
             value="[conn][%1] Path[%2] Initialized"
             />
@@ -5349,20 +5378,6 @@
         <string
             id="Etw.ConnPathValidationTimeout"
             value="[conn][%1] Path[%2] Validation timed out"
-            id="Etw.ConnPathIDAdd"
-            value="[conn][%1] Added New PathID %2"
-            />
-        <string
-            id="Etw.ConnPathIDRemove"
-            value="[conn][%1] Removed PathID %2"
-            />
-        <string
-            id="Etw.ConnPathIDCloseTimerExpired"
-            value="[conn][%1][pathid][%2] Close Timer expired"
-            />
-        <string
-            id="Etw.ConnDestCidUpdate"
-            value="[conn][%1][pathid][%2] (SeqNum=%3) Updated Destination CID: %5"
             />
       </stringTable>
     </resources>
