@@ -667,6 +667,17 @@ QuicTestServerMigration(
     );
 
 void
+QuicTestMultipath(
+    _In_ int Family
+    );
+
+void
+QuicTestNatPortRebind(
+    _In_ int Family,
+    _In_ uint16_t KeepAlivePaddingSize
+    );
+
+void
 QuicTestNatAddrRebind(
     _In_ int Family,
     _In_ uint16_t KeepAlivePaddingSize,

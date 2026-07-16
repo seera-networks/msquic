@@ -689,6 +689,19 @@ tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPNatTraverseClient , arg1);\
 #ifndef _clog_3_ARGS_TRACE_EncodeTPServerMigration
 #define _clog_3_ARGS_TRACE_EncodeTPServerMigration(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPServerMigration , arg1);\
+// Decoder Ring for EncodeTPInitMaxPathId
+// [conn][%p] TP: Max Path Id (%llu)
+// QuicTraceLogConnVerbose(
+            EncodeTPInitMaxPathId,
+            Connection,
+            "TP: Max Path Id (%llu)",
+            TransportParams->InitialMaxPathId);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TransportParams->InitialMaxPathId = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_EncodeTPInitMaxPathId
+#define _clog_4_ARGS_TRACE_EncodeTPInitMaxPathId(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPInitMaxPathId , arg1, arg3);\
 
 #endif
 
@@ -1317,6 +1330,19 @@ tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseServer , arg1);\
 #ifndef _clog_4_ARGS_TRACE_DecodeTPNatTraverseClient
 #define _clog_4_ARGS_TRACE_DecodeTPNatTraverseClient(uniqueId, arg1, encoded_arg_string, arg3)\
 tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseClient , arg1, arg3);\
+// Decoder Ring for DecodeTPInitMaxPathId
+// [conn][%p] TP: Max Path Id (%llu)
+// QuicTraceLogConnVerbose(
+                DecodeTPInitMaxPathId,
+                Connection,
+                "TP: Max Path Id (%llu)",
+                TransportParams->InitialMaxPathId);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TransportParams->InitialMaxPathId = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_DecodeTPInitMaxPathId
+#define _clog_4_ARGS_TRACE_DecodeTPInitMaxPathId(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPInitMaxPathId , arg1, arg3);\
 
 #endif
 

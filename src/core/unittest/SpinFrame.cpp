@@ -41,6 +41,7 @@ union QuicV1Frames {
 TEST(SpinFrame, SpinFrame1000000)
 {
     QuicV1Frames DecodedFrame;
+    uint32_t PathId;
     QUIC_ACK_ECN_EX Ecn;
     QUIC_RANGE AckBlocks;
     uint64_t AckDelay;
@@ -83,7 +84,7 @@ TEST(SpinFrame, SpinFrame1000000)
             case QUIC_FRAME_ACK:
             case QUIC_FRAME_ACK_1:
                 CxPlatZeroMemory(&Ecn, sizeof(Ecn));
-                if (QuicAckFrameDecode((QUIC_FRAME_TYPE) FrameType, BufferLength, Buffer, &Offset, &InvalidFrame, &AckBlocks, &Ecn, &AckDelay)) {
+                if (QuicAckFrameDecode((QUIC_FRAME_TYPE) FrameType, BufferLength, Buffer, &Offset, &InvalidFrame, &PathId, &AckBlocks, &Ecn, &AckDelay)) {
                     SuccessfulDecodes++;
                 } else {
                     FailedDecodes++;
@@ -177,14 +178,14 @@ TEST(SpinFrame, SpinFrame1000000)
                 }
                 break;
             case QUIC_FRAME_NEW_CONNECTION_ID:
-                if (QuicNewConnectionIDFrameDecode(BufferLength, Buffer, &Offset, &DecodedFrame.NewConnectionIdFrame)) {
+                if (QuicNewConnectionIDFrameDecode((QUIC_FRAME_TYPE) FrameType, BufferLength, Buffer, &Offset, &DecodedFrame.NewConnectionIdFrame)) {
                     SuccessfulDecodes++;
                 } else {
                     FailedDecodes++;
                 }
                 break;
             case QUIC_FRAME_RETIRE_CONNECTION_ID:
-                if (QuicRetireConnectionIDFrameDecode(BufferLength, Buffer, &Offset, &DecodedFrame.RetireConnectionIdFrame)) {
+                if (QuicRetireConnectionIDFrameDecode((QUIC_FRAME_TYPE) FrameType, BufferLength, Buffer, &Offset, &DecodedFrame.RetireConnectionIdFrame)) {
                     SuccessfulDecodes++;
                 } else {
                     FailedDecodes++;

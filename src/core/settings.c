@@ -188,6 +188,9 @@ QuicSettingsSetDefault(
     if (!Settings->IsSet.IgnoreUnreachable) {
         Settings->IgnoreUnreachable = QUIC_DEFAULT_IGNORE_UNREACHABLE;
     }
+    if (!Settings->IsSet.MultipathEnabled) {
+        Settings->MultipathEnabled = QUIC_DEFAULT_MULTIPATH_ENABLED;
+    }
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -375,6 +378,9 @@ QuicSettingsCopy(
     }
     if (!Destination->IsSet.IgnoreUnreachable) {
         Destination->IgnoreUnreachable = Source->IgnoreUnreachable;
+    }
+    if (!Destination->IsSet.MultipathEnabled) {
+        Destination->MultipathEnabled = Source->MultipathEnabled;
     }
 }
 
@@ -798,6 +804,11 @@ QuicSettingApply(
     if (Source->IsSet.IgnoreUnreachable && (!Destination->IsSet.IgnoreUnreachable || OverWrite)) {
         Destination->IgnoreUnreachable = Source->IgnoreUnreachable;
         Destination->IsSet.IgnoreUnreachable = TRUE;
+    }
+
+    if (Source->IsSet.MultipathEnabled && (!Destination->IsSet.MultipathEnabled || OverWrite)) {
+        Destination->MultipathEnabled = Source->MultipathEnabled;
+        Destination->IsSet.MultipathEnabled = TRUE;
     }
 
     return TRUE;
@@ -1530,6 +1541,16 @@ VersionSettingsFail:
             &ValueLen);
         Settings->IgnoreUnreachable = (uint8_t)Value;
     }
+    if (!Settings->IsSet.MultipathEnabled) {
+        Value = QUIC_DEFAULT_MULTIPATH_ENABLED;
+        ValueLen = sizeof(Value);
+        CxPlatStorageReadValue(
+            Storage,
+            QUIC_SETTING_MULTIPATH_ENABLED,
+            (uint8_t*)&Value,
+            &ValueLen);
+        Settings->MultipathEnabled = !!Value;
+    }
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -1603,6 +1624,7 @@ QuicSettingsDump(
     QuicTraceLogVerbose(SettingServerMigrationEnabled,      "[sett] ServerMigrationEnabled = %hhu", Settings->ServerMigrationEnabled);
     QuicTraceLogVerbose(SettingAddAddress,                  "[sett] AddAddressMode         = %hhu", Settings->AddAddressMode);
     QuicTraceLogVerbose(SettingIgnoreUnreachable,           "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);
+    QuicTraceLogVerbose(SettingMultipathEnabled,            "[sett] MultipathEnabled       = %hhu", Settings->MultipathEnabled);
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -1786,6 +1808,9 @@ QuicSettingsDumpNew(
     }
     if (Settings->IsSet.IgnoreUnreachable) {
         QuicTraceLogVerbose(SettingIgnoreUnreachable,               "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);
+    }
+    if (Settings->IsSet.MultipathEnabled) {
+        QuicTraceLogVerbose(SettingMultipathEnabled,                "[sett] MultipathEnabled           = %hhu", Settings->MultipathEnabled);
     }
 }
 
@@ -2079,6 +2104,14 @@ QuicSettingsSettingsToInternal(
    SETTING_COPY_FLAG_TO_INTERNAL_SIZED(
         Flags,
         IgnoreUnreachable,
+        QUIC_SETTINGS,
+        Settings,
+        SettingsSize,
+        InternalSettings);
+
+    SETTING_COPY_FLAG_TO_INTERNAL_SIZED(
+        Flags,
+        MultipathEnabled,
         QUIC_SETTINGS,
         Settings,
         SettingsSize,

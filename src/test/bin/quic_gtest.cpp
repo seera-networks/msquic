@@ -2192,7 +2192,12 @@ TEST_P(WithMigrationArgs, MigrationShareBinding) {
 INSTANTIATE_TEST_SUITE_P(
     Basic,
     WithMigrationArgs,
-    ::testing::ValuesIn(WithMigrationArgs::Generate()));
+    ::testing::ValuesIn(MigrationArgs::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    Basic,
+    WithProbePathArgs,
+    ::testing::ValuesIn(ProbePathArgs::Generate()));
 
 TEST_P(WithFamilyArgs, AddressDiscovery) {
     TestLoggerT<ParamType> Logger("QuicTestAddressDiscovery", GetParam());
@@ -2219,6 +2224,15 @@ TEST_P(WithMigrationArgs, ServerMigration) {
         ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestServerMigration), GetParam()));
     } else {
         QuicTestServerMigration(GetParam());
+    }
+}
+
+TEST_P(WithMultipathArgs, Multipath) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipath", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipath), GetParam().Family));
+    } else {
+        QuicTestMultipath(GetParam().Family);
     }
 }
 
@@ -3355,7 +3369,150 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     Basic,
     WithFamilyArgs,
-    ::testing::ValuesIn(WithFamilyArgs::Generate()));
+    ::testing::ValuesIn(FamilyArgs::Generate()));
+
+#ifdef QUIC_TEST_DATAPATH_HOOKS_ENABLED
+
+INSTANTIATE_TEST_SUITE_P(
+    Mtu,
+    WithMtuArgs,
+    ::testing::ValuesIn(MtuArgs::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    Basic,
+    WithRebindPaddingArgs,
+    ::testing::ValuesIn(RebindPaddingArgs::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    Basic,
+    WithMultipathArgs,
+    ::testing::ValuesIn(MultipathArgs::Generate()));
+#endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+INSTANTIATE_TEST_SUITE_P(
+    Basic,
+    WithVersionNegotiationExtArgs,
+    testing::ValuesIn(VersionNegotiationExtArgs::Generate()));
+#endif
+
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs1,
+    testing::ValuesIn(HandshakeArgs1::Generate()));
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs2,
+    testing::ValuesIn(HandshakeArgs2::Generate()));
+#endif
+
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs3,
+    testing::ValuesIn(HandshakeArgs3::Generate()));
+
+#ifdef QUIC_TEST_DATAPATH_HOOKS_ENABLED
+
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs4,
+    testing::ValuesIn(HandshakeArgs4::Generate()));
+
+#endif
+
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs5,
+    testing::ValuesIn(HandshakeArgs5::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs6,
+    testing::ValuesIn(HandshakeArgs6::Generate()));
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs7,
+    testing::ValuesIn(HandshakeArgs7::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithFeatureSupportArgs,
+    testing::ValuesIn(FeatureSupportArgs::Generate()));
+#endif
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+#if QUIC_TEST_DISABLE_VNE_TP_GENERATION
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs8,
+    testing::ValuesIn(HandshakeArgs8::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs9,
+    ::testing::Values(false, true));
+#endif
+#endif
+
+#if QUIC_TEST_DATAPATH_HOOKS_ENABLED
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs10,
+    testing::ValuesIn(HandshakeArgs10::Generate()));
+#endif
+
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs11,
+    testing::ValuesIn(HandshakeArgs11::Generate()));
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+INSTANTIATE_TEST_SUITE_P(
+    Handshake,
+    WithHandshakeArgs12,
+    testing::ValuesIn(HandshakeArgs12::Generate()));
+#endif
+
+INSTANTIATE_TEST_SUITE_P(
+    AppData,
+    WithSendArgs1,
+    testing::ValuesIn(SendArgs1::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    AppData,
+    WithSendArgs2,
+    testing::ValuesIn(SendArgs2::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    AppData,
+    WithSendArgs3,
+    testing::ValuesIn(SendArgs3::Generate()));
+
+#ifndef QUIC_DISABLE_0RTT_TESTS
+
+INSTANTIATE_TEST_SUITE_P(
+    AppData,
+    WithSend0RttArgs1,
+    testing::ValuesIn(Send0RttArgs1::Generate()));
+
+INSTANTIATE_TEST_SUITE_P(
+    AppData,
+    WithSend0RttArgs2,
+    testing::ValuesIn(Send0RttArgs2::Generate()));
+
+#endif
+
+#if QUIC_TEST_DATAPATH_HOOKS_ENABLED
+
+INSTANTIATE_TEST_SUITE_P(
+    Misc,
+    WithKeyUpdateArgs2,
+    testing::ValuesIn(KeyUpdateArgs2::Generate()));
+>>>>>>> theirs
 
 #if defined(_WIN32) && defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
 //

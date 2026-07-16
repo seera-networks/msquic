@@ -106,7 +106,7 @@ QuicPacketBuilderInitialize(
     Builder->EncryptionOverhead = CXPLAT_ENCRYPTION_OVERHEAD;
     Builder->TotalDatagramsLength = 0;
 
-    if (Connection->SourceCids.Next == NULL) {
+    if (Path->PathID->SourceCids.Next == NULL) {
         QuicTraceLogConnWarning(
             NoSrcCidAvailable,
             Connection,
@@ -116,7 +116,7 @@ QuicPacketBuilderInitialize(
 
     Builder->SourceCid =
         CXPLAT_CONTAINING_RECORD(
-            Connection->SourceCids.Next,
+            Path->PathID->SourceCids.Next,
             QUIC_CID_SLIST_ENTRY,
             Link);
 
@@ -130,7 +130,7 @@ QuicPacketBuilderInitialize(
     }
     Builder->SendAllowance =
         QuicCongestionControlGetSendAllowance(
-            &Connection->CongestionControl,
+            &Path->PathID->CongestionControl,
             TimeSinceLastSend,
             Connection->Send.LastFlushTimeValid);
     if (Builder->SendAllowance > Path->Allowance) {
@@ -151,7 +151,7 @@ QuicPacketBuilderCleanup(
     CXPLAT_DBG_ASSERT(Builder->SendData == NULL);
 
     if (Builder->PacketBatchSent && Builder->PacketBatchRetransmittable) {
-        QuicLossDetectionUpdateTimer(&Builder->Connection->LossDetection, FALSE);
+        QuicLossDetectionUpdateTimer(&Builder->Path->PathID->LossDetection, FALSE);
     }
 
     QuicSentPacketMetadataReleaseFrames(Builder->Metadata, Builder->Connection);
@@ -414,7 +414,7 @@ QuicPacketBuilderPrepare(
         }
 
         Builder->Metadata->FrameCount = 0;
-        Builder->Metadata->PacketNumber = Connection->Send.NextPacketNumber++;
+        Builder->Metadata->PacketNumber = Builder->Path->PathID->NextPacketNumber++;
         Builder->Metadata->Flags.KeyType = NewPacketKeyType;
         Builder->Metadata->Flags.IsAckEliciting = FALSE;
         Builder->Metadata->Flags.IsMtuProbe = IsPathMtuDiscovery;
@@ -432,7 +432,7 @@ QuicPacketBuilderPrepare(
             (uint16_t)Builder->Datagram->Length - Builder->DatagramLength;
 
         if (NewPacketType == SEND_PACKET_SHORT_HEADER_TYPE) {
-            QUIC_PACKET_SPACE* PacketSpace = Connection->Packets[Builder->EncryptLevel];
+            QUIC_PACKET_SPACE* PacketSpace = Builder->Path->PathID->Packets[Builder->EncryptLevel];
 
             Builder->PacketNumberLength = 4; // TODO - Determine correct length based on BDP.
 
@@ -573,7 +573,7 @@ QuicPacketBuilderGetPacketTypeAndKeyForControlFrames(
             return TRUE;
         }
 
-        QUIC_PACKET_SPACE* Packets = Connection->Packets[EncryptLevel];
+        QUIC_PACKET_SPACE* Packets = Builder->Path->PathID->Packets[EncryptLevel];
         CXPLAT_DBG_ASSERT(Packets != NULL);
 
         if (SendFlags & QUIC_CONN_SEND_FLAG_ACK &&
@@ -750,7 +750,7 @@ QuicPacketBuilderFinalize(
         // packet.
         //
         if (Builder->Datagram != NULL) {
-            --Connection->Send.NextPacketNumber;
+            --Builder->Path->PathID->NextPacketNumber;
             Builder->DatagramLength -= Builder->HeaderLength;
             Builder->HeaderLength = 0;
             CanKeepSending = FALSE;
@@ -761,8 +761,8 @@ QuicPacketBuilderFinalize(
             }
         }
         if (Builder->Path->Allowance != UINT32_MAX) {
-            QuicConnAddOutFlowBlockedReason(
-                Connection, QUIC_FLOW_BLOCKED_AMPLIFICATION_PROT);
+            QuicPathIDAddOutFlowBlockedReason(
+                Builder->Path->PathID, QUIC_FLOW_BLOCKED_AMPLIFICATION_PROT);
         }
         FinalQuicPacket = FlushBatchedDatagrams && (Builder->TotalCountDatagrams != 0);
         goto Exit;
@@ -864,8 +864,9 @@ QuicPacketBuilderFinalize(
 
         QuicTraceEvent(
             PacketEncrypt,
-            "[pack][%llu] Encrypting",
-            Builder->Metadata->PacketId);
+            "[pack][%llu][%u] Encrypting",
+            Builder->Metadata->PacketId,
+            Builder->Path->PathID->ID);
 
         PayloadLength += Builder->EncryptionOverhead;
         Builder->DatagramLength += Builder->EncryptionOverhead;
@@ -873,7 +874,14 @@ QuicPacketBuilderFinalize(
         uint8_t* Payload = Header + Builder->HeaderLength;
 
         uint8_t Iv[CXPLAT_MAX_IV_LENGTH];
-        QuicCryptoCombineIvAndPacketNumber(Builder->Key->Iv, (uint8_t*) &Builder->Metadata->PacketNumber, Iv);
+        if (Builder->Path->PathID->ID == 0) {
+            QuicCryptoCombineIvAndPacketNumber(Builder->Key->Iv,
+                (uint8_t*) &Builder->Metadata->PacketNumber, Iv);
+        } else {
+            QuicCryptoCombineIvAndPathIDAndPacketNumber(Builder->Key->Iv,
+                (uint8_t*) &Builder->Path->PathID->ID,
+                (uint8_t*) &Builder->Metadata->PacketNumber, Iv);
+        }
 
         uint64_t EncryptStart = CxPlatTimeUs64();
         QUIC_STATUS Status =
@@ -949,7 +957,7 @@ QuicPacketBuilderFinalize(
         //
         // Increment the key phase sent bytes count.
         //
-        QUIC_PACKET_SPACE* PacketSpace = Connection->Packets[Builder->EncryptLevel];
+        QUIC_PACKET_SPACE* PacketSpace = Builder->Path->PathID->Packets[Builder->EncryptLevel];
         PacketSpace->CurrentKeyPhaseBytesSent += (PayloadLength - Builder->EncryptionOverhead);
 
         //
@@ -1011,7 +1019,7 @@ QuicPacketBuilderFinalize(
         QuicPacketTraceType(Builder->Metadata),
         Builder->Metadata->PacketLength);
     QuicLossDetectionOnPacketSent(
-        &Connection->LossDetection,
+        &Builder->Path->PathID->LossDetection,
         Builder->Path,
         Builder->Metadata);
 
