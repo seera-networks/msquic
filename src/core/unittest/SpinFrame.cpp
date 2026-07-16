@@ -84,7 +84,13 @@ TEST(SpinFrame, SpinFrame1000000)
 
         do {
             TEST_QUIC_SUCCEEDED(CxPlatRandom(sizeof(FrameType), &FrameType));
-        } while (!QUIC_FRAME_IS_KNOWN(FrameType));
+            //
+            // Widen for the check so comparisons against frame types that don't
+            // fit in 16 bits (e.g. the address-discovery frames) aren't flagged
+            // as tautological by clang. Frame types above the 16-bit range are
+            // simply never generated here.
+            //
+        } while (!QUIC_FRAME_IS_KNOWN((uint64_t)FrameType));
 
         switch(FrameType) {
             case QUIC_FRAME_PADDING:
