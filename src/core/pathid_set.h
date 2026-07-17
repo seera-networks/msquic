@@ -125,6 +125,18 @@ QuicPathIDSetProcessLossDetectionTimerOperation(
     _Inout_ QUIC_PATHID_SET* PathIDSet
     );
 
+//
+// Uninitializes the loss detection of every path id, discarding any
+// outstanding sent packets. Used at connection shutdown to release the
+// stream references held by outstanding sent packet metadata so that the
+// streams (and ultimately the connection) can be freed.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicPathIDSetUninitializeLossDetection(
+    _Inout_ QUIC_PATHID_SET* PathIDSet
+    );
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathIDSetProcessPathCloseTimerOperation(

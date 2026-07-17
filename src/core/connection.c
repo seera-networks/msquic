@@ -1149,10 +1149,15 @@ QuicConnOnShutdownComplete(
     //
     QuicTimerWheelRemoveConnection(&Connection->Worker->TimerWheel, Connection);
     //
-    // Loss detection now lives on each QUIC_PATHID and is uninitialized in
-    // QuicPathIDFree when the PathID is released (via QuicPathIDSetFree at
-    // connection teardown), so there is nothing connection-level to uninit here.
+    // Loss detection now lives on each QUIC_PATHID. Discard every path id's
+    // outstanding sent packets here so that the stream references held by that
+    // sent packet metadata are released. Otherwise those references would keep
+    // the streams (and therefore the connection) alive, and the loss detection
+    // would only be uninitialized in QuicPathIDFree, which never runs because
+    // it is reached via QuicConnFree once the connection reference count drops
+    // to zero - a circular dependency that would hang connection teardown.
     //
+    QuicPathIDSetUninitializeLossDetection(&Connection->PathIDs);
     QuicSendUninitialize(&Connection->Send);
     QuicDatagramSendShutdown(&Connection->Datagram);
 

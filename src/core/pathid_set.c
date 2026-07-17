@@ -245,6 +245,22 @@ QuicPathIDSetProcessLossDetectionTimerOperation(
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
+QuicPathIDSetUninitializeLossDetection(
+    _Inout_ QUIC_PATHID_SET* PathIDSet
+    )
+{
+    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+    QuicPathIDSetGetPathIDs(PathIDSet, PathIDs, &PathIDCount);
+
+    for (uint8_t i = 0; i < PathIDCount; i++) {
+        QuicLossDetectionUninitialize(&PathIDs[i]->LossDetection);
+        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+    }
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
 QuicPathIDSetProcessPathCloseTimerOperation(
     _Inout_ QUIC_PATHID_SET* PathIDSet
     )
