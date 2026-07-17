@@ -1250,27 +1250,30 @@ QuicTestMultipath(
     TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
     TEST_NOT_EQUAL(nullptr, Context.Connection);
 
-    QuicAddr FirstLocalAddr, SecondLocalAddr;
+    QuicAddr FirstLocalAddr, SecondLocalAddr, PairAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(FirstLocalAddr));
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
-    SecondLocalAddr.IncrementPort();
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
 
     PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
 
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
     int Try = 0;
     do {
         Status = Connection.SetParam(
-            QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS,
-            sizeof(SecondLocalAddr.SockAddr),
-            &SecondLocalAddr.SockAddr);
-
-        if (Status != QUIC_STATUS_SUCCESS) {
+            QUIC_PARAM_CONN_ADD_PATH,
+            sizeof(PathParam),
+            &PathParam);
+        if (QUIC_FAILED(Status)) {
             delete ProbeHelper;
-            SecondLocalAddr.IncrementPort();
+            SecondLocalAddr.SetEphemeralPort();
             ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
         }
-    } while (Status == QUIC_STATUS_ADDRESS_IN_USE && ++Try <= 3);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+
     TEST_QUIC_SUCCEEDED(Status);
 
     TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
@@ -1289,11 +1292,12 @@ QuicTestMultipath(
     TEST_TRUE(Context.PathAddedEvent.WaitTimeout(1500));
     TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(1500));
     
+    PathParam = { &FirstLocalAddr.SockAddr, &PairAddr.SockAddr };
     TEST_QUIC_SUCCEEDED(
         Connection.SetParam(
-            QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS,
-            sizeof(FirstLocalAddr.SockAddr),
-            &FirstLocalAddr.SockAddr));
+            QUIC_PARAM_CONN_REMOVE_PATH,
+            sizeof(PathParam),
+            &PathParam));
 
     TEST_TRUE(Context.PathRemovedEvent.WaitTimeout(1500));
     TEST_TRUE(ClientContext.PathRemovedEvent.WaitTimeout(1500));

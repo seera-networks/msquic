@@ -851,17 +851,24 @@ ClientConnectionCallback(
         //
         printf("[conn][%p] Connected\n", Connection);
         if (MultipathEnabled) {
-            QUIC_ADDR SecondAddr = {0};
+            QUIC_ADDR SecondAddr = {0}, RemoteAddr = {0};
             uint32_t Addrlen = sizeof(SecondAddr);
             QUIC_STATUS Status = MsQuic->GetParam(Connection, QUIC_PARAM_CONN_LOCAL_ADDRESS, &Addrlen, &SecondAddr);
             if (QUIC_FAILED(Status)) {
                 printf("SetParam(QUIC_PARAM_CONN_LOCAL_ADDRESS) failed, 0x%x!\n", Status);
                 break;
             }
-            SecondAddr.Ipv4.sin_port = 0;
-            Status = MsQuic->SetParam(Connection, QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS, sizeof(SecondAddr), &SecondAddr);
+            Addrlen = sizeof(RemoteAddr);
+            Status = MsQuic->GetParam(Connection, QUIC_PARAM_CONN_REMOTE_ADDRESS, &Addrlen, &RemoteAddr);
             if (QUIC_FAILED(Status)) {
-                printf("SetParam(QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS) failed, 0x%x!\n", Status);
+                printf("SetParam(QUIC_PARAM_CONN_REMOTE_ADDRESS) failed, 0x%x!\n", Status);
+                break;
+            }
+            SecondAddr.Ipv4.sin_port = 0;
+            QUIC_PATH_PARAM PathParam = {&SecondAddr, &RemoteAddr};
+            Status = MsQuic->SetParam(Connection, QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+            if (QUIC_FAILED(Status)) {
+                printf("SetParam(QUIC_PARAM_CONN_ADD_PATH) failed, 0x%x!\n", Status);
                 break;
             }
         } else {
@@ -910,11 +917,17 @@ ClientConnectionCallback(
     case QUIC_CONNECTION_EVENT_PATH_ADDED:
         printf("[conn][%p] Path added PathId:%u\n", Connection, Event->PATH_ADDED.PathId);
 
-        QUIC_ADDR FirstAddr = {0};
+        QUIC_ADDR FirstAddr = {0}, RemoteAddr = {0};
         uint32_t Addrlen = sizeof(FirstAddr);
         QUIC_STATUS Status = MsQuic->GetParam(Connection, QUIC_PARAM_CONN_LOCAL_ADDRESS, &Addrlen, &FirstAddr);
         if (QUIC_FAILED(Status)) {
             printf("SetParam(QUIC_PARAM_CONN_LOCAL_ADDRESS) failed, 0x%x!\n", Status);
+            break;
+        }
+        Addrlen = sizeof(RemoteAddr);
+        Status = MsQuic->GetParam(Connection, QUIC_PARAM_CONN_REMOTE_ADDRESS, &Addrlen, &RemoteAddr);
+        if (QUIC_FAILED(Status)) {
+            printf("SetParam(QUIC_PARAM_CONN_REMOTE_ADDRESS) failed, 0x%x!\n", Status);
             break;
         }
         QUIC_PATH_STATUS PathStatus;
@@ -924,9 +937,10 @@ ClientConnectionCallback(
         if (QUIC_FAILED(Status)) {
             printf("SetParam(QUIC_PARAM_CONN_PATH_STATUS) failed, 0x%x!\n", Status);
         }
-        Status = MsQuic->SetParam(Connection, QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS, Addrlen, &FirstAddr);
+        QUIC_PATH_PARAM PathParam = {&FirstAddr, &RemoteAddr};
+        Status = MsQuic->SetParam(Connection, QUIC_PARAM_CONN_REMOVE_PATH, sizeof(PathParam), &PathParam);
         if (QUIC_FAILED(Status)) {
-            printf("SetParam(QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS) failed, 0x%x!\n", Status);
+            printf("SetParam(QUIC_PARAM_CONN_REMOVE_PATH) failed, 0x%x!\n", Status);
         }
         ClientSend(Connection);
         break;

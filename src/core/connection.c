@@ -6845,225 +6845,6 @@ Error:
     return Status;
 }
 
-
-//
-// Adds/removes a local address (multipath ADD/REMOVE_LOCAL_ADDRESS param).
-//
-
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-QUIC_STATUS
-QuicConnAddLocalAddress(
-    _In_ QUIC_CONNECTION* Connection,
-    _In_ QUIC_ADDR* LocalAddress
-    )
-{
-    if (QuicConnIsServer(Connection)) {
-        return QUIC_STATUS_NOT_SUPPORTED;
-    }
-
-    if (Connection->State.ClosedLocally) {
-        return QUIC_STATUS_INVALID_STATE;
-    }
-
-    BOOLEAN AddrInUse = FALSE;
-    if (Connection->State.LocalAddressSet) {
-        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-            if (QuicAddrCompare(
-                    &Connection->Paths[i].Route.LocalAddress,
-                    LocalAddress)) {
-                AddrInUse = TRUE;
-                break;
-            }
-        }
-    }
-
-    if (AddrInUse) {
-        return QUIC_STATUS_ADDRESS_IN_USE;
-    }
-
-    if (Connection->PathsCount == QUIC_MAX_PATH_COUNT) {
-        //
-        // Already tracking the maximum number of paths, and can't free
-        // any more.
-        //
-        return QUIC_STATUS_OUT_OF_MEMORY;
-    }
-
-    QUIC_PATH* Path = NULL;
-    if (!Connection->State.LocalAddressSet) {
-        Path = &Connection->Paths[0];
-        Connection->State.LocalAddressSet = TRUE;
-    } else {
-        if (Connection->PathsCount > 1) {
-            //
-            // Make room for the new path (at index 1).
-            //
-            CxPlatMoveMemory(
-                &Connection->Paths[2],
-                &Connection->Paths[1],
-                (Connection->PathsCount - 1) * sizeof(QUIC_PATH));
-            if (Connection->State.MultipathNegotiated) {
-                //
-                // Update all PathID back references.
-                //
-                for (uint8_t i = 2; i < Connection->PathsCount + 1; ++i) {
-                    if (Connection->Paths[i].PathID != NULL) {
-                        Connection->Paths[i].PathID->Path = &Connection->Paths[i];
-                    }
-                }
-            }
-
-        }
-        Path = &Connection->Paths[1];
-        QuicPathInitialize(Connection, Path);
-        Path->Allowance = UINT32_MAX;
-        Connection->PathsCount++;
-    }
-
-    CxPlatCopyMemory(&Path->Route.LocalAddress, LocalAddress, sizeof(QUIC_ADDR));
-
-    if (!(Connection->State.Started && Connection->State.HandshakeConfirmed)) {
-        return QUIC_STATUS_SUCCESS;
-    }
-
-    CXPLAT_DBG_ASSERT(Path != &Connection->Paths[0]);
-
-    QUIC_STATUS Status = QuicConnOpenNewPath(Connection, Path);
-    if (QUIC_FAILED(Status)) {
-        if (Path->Binding != NULL) {
-            QuicLibraryReleaseBinding(Path->Binding);
-            Path->Binding = NULL;
-        }
-        QuicPathRemove(Connection, 1);
-    } else {
-        if (Path->DestCid != NULL) {
-            QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
-        }
-    }
-
-    return Status;
-}
-
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-QUIC_STATUS
-QuicConnRemoveLocalAddress(
-    _In_ QUIC_CONNECTION* Connection,
-    _In_ QUIC_ADDR* LocalAddress
-    )
-{
-    if (QuicConnIsServer(Connection)) {
-        return QUIC_STATUS_INVALID_STATE;
-    }
-
-    if (!Connection->State.LocalAddressSet) {
-        return QUIC_STATUS_NOT_FOUND;
-    }
-
-    uint8_t PathIndex = Connection->PathsCount;
-    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-        if (QuicAddrCompare(
-                &Connection->Paths[i].Route.LocalAddress,
-                LocalAddress)) {
-            PathIndex = i;
-            break;
-        }
-    }
-
-    if (PathIndex == Connection->PathsCount) {
-        return QUIC_STATUS_NOT_FOUND;
-    }
-
-    QUIC_PATH* Path = &Connection->Paths[PathIndex];
-
-    if (!Connection->State.MultipathNegotiated) {
-        if (Path->IsActive && Connection->State.Started) {
-            return QUIC_STATUS_INVALID_STATE;
-        }
-
-        if (Path->DestCid != NULL &&
-            Connection->State.Started && Connection->State.HandshakeConfirmed) {
-            QuicPathIDRetireCid(Path->PathID, Path->DestCid);
-        }
-
-        if (Path->Binding != NULL) {
-            QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
-            QuicLibraryReleaseBinding(Path->Binding);
-            Path->Binding = NULL;
-        }
-
-        if (Connection->PathsCount == 1) {
-            if (!Connection->State.Started) {
-                Connection->State.LocalAddressSet = FALSE;
-            } else {
-                QuicTraceEvent(
-                    ConnError,
-                    "[conn][%p] ERROR, %s.",
-                    Connection,
-                    "Last Local Address Removed!");
-                QuicConnSilentlyAbort(Connection);
-                return QUIC_STATUS_ABORTED;
-            }
-        } else {
-            if (Path->IsActive) {
-                CXPLAT_DBG_ASSERT(PathIndex == 0);
-                if (!Connection->State.Started) {
-                    CXPLAT_DBG_ASSERT(Path->DestCid != NULL);
-                    CXPLAT_DBG_ASSERT(!Path->DestCid->CID.Retired);
-#if DEBUG
-                    QUIC_CID_CLEAR_PATH(Path->DestCid);
-#endif
-                    // Move the dest CID to the new active path.
-                    QUIC_CID_LIST_ENTRY* DestCid = Path->DestCid;
-                    Path->DestCid = NULL;
-                    QUIC_PATH* NewActivePath = &Connection->Paths[1];
-                    NewActivePath->DestCid = DestCid;
-                    QUIC_CID_SET_PATH(Connection, NewActivePath->DestCid, NewActivePath);
-                    
-                    QuicPathSetActive(Connection, NewActivePath);
-                    PathIndex = 1; // The removing path is now at index 1.
-                } else if (!Connection->State.HandshakeConfirmed) {
-                    QuicTraceEvent(
-                        ConnError,
-                        "[conn][%p] ERROR, %s.",
-                        Connection,
-                        "Active Local Address Removed during Handshake!");
-                    QuicConnSilentlyAbort(Connection);
-                    return QUIC_STATUS_ABORTED;
-                } else {
-                    uint8_t NewActivePathIndex = Connection->PathsCount;
-                    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-                        if (i != PathIndex && Connection->Paths[i].DestCid != NULL) {
-                            NewActivePathIndex = i;
-                            break;
-                        }
-                    }
-                    if (NewActivePathIndex == Connection->PathsCount) {
-                        QuicTraceEvent(
-                            ConnError,
-                            "[conn][%p] ERROR, %s.",
-                            Connection,
-                            "No Active Local Address Remaining!");
-                        QuicConnSilentlyAbort(Connection);
-                        return QUIC_STATUS_ABORTED;
-                    }
-                    QUIC_PATH* NewActivePath = &Connection->Paths[NewActivePathIndex];
-                    QuicPathSetActive(Connection, NewActivePath);
-                    PathIndex = NewActivePathIndex; // The removing path is now at the new active index.
-                }
-            }
-            QuicPathRemove(Connection, PathIndex);
-        }
-    } else {
-        Path->LocalClose = TRUE;
-        Path->SendAbandon = TRUE;
-        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
-    }
-
-    return QUIC_STATUS_SUCCESS;
-}
-
 // Opens new paths for the connection when the handshake is confirmed.
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
@@ -7391,6 +7172,16 @@ QuicConnAddPath(
             &Connection->Paths[2],
             &Connection->Paths[1],
             (Connection->PathsCount - 1) * sizeof(QUIC_PATH));
+        if (Connection->State.MultipathNegotiated) {
+            //
+            // Update all PathID back references.
+            //
+            for (uint8_t i = 2; i < Connection->PathsCount + 1; ++i) {
+                if (Connection->Paths[i].PathID != NULL) {
+                    Connection->Paths[i].PathID->Path = &Connection->Paths[i];
+                }
+            }
+        }
     }
 
     if (!Connection->State.LocalAddressSet && !Connection->State.RemoteAddressSet) {
@@ -7456,9 +7247,22 @@ QuicConnActivatePath(
         Param->LocalAddress,
         Param->RemoteAddress);
     if (Path != NULL) {
-        // If the path already exists, activate it.
-        QuicPathSetActive(Connection, Path);
+        if (!Connection->State.MultipathNegotiated) {
+            // If the path already exists, activate it.
+            QuicPathSetActive(Connection, Path);
+        } else {
+            // If the path already exists, activate it and set the send flag to notify the peer.
+            BOOLEAN PrevIsActive = Path->IsActive;
+            Path->IsActive = TRUE;
+            if (PrevIsActive != Path->IsActive) {
+                Path->SendStatus = TRUE;
+                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_AVAILABLE);
+            }
+        }
         return QUIC_STATUS_SUCCESS;
+    } else if (Connection->State.MultipathNegotiated) {
+        // If the path doesn't exist and multipath is negotiated, we can't activate it.
+        return QUIC_STATUS_NOT_FOUND;
     }
 
     // If the path doesn't exist, we try to create and activate it.
@@ -7718,81 +7522,87 @@ QuicConnRemovePath(
 
         if (LocalAddrMatch && RemoteAddrMatch) {
             QUIC_PATH* Path = &Connection->Paths[i];
-            uint8_t RemovingPathIndex = (uint8_t)i;
             PathFound = TRUE;
 
-            if (Path->DestCid != NULL && Connection->State.HandshakeConfirmed) {
-                QuicPathIDRetireCid(Path->PathID, Path->DestCid);
-            }
-
-            if (Path->Binding != NULL) {
-                QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
-                QuicLibraryReleaseBinding(Path->Binding);
-                Path->Binding = NULL;
-            }
-
-            if (Connection->PathsCount == 1) {
-                if (QuicConnIsClient(Connection) && !Connection->State.Started) {
-                    Connection->State.LocalAddressSet = FALSE;
-                    Connection->State.RemoteAddressSet = FALSE;
-                } else {
-                    QuicTraceEvent(
-                        ConnError,
-                        "[conn][%p] ERROR, %s.",
-                        Connection,
-                        "Last Path Removed!");
-                    QuicConnSilentlyAbort(Connection);
-                    return QUIC_STATUS_ABORTED;
+            if (!Connection->State.MultipathNegotiated) {
+                uint8_t RemovingPathIndex = (uint8_t)i;
+                if (Path->DestCid != NULL && Connection->State.HandshakeConfirmed) {
+                    QuicPathIDRetireCid(Path->PathID, Path->DestCid);
                 }
-            } else {
-                if (Path->IsActive) {
-                    CXPLAT_DBG_ASSERT(i == 0);
-                    if (QuicConnIsClient(Connection) && !Connection->State.Started) {
-                        CXPLAT_DBG_ASSERT(Path->DestCid != NULL);
-                        CXPLAT_DBG_ASSERT(!Path->DestCid->CID.Retired);
-#if DEBUG
-                        QUIC_CID_CLEAR_PATH(Path->DestCid);
-#endif
-                        // Move the dest CID to the new active path.
-                        QUIC_CID_LIST_ENTRY* DestCid = Path->DestCid;
-                        Path->DestCid = NULL;
-                        QUIC_PATH* NewActivePath = &Connection->Paths[1];
-                        NewActivePath->DestCid = DestCid;
-                        QUIC_CID_SET_PATH(Connection, NewActivePath->DestCid, NewActivePath);
 
-                        QuicPathSetActive(Connection, NewActivePath);
-                        RemovingPathIndex = 1; // The removing path is now at index 1.
-                    } else if (!Connection->State.HandshakeConfirmed) {
+                if (Path->Binding != NULL) {
+                    QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
+                    QuicLibraryReleaseBinding(Path->Binding);
+                    Path->Binding = NULL;
+                }
+
+                if (Connection->PathsCount == 1) {
+                    if (QuicConnIsClient(Connection) && !Connection->State.Started) {
+                        Connection->State.LocalAddressSet = FALSE;
+                        Connection->State.RemoteAddressSet = FALSE;
+                    } else {
                         QuicTraceEvent(
                             ConnError,
                             "[conn][%p] ERROR, %s.",
                             Connection,
-                            "Active Path Removed during Handshake!");
+                            "Last Path Removed!");
                         QuicConnSilentlyAbort(Connection);
                         return QUIC_STATUS_ABORTED;
-                    } else {
-                        uint8_t NewActivePathIndex = Connection->PathsCount;
-                        for (uint8_t j = 1; j < Connection->PathsCount; ++j) {
-                            if (Connection->Paths[j].DestCid != NULL) {
-                                NewActivePathIndex = j;
-                                break;
-                            }
-                        }
-                        if (NewActivePathIndex == Connection->PathsCount) {
+                    }
+                } else {
+                    if (Path->IsActive) {
+                        CXPLAT_DBG_ASSERT(i == 0);
+                        if (QuicConnIsClient(Connection) && !Connection->State.Started) {
+                            CXPLAT_DBG_ASSERT(Path->DestCid != NULL);
+                            CXPLAT_DBG_ASSERT(!Path->DestCid->CID.Retired);
+#if DEBUG
+                            QUIC_CID_CLEAR_PATH(Path->DestCid);
+#endif
+                            // Move the dest CID to the new active path.
+                            QUIC_CID_LIST_ENTRY* DestCid = Path->DestCid;
+                            Path->DestCid = NULL;
+                            QUIC_PATH* NewActivePath = &Connection->Paths[1];
+                            NewActivePath->DestCid = DestCid;
+                            QUIC_CID_SET_PATH(Connection, NewActivePath->DestCid, NewActivePath);
+
+                            QuicPathSetActive(Connection, NewActivePath);
+                            RemovingPathIndex = 1; // The removing path is now at index 1.
+                        } else if (!Connection->State.HandshakeConfirmed) {
                             QuicTraceEvent(
                                 ConnError,
                                 "[conn][%p] ERROR, %s.",
                                 Connection,
-                                "No Active Path Remaining!");
+                                "Active Path Removed during Handshake!");
                             QuicConnSilentlyAbort(Connection);
                             return QUIC_STATUS_ABORTED;
+                        } else {
+                            uint8_t NewActivePathIndex = Connection->PathsCount;
+                            for (uint8_t j = 1; j < Connection->PathsCount; ++j) {
+                                if (Connection->Paths[j].DestCid != NULL) {
+                                    NewActivePathIndex = j;
+                                    break;
+                                }
+                            }
+                            if (NewActivePathIndex == Connection->PathsCount) {
+                                QuicTraceEvent(
+                                    ConnError,
+                                    "[conn][%p] ERROR, %s.",
+                                    Connection,
+                                    "No Active Path Remaining!");
+                                QuicConnSilentlyAbort(Connection);
+                                return QUIC_STATUS_ABORTED;
+                            }
+                            QUIC_PATH* NewActivePath = &Connection->Paths[NewActivePathIndex];
+                            QuicPathSetActive(Connection, NewActivePath);
+                            RemovingPathIndex = NewActivePathIndex; // The removing path is now at the new active index.
                         }
-                        QUIC_PATH* NewActivePath = &Connection->Paths[NewActivePathIndex];
-                        QuicPathSetActive(Connection, NewActivePath);
-                        RemovingPathIndex = NewActivePathIndex; // The removing path is now at the new active index.
                     }
+                    QuicPathRemove(Connection, RemovingPathIndex);
                 }
-                QuicPathRemove(Connection, RemovingPathIndex);
+            } else {
+                Path->LocalClose = TRUE;
+                Path->SendAbandon = TRUE;
+                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
             }
         }
     }
@@ -8670,29 +8480,6 @@ QuicConnParamSet(
             Connection->State.CloseAsync);
 
         break;
-
-    case QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS: {
-
-        if (BufferLength != sizeof(QUIC_ADDR) || Buffer == NULL ||
-            !QuicAddrIsValid((QUIC_ADDR*)Buffer)) {
-            Status = QUIC_STATUS_INVALID_PARAMETER;
-            break;
-        }
-        Status = QuicConnAddLocalAddress(Connection, (QUIC_ADDR*)Buffer);
-        break;
-    }
-
-    case QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS: {
-
-        if (BufferLength != sizeof(QUIC_ADDR) || Buffer == NULL ||
-            !QuicAddrIsValid((QUIC_ADDR*)Buffer)) {
-            Status = QUIC_STATUS_INVALID_PARAMETER;
-            break;
-        }
-
-        Status = QuicConnRemoveLocalAddress(Connection, (QUIC_ADDR*)Buffer);
-        break;
-    }
 
     case QUIC_PARAM_CONN_ADD_BOUND_ADDRESS: {
 
