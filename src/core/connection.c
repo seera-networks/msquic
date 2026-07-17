@@ -7240,8 +7240,21 @@ QuicConnAddPath(
         Connection->State.RemoteAddressSet = TRUE;
     }
 
-    // Can't open new path until handshake is confirmed.
-    if (!Connection->State.HandshakeConfirmed) {
+    //
+    // Open the path (create its UDP binding, assign a path id and start path
+    // validation) as soon as the handshake is complete - i.e. once 1-RTT keys
+    // exist and path challenges can be sent. Deferring all the way to handshake
+    // *confirmation* is unnecessary and makes the open happen asynchronously,
+    // after QuicConnAddPath has already returned success. A binding failure
+    // (e.g. the requested local port is in use) would then be silent and
+    // unrecoverable by the caller. Opening here surfaces such failures
+    // synchronously so the caller can retry with a different address.
+    //
+    // Before the handshake completes (e.g. a path added before the connection
+    // is started) the path is left pending and opened later by
+    // QuicConnOpenNewPaths when the handshake is confirmed.
+    //
+    if (!Connection->State.Connected) {
         goto Done;
     }
 
