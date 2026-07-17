@@ -393,28 +393,32 @@ QuicPacketBuilderPrepare(
             Builder->BatchId);
 
         //
-        // Occassionally skip a packet number for improved security.
+        // Occassionally skip a packet number for improved security. This must
+        // operate on the path id's packet number space (the same counter used
+        // to number the packet below); otherwise the skipped number can collide
+        // with a real packet number, causing a legitimate ACK to be misdetected
+        // as an injection attack.
         //
-        if (Connection->Send.NextSkippedPacketNumber == Connection->Send.NextPacketNumber) {
-            Connection->Send.SkippedPacketNumber =
-                Connection->Send.NextPacketNumber++;
+        QUIC_PATHID* PathID = Builder->Path->PathID;
+        if (PathID->NextSkippedPacketNumber == PathID->NextPacketNumber) {
+            PathID->SkippedPacketNumber = PathID->NextPacketNumber++;
             QuicTraceLogConnWarning(
                 SkipPacketNumber,
                 Connection,
                 "Skipped packet number %llu",
-                Connection->Send.SkippedPacketNumber);
+                PathID->SkippedPacketNumber);
 
             //
             // Randomly skip a packet number (from 0 to 65535).
             //
             uint16_t RandomSkip = 0;
             CxPlatRandom(sizeof(RandomSkip), &RandomSkip);
-            Connection->Send.NextSkippedPacketNumber =
-                Connection->Send.NextPacketNumber + RandomSkip;
+            PathID->NextSkippedPacketNumber =
+                PathID->NextPacketNumber + RandomSkip;
         }
 
         Builder->Metadata->FrameCount = 0;
-        Builder->Metadata->PacketNumber = Builder->Path->PathID->NextPacketNumber++;
+        Builder->Metadata->PacketNumber = PathID->NextPacketNumber++;
         Builder->Metadata->Flags.KeyType = NewPacketKeyType;
         Builder->Metadata->Flags.IsAckEliciting = FALSE;
         Builder->Metadata->Flags.IsMtuProbe = IsPathMtuDiscovery;

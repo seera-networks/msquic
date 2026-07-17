@@ -30,6 +30,16 @@ QuicPathIDInitialize(
     PathID->SourceCidLimit = QUIC_ACTIVE_CONNECTION_ID_LIMIT;
     CxPlatListInitializeHead(&PathID->DestCids);
     QuicLossDetectionInitialize(&PathID->LossDetection);
+    PathID->SkippedPacketNumber = UINT64_MAX;
+    //
+    // Randomize the initial packet number between 0 and 255 for improved
+    // security, then pick the first packet number to skip.
+    //
+    uint8_t RandomValue = 0;
+    CxPlatRandom(sizeof(RandomValue), &RandomValue);
+    PathID->NextPacketNumber = RandomValue;
+    CxPlatRandom(sizeof(RandomValue), &RandomValue);
+    PathID->NextSkippedPacketNumber = PathID->NextPacketNumber + RandomValue;
     PathID->RefCount = 1;
 #if DEBUG
     PathID->RefTypeCount[QUIC_PATHID_REF_PATHID_SET] = 1;

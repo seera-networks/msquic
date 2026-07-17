@@ -156,6 +156,20 @@ typedef struct QUIC_PATHID {
     uint64_t NextPacketNumber;
 
     //
+    // The most recently skipped packet number (UINT64_MAX if none). A skipped
+    // packet number is never actually sent, so if the peer ever ACKs it we know
+    // it is an injection/optimistic-ACK attack. These must track the same
+    // counter as NextPacketNumber (which is per-path id), otherwise a legitimate
+    // ACK of a real packet number can be misdetected as an attack.
+    //
+    uint64_t SkippedPacketNumber;
+
+    //
+    // The packet number at which to skip next.
+    //
+    uint64_t NextSkippedPacketNumber;
+
+    //
     // Statistics
     //
     QUIC_PATHID_STATS Stats;
