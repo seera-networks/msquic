@@ -7286,7 +7286,8 @@ QuicConnActivatePath(
             }
         }
         return QUIC_STATUS_SUCCESS;
-    } else if (Connection->State.MultipathNegotiated) {
+    }
+    if (Connection->State.MultipathNegotiated) {
         // If the path doesn't exist and multipath is negotiated, we can't activate it.
         return QUIC_STATUS_NOT_FOUND;
     }
