@@ -193,7 +193,7 @@ QuicPathIDSetFree(
     if (PathIDSet->CurrentPathIDCount == 0) {
         goto Exit;
     } else if (!PathIDSet->Flags.HashTableInitialized) {
-        QuicPathIDFree(PathIDSet->SINGLE.PathID);
+        QuicPathIDRelease(PathIDSet->SINGLE.PathID, QUIC_PATHID_REF_PATHID_SET);
         PathIDSet->SINGLE.PathID = NULL;
     } else {
         CXPLAT_HASHTABLE_ENUMERATOR Enumerator;
