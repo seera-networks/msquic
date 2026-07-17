@@ -668,7 +668,7 @@ QuicTestServerMigration(
 
 void
 QuicTestMultipath(
-    _In_ int Family
+    _In_ const FamilyArgs& Params
     );
 
 void

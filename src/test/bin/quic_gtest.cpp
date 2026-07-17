@@ -934,9 +934,9 @@ TEST_P(WithFamilyArgs, LocalPathChanges) {
 TEST_P(WithFamilyArgs, Multipath) {
     TestLoggerT<ParamType> Logger("QuicTestMultipath", GetParam());
     if (TestingKernelMode) {
-        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipath), GetParam().Family));
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipath), GetParam()));
     } else {
-        QuicTestMultipath(GetParam().Family);
+        QuicTestMultipath(GetParam());
     }
 }
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES

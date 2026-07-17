@@ -1208,9 +1208,10 @@ QuicTestServerMigration(
 
 void
 QuicTestMultipath(
-    _In_ int Family
+    _In_ const FamilyArgs& Params
     )
 {
+    const int Family = Params.Family;
     PathTestContext Context;
     PathTestClientContext ClientContext;
     MsQuicRegistration Registration(true);
