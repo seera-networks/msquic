@@ -6763,9 +6763,19 @@ QuicConnOpenNewPath(
         Path->Binding,
         &Path->Route.LocalAddress);
 
-    CxPlatCopyMemory(&Path->Route.RemoteAddress,
-        &Connection->Paths[0].Route.RemoteAddress,
-        sizeof(QUIC_ADDR));
+    //
+    // Only inherit the primary path's remote address when the caller did not
+    // request a specific one (mirroring the UdpConfig.RemoteAddress selection
+    // above). Overwriting unconditionally would discard an explicitly
+    // requested remote address (e.g. QUIC_PARAM_CONN_ADD_PATH targeting a new
+    // server address), leaving the path unfindable by QuicConnGetPathByAddress.
+    //
+    if (QuicAddrIsWildCard(&Path->Route.RemoteAddress) &&
+        QuicAddrGetPort(&Path->Route.RemoteAddress) == 0) {
+        CxPlatCopyMemory(&Path->Route.RemoteAddress,
+            &Connection->Paths[0].Route.RemoteAddress,
+            sizeof(QUIC_ADDR));
+    }
     if (Connection->State.MultipathNegotiated) {
         PathID = QuicPathIDSetGetUnusedPathID(&Connection->PathIDs);
         if (PathID != NULL) {
