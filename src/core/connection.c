@@ -1265,6 +1265,20 @@ QuicConnTryClose(
         }
     }
 
+    if (Connection->Worker == NULL) {
+        //
+        // The connection is being closed before it was ever assigned to a
+        // worker - e.g. an allocation failure while creating the initial path
+        // id in QuicConnAlloc triggers a transport error. There is no worker to
+        // run a closing/draining period, its timer wheel does not exist, and
+        // nothing has been sent to the peer, so skip all network-facing close
+        // handling (timers, send flags, operation queueing). QuicConnAlloc
+        // tears the connection down immediately afterward.
+        //
+        Connection->State.ProcessShutdownComplete = TRUE;
+        return;
+    }
+
     BOOLEAN ResultQuicStatus = !!(Flags & QUIC_CLOSE_QUIC_STATUS);
 
     BOOLEAN IsFirstCloseForConnection = TRUE;
