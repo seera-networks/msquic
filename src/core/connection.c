@@ -6449,6 +6449,17 @@ QuicConnProcessRouteCompletion(
             PathId);
 
         CXPLAT_DBG_ASSERT(Path->Binding != NULL);
+        //
+        // Remove this connection's source CIDs from the binding's lookup before
+        // releasing it. Otherwise, when the binding is torn down its lookup
+        // still references these CIDs and QuicLookupUninitialize asserts
+        // (CidCount == 0). Matches the client cleanup in
+        // QuicPathIDSetTryFreePathID. The server shares its binding across
+        // connections and removes its CIDs via QuicConnUnregister instead.
+        //
+        if (!QuicConnIsServer(Connection)) {
+            QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
+        }
         QuicLibraryReleaseBinding(Path->Binding);
         Path->Binding = NULL;
         QuicPathRemove(Connection, PathIndex);
