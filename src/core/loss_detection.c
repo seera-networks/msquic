@@ -502,10 +502,16 @@ QuicLossDetectionOnPacketAcknowledged(
     _In_ uint64_t AckDelay
     )
 {
-    QUIC_CONNECTION* Connection = QuicLossDetectionGetPathID(LossDetection)->Connection;
+    QUIC_PATHID* LossPathID = QuicLossDetectionGetPathID(LossDetection);
+    QUIC_CONNECTION* Connection = LossPathID->Connection;
     uint8_t PathIndex;
+    //
+    // Path may be NULL if the QUIC_PATH the packet was sent on has since been
+    // removed (e.g. after connection migration). Path-specific processing below
+    // is guarded accordingly; packet-space state lives on the path id that owns
+    // this loss detection (LossPathID), which is always valid here.
+    //
     QUIC_PATH* Path = QuicConnGetPathByID(Connection, Packet->PathId, &PathIndex);
-    CXPLAT_DBG_ASSERT(Path != NULL);
     UNREFERENCED_PARAMETER(PathIndex);
 
     _Analysis_assume_(
@@ -522,7 +528,7 @@ QuicLossDetectionOnPacketAcknowledged(
         QuicCryptoHandshakeConfirmed(&Connection->Crypto, TRUE);
     }
 
-    QUIC_PACKET_SPACE* PacketSpace = Path->PathID->Packets[QUIC_ENCRYPT_LEVEL_1_RTT];
+    QUIC_PACKET_SPACE* PacketSpace = LossPathID->Packets[QUIC_ENCRYPT_LEVEL_1_RTT];
     if (EncryptLevel == QUIC_ENCRYPT_LEVEL_1_RTT &&
         PacketSpace->AwaitingKeyPhaseConfirmation &&
         Packet->Flags.KeyPhase == PacketSpace->CurrentKeyPhase &&
@@ -540,7 +546,7 @@ QuicLossDetectionOnPacketAcknowledged(
         case QUIC_FRAME_ACK:
         case QUIC_FRAME_ACK_1:
             QuicAckTrackerOnAckFrameAcked(
-                &Path->PathID->Packets[EncryptLevel]->AckTracker,
+                &LossPathID->Packets[EncryptLevel]->AckTracker,
                 Packet->Frames[i].ACK.LargestAckedPacketNumber);
             break;
 

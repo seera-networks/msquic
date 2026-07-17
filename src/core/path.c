@@ -134,7 +134,14 @@ QuicPathRemove(
     // above the path being removed lives at Paths[Index], so reference it
     // directly rather than through the (now possibly stale) Path pointer.
     //
-    QuicPathIDRelease(Connection->Paths[Index].PathID, QUIC_PATHID_REF_PATH);
+    // PathID can be NULL when a path was added but failed to fully open (e.g.
+    // QuicConnOpenNewPath failing at binding creation, before a PathID is
+    // assigned); QuicConnAddPath then calls here to undo the half-added slot.
+    //
+    if (Connection->Paths[Index].PathID != NULL) {
+        QuicPathIDRelease(Connection->Paths[Index].PathID, QUIC_PATHID_REF_PATH);
+        Connection->Paths[Index].PathID = NULL;
+    }
 
 #if DEBUG
     if (Connection->Paths[Index].DestCid) {
