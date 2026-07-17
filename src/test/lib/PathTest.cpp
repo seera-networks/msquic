@@ -316,11 +316,8 @@ QuicTestProbePath(
     TEST_EQUAL(Status, QUIC_STATUS_SUCCESS);
 
     if (DeferConnIDGen) {
-        TEST_QUIC_SUCCEEDED(
-            Context.Connection->SetParam(
-                QUIC_PARAM_CONN_GENERATE_CONN_ID,
-                0,
-                NULL));
+        BOOLEAN ReplaceExistingCids = FALSE;
+        TEST_QUIC_SUCCEEDED(Context.Connection->SetParam(QUIC_PARAM_CONN_GENERATE_CONN_ID, sizeof(ReplaceExistingCids), &ReplaceExistingCids));
     }
     
     TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout * 10));
@@ -516,7 +513,8 @@ QuicTestAddPathBeforeStart(
     TEST_NOT_EQUAL(nullptr, Context.Connection);
 
     if (DeferConnIDGen) {
-        TEST_QUIC_SUCCEEDED(Context.Connection->SetParam(QUIC_PARAM_CONN_GENERATE_CONN_ID, 0, NULL));
+        BOOLEAN ReplaceExistingCids = FALSE;
+        TEST_QUIC_SUCCEEDED(Context.Connection->SetParam(QUIC_PARAM_CONN_GENERATE_CONN_ID, sizeof(ReplaceExistingCids), &ReplaceExistingCids));
     }
 
     TEST_TRUE(AddedPathValidatedEvent.WaitTimeout(TestWaitTimeout * 20));
@@ -996,7 +994,8 @@ QuicTestServerProbePath(
     TEST_EQUAL(Status, QUIC_STATUS_SUCCESS);
 
     if (Params.DeferConnIDGen) {
-        TEST_QUIC_SUCCEEDED(Connection.SetParam(QUIC_PARAM_CONN_GENERATE_CONN_ID, 0, NULL));
+        BOOLEAN ReplaceExistingCids = FALSE;
+        TEST_QUIC_SUCCEEDED(Connection.SetParam(QUIC_PARAM_CONN_GENERATE_CONN_ID, sizeof(ReplaceExistingCids), &ReplaceExistingCids));
     }
     
     TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout * 10));
