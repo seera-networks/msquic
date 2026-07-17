@@ -6625,6 +6625,22 @@ QuicConnProcessPathValidationTimerOperation(
             Connection,
             Path->ID);
         QuicPerfCounterIncrement(Connection->Partition, QUIC_PERF_COUNTER_PATH_FAILURE);
+        //
+        // Release the abandoned path's UDP binding before removing it, matching
+        // the convention used by every other QuicPathRemove caller (QuicPathRemove
+        // itself does not release bindings). Only do this when the path will
+        // actually be removed (PathsCount > 1); for the last remaining path
+        // QuicPathRemove keeps Paths[0] intact and its binding is released later
+        // during connection teardown. When removing the active path (i == 0),
+        // QuicPathRemove swaps in a fallback, so nulling the binding here leaves
+        // the abandoned (now released) binding on the slot that gets removed while
+        // the promoted path keeps its own.
+        //
+        if (Connection->PathsCount > 1 &&
+            Connection->Paths[i].Binding != NULL) {
+            QuicLibraryReleaseBinding(Connection->Paths[i].Binding);
+            Connection->Paths[i].Binding = NULL;
+        }
         if (QuicPathRemove(Connection, i)) {
             //
             // Do not increase i: paths have been shifted with the removal.
