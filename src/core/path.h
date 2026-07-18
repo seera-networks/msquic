@@ -55,6 +55,11 @@ typedef struct QUIC_PATH {
     BOOLEAN InUse : 1;
 
     //
+    // Indicates the path is bound to a local address.
+    //
+    BOOLEAN UseBound : 1;
+
+    //
     // Indicates this is the primary path being used by the connection.
     //
     BOOLEAN IsActive : 1;

@@ -299,7 +299,7 @@ QuicPathIDSetTryFreePathID(
     QUIC_PATH* Path = QuicConnGetPathByID(Connection, PathID->Path->ID, &PathIndex);
     CXPLAT_DBG_ASSERT(PathID->Path == Path);
 
-    if (!QuicConnIsServer(Connection)) {
+    if (!Path->UseBound) {
         QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
     }
     QuicLibraryReleaseBinding(Path->Binding);

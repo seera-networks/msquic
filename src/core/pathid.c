@@ -604,6 +604,9 @@ QuicPathIDReplaceRetiredCids(
                 "Non-active path has no replacement for retired CID.");
             CXPLAT_DBG_ASSERT(i != 0);
             CXPLAT_DBG_ASSERT(PathID->Connection->Paths[i].Binding != NULL);
+            if (!PathID->Connection->Paths[i].UseBound) {
+                QuicBindingRemoveAllSourceConnectionIDs(PathID->Connection->Paths[i].Binding, PathID->Connection);
+            }
             QuicLibraryReleaseBinding(PathID->Connection->Paths[i].Binding);
             PathID->Connection->Paths[i].Binding = NULL;
             QuicPathRemove(PathID->Connection, i);

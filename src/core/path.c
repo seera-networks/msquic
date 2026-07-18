@@ -425,6 +425,7 @@ QuicConnGetPathForPacket(
     if (Connection->Paths[0].DestCid->CID.Length == 0) {
         Path->DestCid = Connection->Paths[0].DestCid; // TODO - Copy instead?
     }
+    Path->UseBound = TRUE;
     Path->Binding = Bound->Binding;
     QuicPathIDAddRef(PathID, QUIC_PATHID_REF_PATH);
     Path->PathID = PathID;

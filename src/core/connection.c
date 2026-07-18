@@ -6457,7 +6457,7 @@ QuicConnProcessRouteCompletion(
         // QuicPathIDSetTryFreePathID. The server shares its binding across
         // connections and removes its CIDs via QuicConnUnregister instead.
         //
-        if (!QuicConnIsServer(Connection)) {
+        if (!Path->UseBound) {
             QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
         }
         QuicLibraryReleaseBinding(Path->Binding);
@@ -6663,6 +6663,9 @@ QuicConnProcessPathValidationTimerOperation(
         //
         if (Connection->PathsCount > 1 &&
             Connection->Paths[i].Binding != NULL) {
+            if (!Connection->Paths[i].UseBound) {
+                QuicBindingRemoveAllSourceConnectionIDs(Connection->Paths[i].Binding, Connection);
+            }
             QuicLibraryReleaseBinding(Connection->Paths[i].Binding);
             Connection->Paths[i].Binding = NULL;
         }
