@@ -121,7 +121,7 @@ QuicPathRemove(
         // FallbackIndex and we remove it there. In multipath mode no swap
         // happens (QuicPathSetActive only sets the new path's IsActive flag),
         // so the path being removed is still at index 0 and Index must stay 0
-        // — otherwise we would remove the just-promoted fallback path instead,
+        // -- otherwise we would remove the just-promoted fallback path instead,
         // leaking its UDP binding.
         //
         if (!Connection->State.MultipathNegotiated) {

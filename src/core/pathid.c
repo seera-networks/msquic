@@ -256,7 +256,7 @@ QuicPathIDGenerateNewSourceCid(
     CXPLAT_DBG_ASSERT(QuicPathIDSourceCidsCount(PathID) < PathID->SourceCidLimit);
 
     //
-    // Find all the bindings that are currently in use by this connection —
+    // Find all the bindings that are currently in use by this connection --
     // both the per-path bindings and the bindings created for seera's
     // bound-address (multi-local-address / NAT-traversal / server-migration)
     // feature, so the new source CID is registered with every one of them.
