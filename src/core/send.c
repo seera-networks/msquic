@@ -665,47 +665,12 @@ QuicSendWriteFrames(
         goto Exit;
     }
 
-    if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_RESPONSE) {
-
-        uint8_t i;
-        for (i = 0; i < Connection->PathsCount; ++i) {
-            QUIC_PATH* TempPath = &Connection->Paths[i];
-            if (!TempPath->SendResponse) {
-                continue;
-            }
-
-            QUIC_PATH_RESPONSE_EX Frame = { 0 };
-            CxPlatCopyMemory(Frame.Data, TempPath->Response, sizeof(Frame.Data));
-
-            if (QuicPathChallengeFrameEncode(
-                    QUIC_FRAME_PATH_RESPONSE,
-                    &Frame,
-                    &Builder->DatagramLength,
-                    AvailableBufferLength,
-                    Builder->Datagram->Buffer)) {
-
-                TempPath->SendResponse = FALSE;
-                CxPlatCopyMemory(
-                    Builder->Metadata->Frames[Builder->Metadata->FrameCount].PATH_RESPONSE.Data,
-                    Frame.Data,
-                    sizeof(Frame.Data));
-                if (QuicPacketBuilderAddFrame(Builder, QUIC_FRAME_PATH_RESPONSE, TRUE)) {
-                    break;
-                }
-            } else {
-                RanOutOfRoom = TRUE;
-                break;
-            }
-        }
-
-        if (i == Connection->PathsCount) {
-            Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_RESPONSE;
-        }
-
-        if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
-            return TRUE;
-        }
-    }
+    //
+    // PATH_RESPONSE frames are not written here. A response must go out on the
+    // same path its PATH_CHALLENGE arrived on, which is generally not the path
+    // this builder is targeting, so they are sent separately, per-path, by
+    // `QuicSendPathResponses` (invoked from `QuicSendFlush`).
+    //
 
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_ABANDON) {
 
@@ -1565,6 +1530,104 @@ QuicSendPathChallenges(
 #pragma warning(pop)
 }
 
+//
+// This function sends a path response frame out on each path that currently
+// needs one sent. A PATH_RESPONSE must be sent on the same network path the
+// corresponding PATH_CHALLENGE was received on (RFC 9000, Section 8.2.2), so -
+// like path challenges - each response is built into its own packet targeting
+// that specific path, rather than being piggybacked onto whatever path the
+// connection is actively sending on. Padded to the min MTU (when the path's
+// min MTU is not yet validated) so the peer can validate the path's MTU.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicSendPathResponses(
+    _In_ QUIC_SEND* Send
+    )
+{
+#pragma warning(push)
+#pragma warning(disable:6001) // Using uninitialized memory
+    QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
+
+    CXPLAT_DBG_ASSERT(Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_1_RTT] != NULL);
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+
+        QUIC_PATH* Path = &Connection->Paths[i];
+        if (!Path->SendResponse ||
+            Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            continue;
+        }
+
+        if (!CxPlatIsRouteReady(Connection, Path)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_PATH_RESPONSE;
+            continue;
+        }
+
+        QUIC_PACKET_BUILDER Builder = { 0 };
+        if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
+            continue;
+        }
+        _Analysis_assume_(Builder.Metadata != NULL);
+
+        if (!QuicPacketBuilderPrepareForControlFrames(
+                &Builder, FALSE, QUIC_CONN_SEND_FLAG_PATH_RESPONSE)) {
+            continue;
+        }
+
+        if (!Path->IsMinMtuValidated) {
+            //
+            // Path responses need to be padded to at least the same as initial
+            // packets to allow the peer to validate min MTU.
+            //
+            Builder.MinimumDatagramLength =
+                MaxUdpPayloadSizeForFamily(
+                    QuicAddrGetFamily(&Builder.Path->Route.RemoteAddress),
+                    Builder.Path->Mtu);
+
+            if ((uint32_t)Builder.MinimumDatagramLength > Builder.Datagram->Length) {
+                //
+                // If we're limited by amplification protection, just pad up to
+                // that limit instead.
+                //
+                Builder.MinimumDatagramLength = (uint16_t)Builder.Datagram->Length;
+            }
+        }
+
+        uint16_t AvailableBufferLength =
+            (uint16_t)Builder.Datagram->Length - Builder.EncryptionOverhead;
+
+        QUIC_PATH_RESPONSE_EX Frame = { 0 };
+        CxPlatCopyMemory(Frame.Data, Path->Response, sizeof(Frame.Data));
+
+        BOOLEAN Result =
+            QuicPathChallengeFrameEncode(
+                QUIC_FRAME_PATH_RESPONSE,
+                &Frame,
+                &Builder.DatagramLength,
+                AvailableBufferLength,
+                Builder.Datagram->Buffer);
+
+        CXPLAT_DBG_ASSERT(Result);
+        if (Result) {
+            CxPlatCopyMemory(
+                Builder.Metadata->Frames[Builder.Metadata->FrameCount].PATH_RESPONSE.Data,
+                Frame.Data,
+                sizeof(Frame.Data));
+
+            Result = QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PATH_RESPONSE, TRUE);
+            CXPLAT_DBG_ASSERT(!Result);
+            UNREFERENCED_PARAMETER(Result);
+
+            Path->SendResponse = FALSE;
+        }
+
+        QuicPacketBuilderFinalize(&Builder, TRUE);
+        QuicPacketBuilderCleanup(&Builder);
+    }
+#pragma warning(pop)
+}
+
 typedef enum QUIC_SEND_RESULT {
 
     QUIC_SEND_COMPLETE,
@@ -1640,6 +1703,17 @@ QuicSendFlush(
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_CHALLENGE) {
         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CHALLENGE;
         QuicSendPathChallenges(Send);
+    }
+
+    //
+    // Send path responses.
+    // Each is sent on the path its challenge was received on, so - like path
+    // challenges - they cannot be piggybacked onto the active path's packet.
+    // `QuicSendPathResponses` might re-queue a response if the route isn't ready.
+    //
+    if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_RESPONSE) {
+        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_RESPONSE;
+        QuicSendPathResponses(Send);
     }
 
     QUIC_PACKET_BUILDER Builder = { 0 };
