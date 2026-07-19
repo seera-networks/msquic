@@ -748,6 +748,8 @@ public:
     MsQuicSettings& SetServerMigrationEnabled(bool value) { ServerMigrationEnabled = value; IsSet.ServerMigrationEnabled = TRUE; return *this; }
     MsQuicSettings& SetIgnoreUnreachable(bool value) { IgnoreUnreachable = value; IsSet.IgnoreUnreachable = TRUE; return *this; }
     MsQuicSettings& SetMultipathEnabled(bool value) { MultipathEnabled = value; IsSet.MultipathEnabled = TRUE; return *this; }
+    MsQuicSettings& SetSendObservedAddressReports(bool value) { SendObservedAddressReports = value; IsSet.SendObservedAddressReports = TRUE; return *this; }
+    MsQuicSettings& SetReceiveObservedAddressReports(bool value) { ReceiveObservedAddressReports = value; IsSet.ReceiveObservedAddressReports = TRUE; return *this; }
 #endif
 
     QUIC_STATUS

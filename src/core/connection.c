@@ -2110,8 +2110,22 @@ QuicConnGenerateLocalTransportParameters(
         QUIC_TP_FLAG_MAX_ACK_DELAY |
         QUIC_TP_FLAG_MIN_ACK_DELAY |
         QUIC_TP_FLAG_ACTIVE_CONNECTION_ID_LIMIT |
-        QUIC_TP_FLAG_OBSERVED_ADDRESS |
         QUIC_TP_FLAG_NAT_TRAVERSE;
+
+    //
+    // The observed_address transport parameter is only sent when at least one
+    // direction of the extension is enabled; its value states which.
+    //
+    if (Connection->Settings.SendObservedAddressReports ||
+        Connection->Settings.ReceiveObservedAddressReports) {
+        LocalTP->Flags |= QUIC_TP_FLAG_OBSERVED_ADDRESS;
+        LocalTP->ObservedAddressRole =
+            Connection->Settings.SendObservedAddressReports ?
+                (Connection->Settings.ReceiveObservedAddressReports ?
+                    QUIC_TP_OBSERVED_ADDRESS_ROLE_BOTH :
+                    QUIC_TP_OBSERVED_ADDRESS_ROLE_SEND_ONLY) :
+                QUIC_TP_OBSERVED_ADDRESS_ROLE_RECEIVE_ONLY;
+    }
 
     if (Connection->Settings.IdleTimeoutMs != 0) {
         LocalTP->Flags |= QUIC_TP_FLAG_IDLE_TIMEOUT;
@@ -2769,7 +2783,7 @@ QuicConnProcessPeerTransportParameters(
             UINT32_MAX);
     }
 
-    if (Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_OBSERVED_ADDRESS) {
+    if (QuicConnPeerWantsObservedAddressReports(Connection)) {
         Connection->State.ObservedAddressNegotiated = TRUE;
         QuicSendSetSendFlag(
             &Connection->Send,
@@ -5533,7 +5547,21 @@ QuicConnRecvFrames(
         }
 
         case QUIC_FRAME_OBSERVED_ADDRESS_V4:
-        case QUIC_FRAME_OBSERVED_ADDRESS_V6: { // Always accept the frame, because we always enable support.
+        case QUIC_FRAME_OBSERVED_ADDRESS_V6: {
+            if (!Connection->Settings.ReceiveObservedAddressReports) {
+                //
+                // We never asked to receive these reports, so the peer isn't
+                // allowed to send them.
+                //
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Received OBSERVED_ADDRESS frame when not negotiated");
+                QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+                return FALSE;
+            }
+
             QUIC_OBSERVED_ADDRESS_EX Frame;
             if (!QuicObservedAddressFrameDecode(FrameType, PayloadLength, Payload, &Offset, &Frame)) {
                 QuicTraceEvent(
@@ -9542,7 +9570,7 @@ QuicConnApplyNewSettings(
             QuicConnIndicateEvent(Connection, &Event);
         }
 
-        if (QuicConnIsServer(Connection) && Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_OBSERVED_ADDRESS) {
+        if (QuicConnIsServer(Connection) && QuicConnPeerWantsObservedAddressReports(Connection)) {
             Connection->State.ObservedAddressNegotiated = TRUE;
             QuicSendSetSendFlag(
                 &Connection->Send,

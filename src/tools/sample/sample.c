@@ -137,6 +137,10 @@ void PrintUsage()
 #endif
         "  quicsample.exe -server -cert_hash:<...>\n"
         "  quicsample.exe -server -cert_file:<...> -key_file:<...> [-password:<...>]\n"
+        "\n"
+        "Both client and server accept -multipath, plus -observed_address_send and\n"
+        "-observed_address_recv to opt in to either direction of the address\n"
+        "discovery extension (both are off by default).\n"
         );
 }
 
@@ -577,6 +581,14 @@ ServerLoadConfiguration(
         Settings.MultipathEnabled = TRUE;
         MultipathEnabled = TRUE;
     }
+    if (GetFlag(argc, argv, "observed_address_send")) {
+        Settings.IsSet.SendObservedAddressReports = TRUE;
+        Settings.SendObservedAddressReports = TRUE;
+    }
+    if (GetFlag(argc, argv, "observed_address_recv")) {
+        Settings.IsSet.ReceiveObservedAddressReports = TRUE;
+        Settings.ReceiveObservedAddressReports = TRUE;
+    }
 
     QUIC_CREDENTIAL_CONFIG_HELPER Config;
     memset(&Config, 0, sizeof(Config));
@@ -983,7 +995,9 @@ ClientConnectionCallback(
 BOOLEAN
 ClientLoadConfiguration(
     BOOLEAN Unsecure,
-    BOOLEAN Multipath
+    BOOLEAN Multipath,
+    BOOLEAN ObservedAddressSend,
+    BOOLEAN ObservedAddressRecv
     )
 {
     QUIC_SETTINGS Settings = {0};
@@ -996,6 +1010,14 @@ ClientLoadConfiguration(
         Settings.IsSet.MultipathEnabled = TRUE;
         Settings.MultipathEnabled = TRUE;
         MultipathEnabled = TRUE;
+    }
+    if (ObservedAddressSend) {
+        Settings.IsSet.SendObservedAddressReports = TRUE;
+        Settings.SendObservedAddressReports = TRUE;
+    }
+    if (ObservedAddressRecv) {
+        Settings.IsSet.ReceiveObservedAddressReports = TRUE;
+        Settings.ReceiveObservedAddressReports = TRUE;
     }
 
     //
@@ -1044,7 +1066,11 @@ RunClient(
     //
     // Load the client configuration based on the "unsecure" command line option.
     //
-    if (!ClientLoadConfiguration(GetFlag(argc, argv, "unsecure"), GetFlag(argc, argv, "multipath"))) {
+    if (!ClientLoadConfiguration(
+            GetFlag(argc, argv, "unsecure"),
+            GetFlag(argc, argv, "multipath"),
+            GetFlag(argc, argv, "observed_address_send"),
+            GetFlag(argc, argv, "observed_address_recv"))) {
         return;
     }
 
@@ -1131,7 +1157,11 @@ RunMultiClient(
     //
     // Load the client configuration based on the "unsecure" command line option.
     //
-    if (!ClientLoadConfiguration(GetFlag(argc, argv, "unsecure"), GetFlag(argc, argv, "multipath"))) {
+    if (!ClientLoadConfiguration(
+            GetFlag(argc, argv, "unsecure"),
+            GetFlag(argc, argv, "multipath"),
+            GetFlag(argc, argv, "observed_address_send"),
+            GetFlag(argc, argv, "observed_address_recv"))) {
         return;
     }
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;

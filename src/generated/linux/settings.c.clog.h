@@ -873,6 +873,36 @@ tracepoint(CLOG_SETTINGS_C, SettingMultipathEnabled , arg2);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for SettingSendObservedAddressReports
+// [sett] SendObservedAddrRpts   = %hhu
+// QuicTraceLogVerbose(SettingSendObservedAddressReports,  "[sett] SendObservedAddrRpts   = %hhu", Settings->SendObservedAddressReports);
+// arg2 = arg2 = Settings->SendObservedAddressReports = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_SettingSendObservedAddressReports
+#define _clog_3_ARGS_TRACE_SettingSendObservedAddressReports(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_SETTINGS_C, SettingSendObservedAddressReports , arg2);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for SettingRecvObservedAddressReports
+// [sett] RecvObservedAddrRpts   = %hhu
+// QuicTraceLogVerbose(SettingRecvObservedAddressReports,  "[sett] RecvObservedAddrRpts   = %hhu", Settings->ReceiveObservedAddressReports);
+// arg2 = arg2 = Settings->ReceiveObservedAddressReports = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_SettingRecvObservedAddressReports
+#define _clog_3_ARGS_TRACE_SettingRecvObservedAddressReports(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_SETTINGS_C, SettingRecvObservedAddressReports , arg2);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for SettingDumpLFixedServerID
 // [sett] FixedServerID          = %u
 // QuicTraceLogVerbose(SettingDumpLFixedServerID,              "[sett] FixedServerID          = %u", Settings->FixedServerID);

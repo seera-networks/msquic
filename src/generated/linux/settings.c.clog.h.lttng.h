@@ -907,6 +907,38 @@ TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingMultipathEnabled,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for SettingSendObservedAddressReports
+// [sett] SendObservedAddrRpts   = %hhu
+// QuicTraceLogVerbose(SettingSendObservedAddressReports,  "[sett] SendObservedAddrRpts   = %hhu", Settings->SendObservedAddressReports);
+// arg2 = arg2 = Settings->SendObservedAddressReports = arg2
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingSendObservedAddressReports,
+    TP_ARGS(
+        unsigned char, arg2), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for SettingRecvObservedAddressReports
+// [sett] RecvObservedAddrRpts   = %hhu
+// QuicTraceLogVerbose(SettingRecvObservedAddressReports,  "[sett] RecvObservedAddrRpts   = %hhu", Settings->ReceiveObservedAddressReports);
+// arg2 = arg2 = Settings->ReceiveObservedAddressReports = arg2
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingRecvObservedAddressReports,
+    TP_ARGS(
+        unsigned char, arg2), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for SettingDumpLFixedServerID
 // [sett] FixedServerID          = %u
 // QuicTraceLogVerbose(SettingDumpLFixedServerID,              "[sett] FixedServerID          = %u", Settings->FixedServerID);

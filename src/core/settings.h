@@ -69,7 +69,9 @@ typedef struct QUIC_SETTINGS_INTERNAL {
             uint64_t AddAddressMode                         : 1;
             uint64_t IgnoreUnreachable                      : 1;
             uint64_t MultipathEnabled                       : 1;
-            uint64_t RESERVED                               : 9;
+            uint64_t SendObservedAddressReports             : 1;
+            uint64_t ReceiveObservedAddressReports          : 1;
+            uint64_t RESERVED                               : 7;
         } IsSet;
     };
 
@@ -127,6 +129,8 @@ typedef struct QUIC_SETTINGS_INTERNAL {
     uint8_t AddAddressMode                  : 2;    // QUIC_ADD_ADDRESS_MODE
     uint8_t IgnoreUnreachable               : 1;
     uint8_t MultipathEnabled                : 1;
+    uint8_t SendObservedAddressReports      : 1;
+    uint8_t ReceiveObservedAddressReports   : 1;
     uint8_t MtuDiscoveryMissingProbeCount;
 } QUIC_SETTINGS_INTERNAL;
 

@@ -793,6 +793,23 @@ QuicConnIsServer(
 }
 
 //
+// Helper to determine if observed address reports should be sent to the peer:
+// this endpoint must be willing to send them, and the peer must have asked to
+// receive them.
+//
+QUIC_INLINE
+BOOLEAN
+QuicConnPeerWantsObservedAddressReports(
+    _In_ const QUIC_CONNECTION * const Connection
+    )
+{
+    return
+        Connection->Settings.SendObservedAddressReports &&
+        (Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_OBSERVED_ADDRESS) &&
+        QUIC_TP_OBSERVED_ADDRESS_ROLE_RECEIVES(Connection->PeerTransportParams.ObservedAddressRole);
+}
+
+//
 // Helper to determine if a connection is client side.
 //
 QUIC_INLINE

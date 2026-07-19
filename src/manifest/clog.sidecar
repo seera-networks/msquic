@@ -12557,10 +12557,34 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "SettingRecvObservedAddressReports": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] RecvObservedAddrRpts   = %hhu",
+      "UniqueId": "SettingRecvObservedAddressReports",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "SettingReliableResetEnabled": {
       "ModuleProperites": {},
       "TraceString": "[sett] ReliableResetEnabled   = %hhu",
       "UniqueId": "SettingReliableResetEnabled",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "SettingSendObservedAddressReports": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] SendObservedAddrRpts   = %hhu",
+      "UniqueId": "SettingSendObservedAddressReports",
       "splitArgs": [
         {
           "DefinationEncoding": "hhu",
@@ -18591,9 +18615,19 @@
         "EncodingString": "[sett] QTIPEnabled            = %hhu"
       },
       {
+        "UniquenessHash": "6a871112-6ce4-00b3-9125-13ce54568a3e",
+        "TraceID": "SettingRecvObservedAddressReports",
+        "EncodingString": "[sett] RecvObservedAddrRpts   = %hhu"
+      },
+      {
         "UniquenessHash": "f5c7d703-ecd1-8dd0-c16d-11857945bfcf",
         "TraceID": "SettingReliableResetEnabled",
         "EncodingString": "[sett] ReliableResetEnabled   = %hhu"
+      },
+      {
+        "UniquenessHash": "21cebed1-c968-5505-1540-f8e2c3257d52",
+        "TraceID": "SettingSendObservedAddressReports",
+        "EncodingString": "[sett] SendObservedAddrRpts   = %hhu"
       },
       {
         "UniquenessHash": "efb76d23-a243-d5cb-a1cc-2dc5dba5454b",

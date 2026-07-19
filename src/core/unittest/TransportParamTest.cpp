@@ -273,9 +273,17 @@ TEST(TransportParamTest, ReliableResetEnabled)
 
 TEST(TransportParamTest, ObservedAddress)
 {
-    QUIC_TRANSPORT_PARAMETERS OriginalTP;
-    CxPlatZeroMemory(&OriginalTP, sizeof(OriginalTP));
-    OriginalTP.Flags = QUIC_TP_FLAG_OBSERVED_ADDRESS;
-    EncodeDecodeAndCompare(&OriginalTP);
-    EncodeDecodeAndCompare(&OriginalTP, true);
+    const QUIC_VAR_INT Roles[] = {
+        QUIC_TP_OBSERVED_ADDRESS_ROLE_SEND_ONLY,
+        QUIC_TP_OBSERVED_ADDRESS_ROLE_RECEIVE_ONLY,
+        QUIC_TP_OBSERVED_ADDRESS_ROLE_BOTH
+    };
+    for (size_t i = 0; i < ARRAYSIZE(Roles); ++i) {
+        QUIC_TRANSPORT_PARAMETERS OriginalTP;
+        CxPlatZeroMemory(&OriginalTP, sizeof(OriginalTP));
+        OriginalTP.Flags = QUIC_TP_FLAG_OBSERVED_ADDRESS;
+        OriginalTP.ObservedAddressRole = Roles[i];
+        EncodeDecodeAndCompare(&OriginalTP);
+        EncodeDecodeAndCompare(&OriginalTP, true);
+    }
 }

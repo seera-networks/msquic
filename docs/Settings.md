@@ -70,6 +70,8 @@ The following settings are available via registry as well as via [QUIC_SETTINGS]
 | Server Initiated Migration         | uint8_t    | ServerMigrationEnabled      |         0 (FALSE) | Enable Server Initiated Migration. |
 | ADD_ADDRESS handling mode          | uint8_t    | AddAddressMode              |         0 (AUTO)  | Control handling of ADD_ADDRESS Frame |
 | IgnoreUnreachable                  | uint8_t    | IgnoreUnreachable           |         0 (FALSE) | Ignore Unreachable during the Handshake |
+| SendObservedAddressReports         | uint8_t    | SendObservedAddressReports  |         0 (FALSE) | Report the peer's observed address to it via OBSERVED_ADDRESS frames. Frames are only sent if the peer also asked to receive them. |
+| ReceiveObservedAddressReports      | uint8_t    | ReceiveObservedAddressReports |       0 (FALSE) | Ask the peer to report this endpoint's observed address. Reports arrive as `QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS`. |
 
 The types map to registry types as follows:
   - `uint64_t` is a `REG_QWORD`.

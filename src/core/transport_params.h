@@ -160,6 +160,13 @@ typedef struct QUIC_TRANSPORT_PARAMETERS {
     _Field_range_(0, QUIC_TP_MAX_PATH_ID_MAX)
     QUIC_VAR_INT InitialMaxPathId;
 
+    //
+    // The role advertised by the observed_address transport parameter. Only
+    // meaningful when QUIC_TP_FLAG_OBSERVED_ADDRESS is set.
+    //
+    _Field_range_(0, QUIC_TP_OBSERVED_ADDRESS_ROLE_BOTH)
+    QUIC_VAR_INT ObservedAddressRole;
+
 } QUIC_TRANSPORT_PARAMETERS;
 
 //

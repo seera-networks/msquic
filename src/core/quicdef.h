@@ -621,6 +621,13 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_DEFAULT_MULTIPATH_ENABLED               FALSE
 
 //
+// The default settings for the address discovery extension. Both directions
+// are off by default; the app opts in per direction.
+//
+#define QUIC_DEFAULT_SEND_OBSERVED_ADDRESS_REPORTS      FALSE
+#define QUIC_DEFAULT_RECEIVE_OBSERVED_ADDRESS_REPORTS   FALSE
+
+//
 // The number of rounds in Cubic Slow Start to sample RTT.
 //
 #define QUIC_HYSTART_DEFAULT_N_SAMPLING             8
@@ -709,6 +716,21 @@ CXPLAT_STATIC_ASSERT(
 //
 #define QUIC_TP_MAX_PATH_ID_MAX                             ((1ULL << 32) - 1)
 
+//
+// Values of the observed_address transport parameter, per
+// draft-ietf-quic-address-discovery. The value states which directions of the
+// extension the endpoint is willing to take part in.
+//
+#define QUIC_TP_OBSERVED_ADDRESS_ROLE_SEND_ONLY             0
+#define QUIC_TP_OBSERVED_ADDRESS_ROLE_RECEIVE_ONLY          1
+#define QUIC_TP_OBSERVED_ADDRESS_ROLE_BOTH                  2
+
+#define QUIC_TP_OBSERVED_ADDRESS_ROLE_SENDS(Role) \
+    ((Role) == QUIC_TP_OBSERVED_ADDRESS_ROLE_SEND_ONLY || (Role) == QUIC_TP_OBSERVED_ADDRESS_ROLE_BOTH)
+
+#define QUIC_TP_OBSERVED_ADDRESS_ROLE_RECEIVES(Role) \
+    ((Role) == QUIC_TP_OBSERVED_ADDRESS_ROLE_RECEIVE_ONLY || (Role) == QUIC_TP_OBSERVED_ADDRESS_ROLE_BOTH)
+
 /*************************************************************
                   PERSISTENT SETTINGS
 *************************************************************/
@@ -743,6 +765,8 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_SETTING_ADD_ADDRESS_MODE               "AddAddressMode"
 #define QUIC_SETTING_IGNORE_UNREACHABLE             "IgnoreUnreachable"
 #define QUIC_SETTING_MULTIPATH_ENABLED              "MultipathEnabled"
+#define QUIC_SETTING_SEND_OBSERVED_ADDRESS_REPORTS    "SendObservedAddressReports"
+#define QUIC_SETTING_RECEIVE_OBSERVED_ADDRESS_REPORTS "ReceiveObservedAddressReports"
 
 
 #define QUIC_SETTING_INITIAL_WINDOW_PACKETS         "InitialWindowPackets"

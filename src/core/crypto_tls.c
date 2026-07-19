@@ -912,7 +912,7 @@ QuicCryptoTlsEncodeTransportParameters(
         RequiredTPLen +=
             TlsTransportParamLength(
                 QUIC_TP_ID_OBSERVED_ADDRESS,
-                QuicVarIntSize(2)); // Hardcode for now
+                QuicVarIntSize(TransportParams->ObservedAddressRole));
     }
     if (TransportParams->Flags & QUIC_TP_FLAG_NAT_TRAVERSE) {
         if (IsServerTP) {
@@ -1285,13 +1285,13 @@ QuicCryptoTlsEncodeTransportParameters(
         TPBuf =
             TlsWriteTransportParamVarInt(
                 QUIC_TP_ID_OBSERVED_ADDRESS,
-                2,
+                TransportParams->ObservedAddressRole,
                 TPBuf);
         QuicTraceLogConnVerbose(
             EncodeTPObservedAddress,
             Connection,
             "TP: Observed Address (%u)",
-            2);
+            (uint32_t)TransportParams->ObservedAddressRole);
     }
     if (TransportParams->Flags & QUIC_TP_FLAG_NAT_TRAVERSE) {
         if (IsServerTP) {
@@ -2095,7 +2095,7 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
                     "Invalid length of QUIC_TP_ID_OBSERVED_ADDRESS");
                 goto Exit;
             }
-            if (value > 2) {
+            if (value > QUIC_TP_OBSERVED_ADDRESS_ROLE_BOTH) {
                 QuicTraceEvent(
                     ConnError,
                     "[conn][%p] ERROR, %s.",
@@ -2108,7 +2108,8 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
                 Connection,
                 "TP: Observed Address (%u)",
                 (uint32_t)value);
-            TransportParams->Flags |= QUIC_TP_FLAG_OBSERVED_ADDRESS; // TODO - Pass value?
+            TransportParams->Flags |= QUIC_TP_FLAG_OBSERVED_ADDRESS;
+            TransportParams->ObservedAddressRole = value;
             break;
         }
 

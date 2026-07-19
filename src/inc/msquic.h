@@ -851,7 +851,9 @@ typedef struct QUIC_SETTINGS {
             uint64_t AddAddressMode                         : 1;
             uint64_t IgnoreUnreachable                      : 1;
             uint64_t MultipathEnabled                       : 1;
-            uint64_t RESERVED                               : 14;
+            uint64_t SendObservedAddressReports             : 1;
+            uint64_t ReceiveObservedAddressReports          : 1;
+            uint64_t RESERVED                               : 12;
 #else
             uint64_t RESERVED                               : 26;
 #endif
@@ -908,7 +910,9 @@ typedef struct QUIC_SETTINGS {
             uint64_t ServerMigrationEnabled    : 1;
             uint64_t IgnoreUnreachable         : 1;
             uint64_t MultipathEnabled          : 1;
-            uint64_t ReservedFlags             : 52;
+            uint64_t SendObservedAddressReports    : 1;
+            uint64_t ReceiveObservedAddressReports : 1;
+            uint64_t ReservedFlags             : 50;
 #else
             uint64_t ReservedFlags             : 63;
 #endif

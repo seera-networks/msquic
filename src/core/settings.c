@@ -191,6 +191,12 @@ QuicSettingsSetDefault(
     if (!Settings->IsSet.MultipathEnabled) {
         Settings->MultipathEnabled = QUIC_DEFAULT_MULTIPATH_ENABLED;
     }
+    if (!Settings->IsSet.SendObservedAddressReports) {
+        Settings->SendObservedAddressReports = QUIC_DEFAULT_SEND_OBSERVED_ADDRESS_REPORTS;
+    }
+    if (!Settings->IsSet.ReceiveObservedAddressReports) {
+        Settings->ReceiveObservedAddressReports = QUIC_DEFAULT_RECEIVE_OBSERVED_ADDRESS_REPORTS;
+    }
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -381,6 +387,12 @@ QuicSettingsCopy(
     }
     if (!Destination->IsSet.MultipathEnabled) {
         Destination->MultipathEnabled = Source->MultipathEnabled;
+    }
+    if (!Destination->IsSet.SendObservedAddressReports) {
+        Destination->SendObservedAddressReports = Source->SendObservedAddressReports;
+    }
+    if (!Destination->IsSet.ReceiveObservedAddressReports) {
+        Destination->ReceiveObservedAddressReports = Source->ReceiveObservedAddressReports;
     }
 }
 
@@ -809,6 +821,16 @@ QuicSettingApply(
     if (Source->IsSet.MultipathEnabled && (!Destination->IsSet.MultipathEnabled || OverWrite)) {
         Destination->MultipathEnabled = Source->MultipathEnabled;
         Destination->IsSet.MultipathEnabled = TRUE;
+    }
+
+    if (Source->IsSet.SendObservedAddressReports && (!Destination->IsSet.SendObservedAddressReports || OverWrite)) {
+        Destination->SendObservedAddressReports = Source->SendObservedAddressReports;
+        Destination->IsSet.SendObservedAddressReports = TRUE;
+    }
+
+    if (Source->IsSet.ReceiveObservedAddressReports && (!Destination->IsSet.ReceiveObservedAddressReports || OverWrite)) {
+        Destination->ReceiveObservedAddressReports = Source->ReceiveObservedAddressReports;
+        Destination->IsSet.ReceiveObservedAddressReports = TRUE;
     }
 
     return TRUE;
@@ -1551,6 +1573,26 @@ VersionSettingsFail:
             &ValueLen);
         Settings->MultipathEnabled = !!Value;
     }
+    if (!Settings->IsSet.SendObservedAddressReports) {
+        Value = QUIC_DEFAULT_SEND_OBSERVED_ADDRESS_REPORTS;
+        ValueLen = sizeof(Value);
+        CxPlatStorageReadValue(
+            Storage,
+            QUIC_SETTING_SEND_OBSERVED_ADDRESS_REPORTS,
+            (uint8_t*)&Value,
+            &ValueLen);
+        Settings->SendObservedAddressReports = !!Value;
+    }
+    if (!Settings->IsSet.ReceiveObservedAddressReports) {
+        Value = QUIC_DEFAULT_RECEIVE_OBSERVED_ADDRESS_REPORTS;
+        ValueLen = sizeof(Value);
+        CxPlatStorageReadValue(
+            Storage,
+            QUIC_SETTING_RECEIVE_OBSERVED_ADDRESS_REPORTS,
+            (uint8_t*)&Value,
+            &ValueLen);
+        Settings->ReceiveObservedAddressReports = !!Value;
+    }
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -1625,6 +1667,8 @@ QuicSettingsDump(
     QuicTraceLogVerbose(SettingAddAddress,                  "[sett] AddAddressMode         = %hhu", Settings->AddAddressMode);
     QuicTraceLogVerbose(SettingIgnoreUnreachable,           "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);
     QuicTraceLogVerbose(SettingMultipathEnabled,            "[sett] MultipathEnabled       = %hhu", Settings->MultipathEnabled);
+    QuicTraceLogVerbose(SettingSendObservedAddressReports,  "[sett] SendObservedAddrRpts   = %hhu", Settings->SendObservedAddressReports);
+    QuicTraceLogVerbose(SettingRecvObservedAddressReports,  "[sett] RecvObservedAddrRpts   = %hhu", Settings->ReceiveObservedAddressReports);
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -1811,6 +1855,12 @@ QuicSettingsDumpNew(
     }
     if (Settings->IsSet.MultipathEnabled) {
         QuicTraceLogVerbose(SettingMultipathEnabled,                "[sett] MultipathEnabled           = %hhu", Settings->MultipathEnabled);
+    }
+    if (Settings->IsSet.SendObservedAddressReports) {
+        QuicTraceLogVerbose(SettingSendObservedAddressReports,      "[sett] SendObservedAddrRpts       = %hhu", Settings->SendObservedAddressReports);
+    }
+    if (Settings->IsSet.ReceiveObservedAddressReports) {
+        QuicTraceLogVerbose(SettingRecvObservedAddressReports,      "[sett] RecvObservedAddrRpts       = %hhu", Settings->ReceiveObservedAddressReports);
     }
 }
 
@@ -2117,6 +2167,22 @@ QuicSettingsSettingsToInternal(
         SettingsSize,
         InternalSettings);
 
+    SETTING_COPY_FLAG_TO_INTERNAL_SIZED(
+        Flags,
+        SendObservedAddressReports,
+        QUIC_SETTINGS,
+        Settings,
+        SettingsSize,
+        InternalSettings);
+
+    SETTING_COPY_FLAG_TO_INTERNAL_SIZED(
+        Flags,
+        ReceiveObservedAddressReports,
+        QUIC_SETTINGS,
+        Settings,
+        SettingsSize,
+        InternalSettings);
+
     return QUIC_STATUS_SUCCESS;
 }
 
@@ -2329,6 +2395,22 @@ QuicSettingsGetSettings(
     SETTING_COPY_FLAG_FROM_INTERNAL_SIZED(
         Flags,
         MultipathEnabled,
+        QUIC_SETTINGS,
+        Settings,
+        *SettingsLength,
+        InternalSettings);
+
+    SETTING_COPY_FLAG_FROM_INTERNAL_SIZED(
+        Flags,
+        SendObservedAddressReports,
+        QUIC_SETTINGS,
+        Settings,
+        *SettingsLength,
+        InternalSettings);
+
+    SETTING_COPY_FLAG_FROM_INTERNAL_SIZED(
+        Flags,
+        ReceiveObservedAddressReports,
         QUIC_SETTINGS,
         Settings,
         *SettingsLength,
