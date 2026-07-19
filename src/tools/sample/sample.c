@@ -447,6 +447,19 @@ ServerConnectionCallback(
         MsQuic->ConnectionSendResumptionTicket(Connection, QUIC_SEND_RESUMPTION_FLAG_NONE, 0, NULL);
         break;
     }
+    case QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS: {
+        QUIC_ADDR_STR AddrStr = {0};
+        QUIC_ADDR_STR AddrStr1 = {0};
+        if (QuicAddrToString(Event->NOTIFY_OBSERVED_ADDRESS.LocalAddress, &AddrStr) &&
+            QuicAddrToString(Event->NOTIFY_OBSERVED_ADDRESS.ObservedAddress, &AddrStr1)) {
+            printf(
+                "[conn][%p] Local Address: %s Observed Address: %s\n",
+                Connection,
+                AddrStr.Address,
+                AddrStr1.Address);
+        }
+        break;
+    }
     case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
         //
         // The connection has been shut down by the transport. Generally, this
