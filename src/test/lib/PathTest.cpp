@@ -830,11 +830,17 @@ QuicTestAddressDiscovery(
     MsQuicRegistration Registration(true);
     TEST_TRUE(Registration.IsValid());
 
-    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
+    //
+    // Address discovery is opt-in, and this test expects both sides to report
+    // the peer's observed address, so enable both directions on both ends.
+    //
+    MsQuicSettings Settings;
+    Settings.SetSendObservedAddressReports(TRUE).SetReceiveObservedAddressReports(TRUE);
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
 
     MsQuicCredentialConfig ClientCredConfig;
-    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientCredConfig);
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
     MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, AddressDiscoveryTestContext::ConnCallback, &ServerContext);
