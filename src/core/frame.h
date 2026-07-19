@@ -159,9 +159,9 @@ typedef enum QUIC_FRAME_TYPE {
     QUIC_FRAME_IMMEDIATE_ACK        = 0x1fULL,
     /* 0xaf to 0x2f4 are unused currently */
     QUIC_FRAME_TIMESTAMP            = 0x2f5ULL,
-    /* 0x2f6 to 0x9f80 are unused currently */
-    QUIC_FRAME_OBSERVED_ADDRESS_V4  = 0x9f81ULL, // 0x9f81a6ULL,
-    QUIC_FRAME_OBSERVED_ADDRESS_V6  = 0x9f82ULL, // 0x9f81a7ULL,
+    /* 0x2f6 to 0x9f81a5 are unused currently */
+    QUIC_FRAME_OBSERVED_ADDRESS_V4  = 0x9f81a6ULL,
+    QUIC_FRAME_OBSERVED_ADDRESS_V6  = 0x9f81a7ULL,
 
     QUIC_FRAME_ADD_ADDRESS_V4       = 0x3d7e90LL,
     QUIC_FRAME_ADD_ADDRESS_V6       = 0x3d7e91LL,

@@ -53,12 +53,14 @@ TEST(SpinFrame, SpinFrame1000000)
     uint8_t BufferLength = 0;
 
     //
-    // FrameType is intentionally uint16_t: the loop below searches for a random
-    // value that satisfies QUIC_FRAME_IS_KNOWN, which only terminates in a
-    // reasonable time over a bounded (16-bit) space. (Frame types wider than
-    // 16 bits — e.g. the address/multipath frames — aren't fuzzed here.)
+    // Only a bounded (16-bit) space is searched below: the loop looks for a
+    // random value that satisfies QUIC_FRAME_IS_KNOWN, which only terminates in
+    // a reasonable time over such a space. (Frame types wider than 16 bits —
+    // e.g. the address/multipath frames — aren't fuzzed here.) FrameType itself
+    // is wider so that case labels for those frame types stay in range.
     //
-    uint16_t FrameType;
+    uint32_t FrameType;
+    uint16_t RandomFrameType;
     CXPLAT_STATIC_ASSERT(
         QUIC_FRAME_MAX_SUPPORTED <= (uint64_t)UINT32_MAX,
         "Tests below assumes frames fit in 32-bits");
@@ -83,7 +85,8 @@ TEST(SpinFrame, SpinFrame1000000)
         }
 
         do {
-            TEST_QUIC_SUCCEEDED(CxPlatRandom(sizeof(FrameType), &FrameType));
+            TEST_QUIC_SUCCEEDED(CxPlatRandom(sizeof(RandomFrameType), &RandomFrameType));
+            FrameType = RandomFrameType;
             //
             // Widen for the check so comparisons against frame types that don't
             // fit in 16 bits (e.g. the address-discovery frames) aren't flagged
