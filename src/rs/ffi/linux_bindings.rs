@@ -3749,14 +3749,80 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         }
     }
     #[inline]
+    pub fn SendObservedAddressReports(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(50usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_SendObservedAddressReports(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(50usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn SendObservedAddressReports_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                50usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_SendObservedAddressReports_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                50usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn ReceiveObservedAddressReports(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(51usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_ReceiveObservedAddressReports(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(51usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn ReceiveObservedAddressReports_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                51usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_ReceiveObservedAddressReports_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                51usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
     pub fn RESERVED(&self) -> u64 {
-        unsafe { ::std::mem::transmute(self._bitfield_1.get(50usize, 14u8) as u64) }
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(52usize, 12u8) as u64) }
     }
     #[inline]
     pub fn set_RESERVED(&mut self, val: u64) {
         unsafe {
             let val: u64 = ::std::mem::transmute(val);
-            self._bitfield_1.set(50usize, 14u8, val as u64)
+            self._bitfield_1.set(52usize, 12u8, val as u64)
         }
     }
     #[inline]
@@ -3764,8 +3830,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         unsafe {
             ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
                 ::std::ptr::addr_of!((*this)._bitfield_1),
-                50usize,
-                14u8,
+                52usize,
+                12u8,
             ) as u64)
         }
     }
@@ -3775,8 +3841,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
             let val: u64 = ::std::mem::transmute(val);
             <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
                 ::std::ptr::addr_of_mut!((*this)._bitfield_1),
-                50usize,
-                14u8,
+                52usize,
+                12u8,
                 val as u64,
             )
         }
@@ -3833,6 +3899,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         AddAddressMode: u64,
         IgnoreUnreachable: u64,
         MultipathEnabled: u64,
+        SendObservedAddressReports: u64,
+        ReceiveObservedAddressReports: u64,
         RESERVED: u64,
     ) -> __BindgenBitfieldUnit<[u8; 8usize]> {
         let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 8usize]> = Default::default();
@@ -4059,7 +4127,17 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
             let MultipathEnabled: u64 = unsafe { ::std::mem::transmute(MultipathEnabled) };
             MultipathEnabled as u64
         });
-        __bindgen_bitfield_unit.set(50usize, 14u8, {
+        __bindgen_bitfield_unit.set(50usize, 1u8, {
+            let SendObservedAddressReports: u64 =
+                unsafe { ::std::mem::transmute(SendObservedAddressReports) };
+            SendObservedAddressReports as u64
+        });
+        __bindgen_bitfield_unit.set(51usize, 1u8, {
+            let ReceiveObservedAddressReports: u64 =
+                unsafe { ::std::mem::transmute(ReceiveObservedAddressReports) };
+            ReceiveObservedAddressReports as u64
+        });
+        __bindgen_bitfield_unit.set(52usize, 12u8, {
             let RESERVED: u64 = unsafe { ::std::mem::transmute(RESERVED) };
             RESERVED as u64
         });
@@ -4494,14 +4572,80 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
         }
     }
     #[inline]
+    pub fn SendObservedAddressReports(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_SendObservedAddressReports(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn SendObservedAddressReports_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_SendObservedAddressReports_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn ReceiveObservedAddressReports(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_ReceiveObservedAddressReports(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn ReceiveObservedAddressReports_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_ReceiveObservedAddressReports_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
     pub fn ReservedFlags(&self) -> u64 {
-        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 52u8) as u64) }
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 50u8) as u64) }
     }
     #[inline]
     pub fn set_ReservedFlags(&mut self, val: u64) {
         unsafe {
             let val: u64 = ::std::mem::transmute(val);
-            self._bitfield_1.set(12usize, 52u8, val as u64)
+            self._bitfield_1.set(14usize, 50u8, val as u64)
         }
     }
     #[inline]
@@ -4509,8 +4653,8 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
         unsafe {
             ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
                 ::std::ptr::addr_of!((*this)._bitfield_1),
-                12usize,
-                52u8,
+                14usize,
+                50u8,
             ) as u64)
         }
     }
@@ -4520,8 +4664,8 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
             let val: u64 = ::std::mem::transmute(val);
             <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
                 ::std::ptr::addr_of_mut!((*this)._bitfield_1),
-                12usize,
-                52u8,
+                14usize,
+                50u8,
                 val as u64,
             )
         }
@@ -4540,6 +4684,8 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
         ServerMigrationEnabled: u64,
         IgnoreUnreachable: u64,
         MultipathEnabled: u64,
+        SendObservedAddressReports: u64,
+        ReceiveObservedAddressReports: u64,
         ReservedFlags: u64,
     ) -> __BindgenBitfieldUnit<[u8; 8usize]> {
         let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 8usize]> = Default::default();
@@ -4594,7 +4740,17 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
             let MultipathEnabled: u64 = unsafe { ::std::mem::transmute(MultipathEnabled) };
             MultipathEnabled as u64
         });
-        __bindgen_bitfield_unit.set(12usize, 52u8, {
+        __bindgen_bitfield_unit.set(12usize, 1u8, {
+            let SendObservedAddressReports: u64 =
+                unsafe { ::std::mem::transmute(SendObservedAddressReports) };
+            SendObservedAddressReports as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 1u8, {
+            let ReceiveObservedAddressReports: u64 =
+                unsafe { ::std::mem::transmute(ReceiveObservedAddressReports) };
+            ReceiveObservedAddressReports as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 50u8, {
             let ReservedFlags: u64 = unsafe { ::std::mem::transmute(ReservedFlags) };
             ReservedFlags as u64
         });
