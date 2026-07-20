@@ -474,6 +474,13 @@ if(QUIC_ENABLE_LOGGING)
     elseif (QUIC_LOGGING_TYPE STREQUAL "stdout")
         message(STATUS "Configuring for stdout logging")
         list(APPEND QUIC_COMMON_DEFINES QUIC_EVENTS_STDOUT QUIC_LOGS_STDOUT)
+        if (MSVC)
+            # The stdout trace macros rely on the GNU-style ',##__VA_ARGS__'
+            # comma elision. MSVC's traditional preprocessor leaves a stray
+            # comma behind when the variadic list is empty, so require the
+            # conformant preprocessor here.
+            list(APPEND QUIC_COMMON_FLAGS /Zc:preprocessor)
+        endif()
     endif()
 
 else()
