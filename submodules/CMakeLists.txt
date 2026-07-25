@@ -259,9 +259,12 @@ else()
         # cmake/toolchains/ios.cmake from PLATFORM.
         if (SDK_NAME MATCHES "^iphonesimulator")
             # iossimulator-xcrun leaves the architecture at the compiler default
-            # (the host's), so pin it to the one CMake is targeting.
+            # (the host's), so pin it to the one CMake is targeting. Configure
+            # reads a bare word as the target name, so the flag and its value
+            # have to arrive as one argument — %20 is Configure's own escape for
+            # the space (see the arg loop in quictls/Configure).
             set(OPENSSL_CONFIG_CMD ${CMAKE_CURRENT_SOURCE_DIR}/${QUIC_OPENSSL}/Configure iossimulator-xcrun)
-            list(APPEND OPENSSL_CONFIG_FLAGS -arch ${CMAKE_OSX_ARCHITECTURES})
+            list(APPEND OPENSSL_CONFIG_FLAGS "-arch%20${CMAKE_OSX_ARCHITECTURES}")
         elseif (CMAKE_OSX_ARCHITECTURES STREQUAL arm64)
             set(OPENSSL_CONFIG_CMD ${CMAKE_CURRENT_SOURCE_DIR}/${QUIC_OPENSSL}/Configure ios64-xcrun)
         else()

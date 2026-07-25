@@ -15,7 +15,7 @@ fn main() {
     overwrite_bindgen();
 }
 
-/// Minimum iOS version, kept in sync with `scripts/build.ps1 -Platform ios`.
+/// Default minimum iOS version, kept in sync with `scripts/build.ps1 -Platform ios`.
 #[cfg(feature = "src")]
 const IOS_DEPLOYMENT_TARGET: &str = "13.0";
 
@@ -108,11 +108,17 @@ fn cmake_build() {
             .join("cmake")
             .join("toolchains")
             .join("ios.cmake");
+        // Follow the consumer's IPHONEOS_DEPLOYMENT_TARGET when it sets one:
+        // rustc links against that version, and a link below the version these
+        // objects were compiled for leaves libSystem-versioned symbols such as
+        // `___chkstk_darwin` (iOS 12+) undefined.
+        let deployment_target = env::var("IPHONEOS_DEPLOYMENT_TARGET")
+            .unwrap_or_else(|_| IOS_DEPLOYMENT_TARGET.to_string());
         config
             .define("CMAKE_TOOLCHAIN_FILE", toolchain_file.to_str().unwrap())
             .define("PLATFORM", platform)
-            .define("DEPLOYMENT_TARGET", IOS_DEPLOYMENT_TARGET)
-            .define("CMAKE_OSX_DEPLOYMENT_TARGET", IOS_DEPLOYMENT_TARGET)
+            .define("DEPLOYMENT_TARGET", &deployment_target)
+            .define("CMAKE_OSX_DEPLOYMENT_TARGET", &deployment_target)
             .define("ENABLE_ARC", "0")
             // Let the toolchain file own the compiler flags. Otherwise cmake-rs
             // layers the `cc` crate's own -arch/-isysroot on top of the ones
