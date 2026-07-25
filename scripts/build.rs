@@ -15,6 +15,10 @@ fn main() {
     overwrite_bindgen();
 }
 
+/// Minimum iOS version, kept in sync with `scripts/build.ps1 -Platform ios`.
+#[cfg(feature = "src")]
+const IOS_DEPLOYMENT_TARGET: &str = "13.0";
+
 #[cfg(feature = "src")]
 fn cmake_build() {
     use cmake::Config;
@@ -26,6 +30,7 @@ fn cmake_build() {
     }
 
     let target = env::var("TARGET").unwrap().replace("\\", "/");
+    let apple_ios = target.contains("-apple-ios");
     let out_dir = env::var("OUT_DIR").unwrap();
     // The output directory for the native MsQuic library.
     let quic_output_dir = if cfg!(windows) {
@@ -83,8 +88,37 @@ fn cmake_build() {
         config.define("QUIC_TLS_LIB", "quictls");
     }
 
-    if cfg!(feature = "static") {
+    if cfg!(feature = "static") || apple_ios {
         config.define("QUIC_BUILD_SHARED", "off");
+    }
+
+    // iOS needs the ios-cmake toolchain to select the SDK/architecture, and can
+    // only ever be built static (see the link attribute in src/rs/lib.rs). This
+    // mirrors `scripts/build.ps1 -Platform ios`.
+    if apple_ios {
+        // PLATFORM values are defined by cmake/toolchains/ios.cmake.
+        let platform = match target.as_str() {
+            "aarch64-apple-ios" => "OS64",
+            "aarch64-apple-ios-sim" => "SIMULATORARM64",
+            "x86_64-apple-ios" => "SIMULATOR64",
+            _ => panic!("Unsupported iOS target: {target}"),
+        };
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+        let toolchain_file = Path::new(&manifest_dir)
+            .join("cmake")
+            .join("toolchains")
+            .join("ios.cmake");
+        config
+            .define("CMAKE_TOOLCHAIN_FILE", toolchain_file.to_str().unwrap())
+            .define("PLATFORM", platform)
+            .define("DEPLOYMENT_TARGET", IOS_DEPLOYMENT_TARGET)
+            .define("CMAKE_OSX_DEPLOYMENT_TARGET", IOS_DEPLOYMENT_TARGET)
+            .define("ENABLE_ARC", "0")
+            // Let the toolchain file own the compiler flags. Otherwise cmake-rs
+            // layers the `cc` crate's own -arch/-isysroot on top of the ones
+            // ios.cmake derived from PLATFORM.
+            .define("CMAKE_C_FLAGS", "")
+            .define("CMAKE_CXX_FLAGS", "");
     }
 
     // macos-latest's cargo automatically specify --target=${ARCH}-apple-macosx14.5
@@ -117,8 +151,14 @@ fn cmake_build() {
     if !found_lib_dir {
         panic!("no lib or lib64 directory found under {}", dst.display());
     }
-    if cfg!(feature = "static") {
-        if cfg!(target_os = "linux") {
+    if cfg!(feature = "static") || apple_ios {
+        // Keyed off the target rather than the host: cross-compiling to iOS
+        // happens from a macOS host, so `cfg!` would not tell them apart.
+        if target.contains("-apple-") {
+            // These back the darwin platform layer on macOS and iOS alike.
+            println!("cargo:rustc-link-lib=framework=CoreFoundation");
+            println!("cargo:rustc-link-lib=framework=Security");
+        } else if cfg!(target_os = "linux") {
             let numa_lib_path = match target.as_str() {
                 "x86_64-unknown-linux-gnu" => "/usr/lib/x86_64-linux-gnu",
                 "aarch64-unknown-linux-gnu" => "/usr/lib/aarch64-linux-gnu",
@@ -126,9 +166,6 @@ fn cmake_build() {
             };
             println!("cargo:rustc-link-search=native={numa_lib_path}");
             println!("cargo:rustc-link-lib=static:+whole-archive=numa");
-        } else if cfg!(target_os = "macos") {
-            println!("cargo:rustc-link-lib=framework=CoreFoundation");
-            println!("cargo:rustc-link-lib=framework=Security");
         } else if cfg!(windows) {
             // Windows system libraries that the static msquic.lib depends on.
             // These are excluded from the monolithic archive (via the inc/base_link

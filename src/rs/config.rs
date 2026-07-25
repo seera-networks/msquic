@@ -411,9 +411,9 @@ impl Default for AllowedCipherSuiteFlags {
     }
 }
 
-// Disable macos because the ffi bindings is using linux
-// for macos and it has error code mismatch.
-#[cfg(not(target_os = "macos"))]
+// Disable macos/ios because the ffi bindings is using linux
+// for them and it has error code mismatch.
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 #[cfg(test)]
 mod tests {
     use crate::{
