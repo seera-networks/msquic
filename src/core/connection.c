@@ -2408,6 +2408,22 @@ QuicConnSetConfiguration(
         "[conn][%p] Handshake start",
         Connection);
 
+    //
+    // Re-evaluate the datagram send state now that the connection is started
+    // and owned by the application.
+    //
+    // `Started` is an input to the max send length (QuicDatagramOnSendStateChanged
+    // derives it from QUIC_DPLPMTUD_MIN_MTU until then, and from the path's MTU
+    // afterwards), so it has to be recomputed here regardless. For a server this
+    // is also the first evaluation with an owner to indicate to: the peer's
+    // transport parameters are processed before the listener hands the
+    // connection over, so nothing before this point could reach the application.
+    //
+    // Clients reach this path before any peer transport parameters exist, so
+    // their behaviour is unchanged.
+    //
+    QuicDatagramOnSendStateChanged(&Connection->Datagram);
+
     Status =
         QuicCryptoInitializeTls(
             &Connection->Crypto,

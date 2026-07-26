@@ -33,10 +33,27 @@ typedef struct QUIC_DATAGRAM {
     uint16_t MaxSendLength;
 
     //
+    // The send state last indicated to the application, which is not always the
+    // live state above. The send state can change while the connection has no
+    // external owner to indicate to — a server connection processes the peer's
+    // transport parameters before the listener hands it to the application —
+    // and such a change must not be mistaken for one that was already reported,
+    // or the application is never told at all.
+    //
+    uint16_t IndicatedMaxSendLength;
+
+    //
     // Indicates that datagrams are allowed by the peer and can be queued up to
     // send.
     //
     BOOLEAN SendEnabled : 1;
+
+    //
+    // The `SendEnabled` last indicated to the application. Starts FALSE: until
+    // an indication is made the application has been told nothing, and assumes
+    // datagrams are not sendable.
+    //
+    BOOLEAN IndicatedSendEnabled : 1;
 
 } QUIC_DATAGRAM;
 

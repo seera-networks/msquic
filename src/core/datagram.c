@@ -79,6 +79,8 @@ QuicDatagramInitialize(
 {
     Datagram->SendEnabled = TRUE;
     Datagram->MaxSendLength = UINT16_MAX;
+    Datagram->IndicatedSendEnabled = FALSE;
+    Datagram->IndicatedMaxSendLength = 0;
     Datagram->PrioritySendQueueTail = &Datagram->SendQueue;
     Datagram->SendQueueTail = &Datagram->SendQueue;
     CxPlatDispatchLockInitialize(&Datagram->ApiQueueLock);
@@ -283,15 +285,30 @@ QuicDatagramOnSendStateChanged(
         }
     }
 
-    if (SendEnabled == Datagram->SendEnabled) {
-        if (!SendEnabled || NewMaxSendLength == Datagram->MaxSendLength) {
-            return;
-        }
+    //
+    // Whether the live state moved, and whether the application's view of it is
+    // stale, are separate questions. They diverge when the state changes with no
+    // external owner to indicate to, which is the normal case for a server: the
+    // peer's transport parameters are processed before the listener hands the
+    // connection over. Comparing only against the live state there would leave
+    // the change looking already reported, and the application would never learn
+    // that datagrams are sendable.
+    //
+    const BOOLEAN StateChanged =
+        SendEnabled != Datagram->SendEnabled ||
+        (SendEnabled && NewMaxSendLength != Datagram->MaxSendLength);
+    const BOOLEAN IndicationNeeded =
+        Connection->State.ExternalOwner &&
+        (SendEnabled != Datagram->IndicatedSendEnabled ||
+         (SendEnabled && NewMaxSendLength != Datagram->IndicatedMaxSendLength));
+
+    if (!StateChanged && !IndicationNeeded) {
+        return;
     }
 
     Datagram->MaxSendLength = NewMaxSendLength;
 
-    if (Connection->State.ExternalOwner) {
+    if (IndicationNeeded) {
         QUIC_CONNECTION_EVENT Event;
         Event.Type = QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED;
         Event.DATAGRAM_STATE_CHANGED.SendEnabled = SendEnabled;
@@ -304,15 +321,20 @@ QuicDatagramOnSendStateChanged(
             Event.DATAGRAM_STATE_CHANGED.SendEnabled,
             Event.DATAGRAM_STATE_CHANGED.MaxSendLength);
         (void)QuicConnIndicateEvent(Connection, &Event);
+
+        Datagram->IndicatedSendEnabled = SendEnabled;
+        Datagram->IndicatedMaxSendLength = NewMaxSendLength;
     }
 
-    if (!SendEnabled) {
-        QuicDatagramSendShutdown(Datagram);
-    } else {
-        if (!Datagram->SendEnabled) {
-            Datagram->SendEnabled = TRUE; // This can happen for 0-RTT connections that didn't previously support Datagrams
+    if (StateChanged) {
+        if (!SendEnabled) {
+            QuicDatagramSendShutdown(Datagram);
+        } else {
+            if (!Datagram->SendEnabled) {
+                Datagram->SendEnabled = TRUE; // This can happen for 0-RTT connections that didn't previously support Datagrams
+            }
+            QuicDatagramOnMaxSendLengthChanged(Datagram);
         }
-        QuicDatagramOnMaxSendLengthChanged(Datagram);
     }
 
     QuicDatagramValidate(Datagram);
