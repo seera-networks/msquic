@@ -7029,9 +7029,9 @@ QuicConnOpenNewPaths(
 // address to be registered. It enforces uniqueness of bound addresses per
 // connection, ensures the per-connection bound-address limit is not exceeded,
 // allocates and stores a new bound-address entry, and creates a corresponding
-// UDP binding using the connection's partition. The local binding is always
-// created with an IPv6 family; if the caller does not specify a port, an
-// ephemeral port is used.
+// UDP binding using the connection's partition. The binding is created on the
+// address the caller named; if the caller does not specify a port, an ephemeral
+// port is used and the address stored on the connection is updated with it.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -7091,9 +7091,8 @@ QuicConnAddBoundAddress(
 
     QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound =
     //
-    // Construct the local address used for the UDP binding. The family is
-    // always set to IPv6; the port is copied from the caller when specified,
-    // otherwise an ephemeral port is requested by passing zero.
+    // The caller's address is used for the UDP binding as given. A zero port
+    // requests an ephemeral one, which is read back off the binding below.
     //
         (QUIC_BOUND_ADDRESS_LIST_ENTRY*)
         CXPLAT_ALLOC_NONPAGED(
@@ -7112,13 +7111,9 @@ QuicConnAddBoundAddress(
     CxPlatCopyMemory(&Bound->Address, Param, sizeof(QUIC_ADDR));
 
     BOOLEAN PortUnspecified = QuicAddrGetPort(Param) == 0;
-    QUIC_ADDR BindingLocalAddress = {0};
-    QuicAddrSetFamily(&BindingLocalAddress, QUIC_ADDRESS_FAMILY_INET6);
-    QuicAddrSetPort(&BindingLocalAddress,
-        PortUnspecified ? 0 : QuicAddrGetPort(Param));
 
     CXPLAT_UDP_CONFIG UdpConfig = {0};
-    UdpConfig.LocalAddress = &BindingLocalAddress;
+    UdpConfig.LocalAddress = Param;
     UdpConfig.RemoteAddress = NULL;
     UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
     UdpConfig.InterfaceIndex = 0;
@@ -7151,6 +7146,7 @@ QuicConnAddBoundAddress(
     }
  
     if (PortUnspecified) {
+        QUIC_ADDR BindingLocalAddress = {0};
         QuicBindingGetLocalAddress(Bound->Binding, &BindingLocalAddress);
         QuicAddrSetPort(
             &Bound->Address,
