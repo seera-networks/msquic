@@ -347,3 +347,153 @@ void QuicTestAddrFunctions(const FamilyArgs& Params)
 
     TEST_TRUE(QuicAddrGetFamily(&SockAddr) == QuicAddrFamily);
 }
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+
+void QuicTestConnectUnconnectedSocket(const FamilyArgs& Params)
+{
+    const int Family = Params.Family;
+    const QUIC_ADDRESS_FAMILY QuicAddrFamily =
+        (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+
+    MsQuicRegistration Registration(true);
+    TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
+    TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
+
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", MsQuicCredentialConfig());
+    TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
+
+    //
+    // Two servers, so the two client connections have different remote
+    // addresses and could not share a connected socket.
+    //
+    MsQuicAutoAcceptListener Listener1(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener1.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener1.Start("MsQuicTest"));
+    QuicAddr Server1Addr;
+    TEST_QUIC_SUCCEEDED(Listener1.GetLocalAddr(Server1Addr));
+
+    MsQuicAutoAcceptListener Listener2(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener2.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener2.Start("MsQuicTest"));
+    QuicAddr Server2Addr;
+    TEST_QUIC_SUCCEEDED(Listener2.GetLocalAddr(Server2Addr));
+
+    TEST_NOT_EQUAL(Server1Addr.GetPort(), Server2Addr.GetPort());
+
+    //
+    // An unconnected socket has no source address of its own to send from, so
+    // the local address has to be named. The port is left unspecified, so the
+    // stack picks one.
+    //
+    QuicAddr ClientLocalAddr(QuicAddrFamily, true);
+    if (UseDuoNic) {
+        QuicAddrSetToDuoNic(&ClientLocalAddr.SockAddr);
+    }
+
+    MsQuicConnection Connection1(Registration);
+    TEST_QUIC_SUCCEEDED(Connection1.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Connection1.SetShareUdpBinding());
+    TEST_QUIC_SUCCEEDED(Connection1.SetUnconnectedUdpSocket());
+    TEST_QUIC_SUCCEEDED(Connection1.SetLocalAddr(ClientLocalAddr));
+    TEST_QUIC_SUCCEEDED(
+        Connection1.Start(
+            ClientConfiguration,
+            QuicAddrFamily,
+            QUIC_TEST_LOOPBACK_FOR_AF(QuicAddrFamily),
+            Server1Addr.GetPort()));
+    TEST_TRUE(Connection1.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Connection1.HandshakeComplete);
+
+    QuicAddr Client1Addr;
+    TEST_QUIC_SUCCEEDED(Connection1.GetLocalAddr(Client1Addr));
+
+    //
+    // The second connection reuses the first one's local address, but talks to
+    // a different server. That only works if the socket underneath is left
+    // unconnected.
+    //
+    MsQuicConnection Connection2(Registration);
+    TEST_QUIC_SUCCEEDED(Connection2.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Connection2.SetShareUdpBinding());
+    TEST_QUIC_SUCCEEDED(Connection2.SetUnconnectedUdpSocket());
+    TEST_QUIC_SUCCEEDED(Connection2.SetLocalAddr(Client1Addr));
+    TEST_QUIC_SUCCEEDED(
+        Connection2.Start(
+            ClientConfiguration,
+            QuicAddrFamily,
+            QUIC_TEST_LOOPBACK_FOR_AF(QuicAddrFamily),
+            Server2Addr.GetPort()));
+    TEST_TRUE(Connection2.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Connection2.HandshakeComplete);
+
+    QuicAddr Client2Addr;
+    TEST_QUIC_SUCCEEDED(Connection2.GetLocalAddr(Client2Addr));
+    TEST_EQUAL(Client1Addr.GetPort(), Client2Addr.GetPort());
+}
+
+void QuicTestUnconnectedSocketRequirements()
+{
+    MsQuicRegistration Registration(true);
+    TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
+    TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
+
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", MsQuicCredentialConfig());
+    TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
+
+    //
+    // Without a shared binding there is no source connection ID to demultiplex
+    // by, so an unconnected socket is rejected outright.
+    //
+    {
+        MsQuicConnection Connection(Registration);
+        TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_INVALID_STATE,
+            Connection.SetUnconnectedUdpSocket());
+    }
+
+    //
+    // With one, it is accepted, and can be turned back off either way.
+    //
+    {
+        MsQuicConnection Connection(Registration);
+        TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+        TEST_QUIC_SUCCEEDED(Connection.SetShareUdpBinding());
+        TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket());
+        TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket(false));
+    }
+
+    //
+    // Starting without a specific local address to send from fails the
+    // connection.
+    //
+    {
+        MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+        TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+        TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest"));
+        QuicAddr ServerAddr;
+        TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerAddr));
+
+        MsQuicConnection Connection(Registration);
+        TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+        TEST_QUIC_SUCCEEDED(Connection.SetShareUdpBinding());
+        TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket());
+        TEST_QUIC_SUCCEEDED(
+            Connection.Start(
+                ClientConfiguration,
+                ServerAddr.GetFamily(),
+                QUIC_TEST_LOOPBACK_FOR_AF(ServerAddr.GetFamily()),
+                ServerAddr.GetPort()));
+
+        TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+        TEST_FALSE(Connection.HandshakeComplete);
+        TEST_EQUAL(QUIC_STATUS_INVALID_STATE, Connection.TransportShutdownStatus);
+    }
+}
+
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES

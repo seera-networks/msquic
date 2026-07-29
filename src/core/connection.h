@@ -132,6 +132,13 @@ typedef union QUIC_CONNECTION_STATE {
         BOOLEAN ShareBinding : 1;
 
         //
+        // Indicates the UDP socket for this connection is left unconnected, so
+        // that its binding can be shared by connections to different remote
+        // addresses. Only meaningful together with ShareBinding.
+        //
+        BOOLEAN UnconnectedSocket : 1;
+
+        //
         // Indicates the TestTransportParameter variable has been set by the app.
         //
         BOOLEAN TestTransportParameterSet : 1;

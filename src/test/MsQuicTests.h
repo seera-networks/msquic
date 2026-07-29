@@ -155,6 +155,10 @@ void QuicTestBindConnectionImplicit(const FamilyArgs& Params);
 void QuicTestBindConnectionExplicit(const FamilyArgs& Params);
 void QuicTestConnectionCloseFromCallback();
 void QuicTestAddrFunctions(const FamilyArgs& Params);
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+void QuicTestConnectUnconnectedSocket(const FamilyArgs& Params);
+void QuicTestUnconnectedSocketRequirements();
+#endif
 
 //
 // MTU tests

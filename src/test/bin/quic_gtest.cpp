@@ -1052,6 +1052,26 @@ TEST_P(WithFamilyArgs, BindConnectionExplicit) {
     }
 }
 
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+TEST_P(WithFamilyArgs, ConnectUnconnectedSocket) {
+    TestLoggerT<ParamType> Logger("QuicTestConnectUnconnectedSocket", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestConnectUnconnectedSocket), GetParam()));
+    } else {
+        QuicTestConnectUnconnectedSocket(GetParam());
+    }
+}
+
+TEST(Basic, UnconnectedSocketRequirements) {
+    TestLogger Logger("QuicTestUnconnectedSocketRequirements");
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestUnconnectedSocketRequirements)));
+    } else {
+        QuicTestUnconnectedSocketRequirements();
+    }
+}
+#endif
+
 TEST_P(WithFamilyArgs, TestAddrFunctions) {
     TestLoggerT<ParamType> Logger("QuicTestAddrFunctions", GetParam());
     if (TestingKernelMode) {

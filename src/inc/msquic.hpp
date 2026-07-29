@@ -1409,6 +1409,19 @@ struct MsQuicConnection {
                 &Value);
     }
 
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    QUIC_STATUS
+    SetUnconnectedUdpSocket(_In_ bool UnconnectedSocket = true) noexcept {
+        BOOLEAN Value = UnconnectedSocket ? TRUE : FALSE;
+        return
+            MsQuic->SetParam(
+                Handle,
+                QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET,
+                sizeof(Value),
+                &Value);
+    }
+#endif
+
     QUIC_STATUS
     SetResumptionTicket(_In_reads_(TicketLength) const uint8_t* Ticket, uint32_t TicketLength) noexcept {
         return

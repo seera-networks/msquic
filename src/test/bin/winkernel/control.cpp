@@ -519,6 +519,10 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestBindConnectionImplicit);
     RegisterTestFunction(QuicTestBindConnectionExplicit);
     RegisterTestFunction(QuicTestAddrFunctions);
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    RegisterTestFunction(QuicTestConnectUnconnectedSocket);
+    RegisterTestFunction(QuicTestUnconnectedSocketRequirements);
+#endif
     RegisterTestFunction(QuicTestConnect_Connect);
 #ifndef QUIC_DISABLE_RESUMPTION
     RegisterTestFunction(QuicTestConnect_Resume);

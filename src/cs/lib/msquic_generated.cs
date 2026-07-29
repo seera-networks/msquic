@@ -4032,6 +4032,9 @@ namespace Microsoft.Quic
         [NativeTypeName("#define QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS 0x05000023")]
         internal const uint QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS = 0x05000023;
 
+        [NativeTypeName("#define QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET 0x05000025")]
+        internal const uint QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET = 0x05000025;
+
         [NativeTypeName("#define QUIC_PARAM_TLS_HANDSHAKE_INFO 0x06000000")]
         internal const uint QUIC_PARAM_TLS_HANDSHAKE_INFO = 0x06000000;
 

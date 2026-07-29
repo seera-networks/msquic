@@ -221,6 +221,17 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS` <br> 33   | QUIC_CANDIDATE_ADDRESS        | Set-only  | Add a candidate address. Client only. |
 | `QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS` <br> 34| QUIC_CANDIDATE_ADDRESS        | Set-only  | Remove a candidate address. Client only. |
 
+| `QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` <br> 37 | uint8_t (BOOLEAN) | Both | Set on client only. Must be set before start, and requires `QUIC_PARAM_CONN_SHARE_UDP_BINDING`. See [QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET](#quic_param_conn_unconnected_udp_socket). |
+
+### QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET
+
+By default a client connection's UDP socket is connected to the server's address, so the binding underneath it can only ever be shared by connections to that same address. Setting `QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` to `TRUE` leaves the socket unconnected, which lets connections to different remote addresses share one binding, and therefore one local port.
+
+The parameter requires `QUIC_PARAM_CONN_SHARE_UDP_BINDING` to also be set: an unconnected socket receives datagrams from any remote address, so incoming packets are matched to a connection by connection ID alone, and only a shared binding gives the connection a non-zero length source connection ID. Setting it without one fails with `QUIC_STATUS_INVALID_STATE`.
+
+It also requires a specific local address, set with `QUIC_PARAM_CONN_LOCAL_ADDRESS`. A connected socket takes its source address from the kernel when it is connected; an unconnected one does not, and the connection's first packet goes out before anything has been learned from the peer, so the address to send from has to be named. The port may be left as 0 to let the stack choose one. Starting a connection with an unconnected socket and no local address, or a wildcard one, fails the connection with `QUIC_STATUS_INVALID_STATE`.
+
+To place several connections on one local port, start the first connection, read its local address back with `QUIC_PARAM_CONN_LOCAL_ADDRESS`, and set that address on the subsequent connections along with the same two parameters.
 
 ### QUIC_PARAM_CONN_STATISTICS_V2
 

@@ -4468,6 +4468,73 @@ void QuicTest_QUIC_PARAM_CONN_SHARE_UDP_BINDING(MsQuicRegistration& Registration
     }
 }
 
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+void QuicTest_QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET(MsQuicRegistration& Registration, MsQuicConfiguration& ClientConfiguration)
+{
+    TestScopeLogger LogScope0("QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET");
+    BOOLEAN Data = TRUE;
+    MsQuicConnection Connection(Registration);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    //
+    // SetParam
+    //
+    {
+        TestScopeLogger LogScope1("SetParam");
+        //
+        // QUIC_CONN_BAD_START_STATE
+        //
+        {
+            TestScopeLogger LogScope2("QUIC_CONN_BAD_START_STATE");
+            MsQuicConnection ConnInval(Registration);
+            SimulateConnBadStartState(ConnInval, ClientConfiguration);
+
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_INVALID_STATE,
+                ConnInval.SetParam(
+                    QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET,
+                    sizeof(Data),
+                    &Data));
+        }
+
+        //
+        // Requires a shared binding
+        //
+        {
+            TestScopeLogger LogScope2("Without QUIC_PARAM_CONN_SHARE_UDP_BINDING");
+            MsQuicConnection ConnInval(Registration);
+            TEST_QUIC_SUCCEEDED(ConnInval.GetInitStatus());
+
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_INVALID_STATE,
+                ConnInval.SetParam(
+                    QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET,
+                    sizeof(Data),
+                    &Data));
+        }
+
+        //
+        // Good
+        //
+        {
+            TEST_QUIC_SUCCEEDED(Connection.SetShareUdpBinding());
+            TEST_QUIC_SUCCEEDED(
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET,
+                    sizeof(Data),
+                    &Data));
+        }
+    }
+
+    //
+    // GetParam
+    //
+    {
+        TestScopeLogger LogScope2("GetParam");
+        SimpleGetParamTest(Connection.Handle, QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET, sizeof(BOOLEAN), &Data);
+    }
+}
+#endif
+
 void QuicTest_QUIC_PARAM_CONN_LOCAL_BIDI_STREAM_COUNT(MsQuicRegistration& Registration)
 {
     TestScopeLogger LogScope0("QUIC_PARAM_CONN_LOCAL_BIDI_STREAM_COUNT");
@@ -5698,6 +5765,9 @@ void QuicTestConnectionParam()
     QuicTest_QUIC_PARAM_CONN_STATISTICS(Registration);
     QuicTest_QUIC_PARAM_CONN_STATISTICS_PLAT(Registration);
     QuicTest_QUIC_PARAM_CONN_SHARE_UDP_BINDING(Registration, ClientConfiguration);
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    QuicTest_QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET(Registration, ClientConfiguration);
+#endif
     QuicTest_QUIC_PARAM_CONN_LOCAL_BIDI_STREAM_COUNT(Registration);
     QuicTest_QUIC_PARAM_CONN_LOCAL_UNIDI_STREAM_COUNT(Registration);
     QuicTest_QUIC_PARAM_CONN_MAX_STREAM_IDS(Registration);

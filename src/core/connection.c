@@ -1643,6 +1643,39 @@ QuicConnStart(
         goto Exit;
     }
 
+    if (Connection->State.UnconnectedSocket) {
+        if (!Connection->State.ShareBinding) {
+            //
+            // Setting the parameter requires a shared binding, so this only
+            // catches a binding that was un-shared afterwards.
+            //
+            Status = QUIC_STATUS_INVALID_STATE;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Unconnected socket requires a shared binding");
+            goto Exit;
+        }
+
+        if (!Connection->State.LocalAddressSet ||
+            QuicAddrIsWildCard(&Path->Route.LocalAddress)) {
+            //
+            // A connected socket takes its source address from the kernel when
+            // it is connected. An unconnected one does not, and the first packet
+            // goes out before anything has been learned from the peer, so the
+            // application has to name the address to send from.
+            //
+            Status = QUIC_STATUS_INVALID_STATE;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Unconnected socket requires a specific local address");
+            goto Exit;
+        }
+    }
+
     QuicAddrSetPort(&Path->Route.RemoteAddress, ServerPort);
     QuicTraceEvent(
         ConnRemoteAddrAdded,
@@ -1652,7 +1685,11 @@ QuicConnStart(
 
     CXPLAT_UDP_CONFIG UdpConfig = {0};
     UdpConfig.LocalAddress = Connection->State.LocalAddressSet ? &Path->Route.LocalAddress : NULL;
-    UdpConfig.RemoteAddress = &Path->Route.RemoteAddress;
+    //
+    // Passing no remote address leaves the socket unconnected, which is what
+    // lets a single binding carry connections to different remote addresses.
+    //
+    UdpConfig.RemoteAddress = Connection->State.UnconnectedSocket ? NULL : &Path->Route.RemoteAddress;
     UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
     UdpConfig.InterfaceIndex = Connection->State.LocalInterfaceSet ? (uint32_t)Path->Route.LocalAddress.Ipv6.sin6_scope_id : 0; // NOLINT(google-readability-casting)
     UdpConfig.PartitionIndex = QuicPartitionIdGetIndex(Connection->PartitionID);
@@ -8105,7 +8142,8 @@ QuicConnParamSet(
 
             CXPLAT_UDP_CONFIG UdpConfig = {0};
             UdpConfig.LocalAddress = LocalAddress;
-            UdpConfig.RemoteAddress = &Connection->Paths[0].Route.RemoteAddress;
+            UdpConfig.RemoteAddress =
+                Connection->State.UnconnectedSocket ? NULL : &Connection->Paths[0].Route.RemoteAddress;
             UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
             UdpConfig.InterfaceIndex = 0;
 #ifdef QUIC_COMPARTMENT_ID
@@ -8287,6 +8325,43 @@ QuicConnParamSet(
 
         Status = QUIC_STATUS_SUCCESS;
         break;
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    case QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET:
+
+        if (BufferLength != sizeof(uint8_t)) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        if (QUIC_CONN_BAD_START_STATE(Connection) ||
+            QuicConnIsServer(Connection)) {
+            Status = QUIC_STATUS_INVALID_STATE;
+            break;
+        }
+
+        if (*(uint8_t*)Buffer && !Connection->State.ShareBinding) {
+            //
+            // An unconnected socket receives datagrams from any remote address,
+            // so the connection has to be identifiable by its connection ID
+            // alone. That is only true when the binding is shared, which is what
+            // gives the connection a non-zero length source connection ID.
+            //
+            Status = QUIC_STATUS_INVALID_STATE;
+            break;
+        }
+
+        Connection->State.UnconnectedSocket = *(uint8_t*)Buffer;
+
+        QuicTraceLogConnInfo(
+            UpdateUnconnectedSocket,
+            Connection,
+            "Updated UnconnectedSocket = %hhu",
+            Connection->State.UnconnectedSocket);
+
+        Status = QUIC_STATUS_SUCCESS;
+        break;
+#endif
 
     case QUIC_PARAM_CONN_CLOSE_REASON_PHRASE:
 
@@ -9217,6 +9292,27 @@ QuicConnParamGet(
 
         Status = QUIC_STATUS_SUCCESS;
         break;
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    case QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET:
+
+        if (*BufferLength < sizeof(uint8_t)) {
+            *BufferLength = sizeof(uint8_t);
+            Status = QUIC_STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        if (Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        *BufferLength = sizeof(uint8_t);
+        *(uint8_t*)Buffer = Connection->State.UnconnectedSocket;
+
+        Status = QUIC_STATUS_SUCCESS;
+        break;
+#endif
 
     case QUIC_PARAM_CONN_LOCAL_BIDI_STREAM_COUNT:
         Type =

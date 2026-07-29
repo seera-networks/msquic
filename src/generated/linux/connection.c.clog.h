@@ -801,6 +801,26 @@ tracepoint(CLOG_CONNECTION_C, UpdateShareBinding , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for UpdateUnconnectedSocket
+// [conn][%p] Updated UnconnectedSocket = %hhu
+// QuicTraceLogConnInfo(
+            UpdateUnconnectedSocket,
+            Connection,
+            "Updated UnconnectedSocket = %hhu",
+            Connection->State.UnconnectedSocket);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->State.UnconnectedSocket = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_UpdateUnconnectedSocket
+#define _clog_4_ARGS_TRACE_UpdateUnconnectedSocket(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, UpdateUnconnectedSocket , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdateStreamSchedulingScheme
 // [conn][%p] Updated Stream Scheduling Scheme = %u
 // QuicTraceLogConnInfo(
