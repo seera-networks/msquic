@@ -127,7 +127,7 @@ QuicConnAlloc(
     QuicOperationQueueInitialize(&Connection->OperQ);
     QuicSendInitialize(&Connection->Send, &Connection->Settings);
     QuicPathIDSetInitialize(&Connection->PathIDs);
-    QuicDatagramInitialize(&Connection->Datagram);
+    QuicDatagramInitialize(&Connection->Datagram, IsServer);
     QuicRangeInitialize(
         QUIC_MAX_RANGE_DECODE_ACKS,
         &Connection->DecodedAckRanges);
@@ -2408,21 +2408,21 @@ QuicConnSetConfiguration(
         "[conn][%p] Handshake start",
         Connection);
 
-    //
-    // Re-evaluate the datagram send state now that the connection is started
-    // and owned by the application.
-    //
-    // `Started` is an input to the max send length (QuicDatagramOnSendStateChanged
-    // derives it from QUIC_DPLPMTUD_MIN_MTU until then, and from the path's MTU
-    // afterwards), so it has to be recomputed here regardless. For a server this
-    // is also the first evaluation with an owner to indicate to: the peer's
-    // transport parameters are processed before the listener hands the
-    // connection over, so nothing before this point could reach the application.
-    //
-    // Clients reach this path before any peer transport parameters exist, so
-    // their behaviour is unchanged.
-    //
-    QuicDatagramOnSendStateChanged(&Connection->Datagram);
+    if (QuicConnIsServer(Connection)) {
+        //
+        // Evaluate the datagram send state for a server. This is the first
+        // point at which both of its inputs are settled and there is an
+        // external owner to indicate the result to: the peer's transport
+        // parameters are processed before the listener hands the connection to
+        // the application, and `Started` selects the MTU that the max send
+        // length is derived from.
+        //
+        // A client's send state is evaluated once its peer's transport
+        // parameters arrive, which is always after it has an owner, so it needs
+        // nothing here.
+        //
+        QuicDatagramOnSendStateChanged(&Connection->Datagram);
+    }
 
     Status =
         QuicCryptoInitializeTls(

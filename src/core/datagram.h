@@ -34,11 +34,10 @@ typedef struct QUIC_DATAGRAM {
 
     //
     // The send state last indicated to the application, which is not always the
-    // live state above. The send state can change while the connection has no
-    // external owner to indicate to — a server connection processes the peer's
-    // transport parameters before the listener hands it to the application —
-    // and such a change must not be mistaken for one that was already reported,
-    // or the application is never told at all.
+    // live state above. The two differ while a change made with no external
+    // owner to indicate it to remains unreported, which is the normal case for a
+    // server: the peer's transport parameters are processed before the listener
+    // hands the connection to the application.
     //
     uint16_t IndicatedMaxSendLength;
 
@@ -49,9 +48,7 @@ typedef struct QUIC_DATAGRAM {
     BOOLEAN SendEnabled : 1;
 
     //
-    // The `SendEnabled` last indicated to the application. Starts FALSE: until
-    // an indication is made the application has been told nothing, and assumes
-    // datagrams are not sendable.
+    // The `SendEnabled` last indicated to the application.
     //
     BOOLEAN IndicatedSendEnabled : 1;
 
@@ -60,7 +57,8 @@ typedef struct QUIC_DATAGRAM {
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicDatagramInitialize(
-    _In_ QUIC_DATAGRAM* Datagram
+    _In_ QUIC_DATAGRAM* Datagram,
+    _In_ BOOLEAN IsServer
     );
 
 _IRQL_requires_max_(PASSIVE_LEVEL)

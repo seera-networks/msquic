@@ -74,13 +74,21 @@ QuicCalculateDatagramLength(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicDatagramInitialize(
-    _In_ QUIC_DATAGRAM* Datagram
+    _In_ QUIC_DATAGRAM* Datagram,
+    _In_ BOOLEAN IsServer
     )
 {
     Datagram->SendEnabled = TRUE;
     Datagram->MaxSendLength = UINT16_MAX;
-    Datagram->IndicatedSendEnabled = FALSE;
-    Datagram->IndicatedMaxSendLength = 0;
+    //
+    // The indicated state starts out as what the application can be assumed to
+    // know already. A client opens the connection itself, so it knows the initial
+    // state set just above; a server is handed a connection whose send state is
+    // settled before it ever sees it, so it knows nothing and assumes the
+    // conservative default of not being able to send.
+    //
+    Datagram->IndicatedSendEnabled = IsServer ? FALSE : TRUE;
+    Datagram->IndicatedMaxSendLength = IsServer ? 0 : UINT16_MAX;
     Datagram->PrioritySendQueueTail = &Datagram->SendQueue;
     Datagram->SendQueueTail = &Datagram->SendQueue;
     CxPlatDispatchLockInitialize(&Datagram->ApiQueueLock);
@@ -286,13 +294,11 @@ QuicDatagramOnSendStateChanged(
     }
 
     //
-    // Whether the live state moved, and whether the application's view of it is
-    // stale, are separate questions. They diverge when the state changes with no
-    // external owner to indicate to, which is the normal case for a server: the
-    // peer's transport parameters are processed before the listener hands the
-    // connection over. Comparing only against the live state there would leave
-    // the change looking already reported, and the application would never learn
-    // that datagrams are sendable.
+    // Whether the live state moved and whether the application's view of it is
+    // stale are separate questions, so they are asked separately. The two answers
+    // differ whenever the state changed with no external owner to indicate to,
+    // which is the normal case for a server: the peer's transport parameters are
+    // processed before the listener hands the connection over.
     //
     const BOOLEAN StateChanged =
         SendEnabled != Datagram->SendEnabled ||
