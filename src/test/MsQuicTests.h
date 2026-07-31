@@ -158,6 +158,8 @@ void QuicTestAddrFunctions(const FamilyArgs& Params);
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 void QuicTestConnectUnconnectedSocket(const FamilyArgs& Params);
 void QuicTestUnconnectedSocketRequirements();
+void QuicTestUnconnectedSocketAddPathBeforeStart(const FamilyArgs& Params);
+void QuicTestUnconnectedSocketAddPathAfterStart(const FamilyArgs& Params);
 #endif
 
 //

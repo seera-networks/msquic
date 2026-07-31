@@ -492,7 +492,197 @@ void QuicTestUnconnectedSocketRequirements()
 
         TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
         TEST_FALSE(Connection.HandshakeComplete);
-        TEST_EQUAL(QUIC_STATUS_INVALID_STATE, Connection.TransportShutdownStatus);
+        TEST_EQUAL(QUIC_STATUS_INVALID_PARAMETER, Connection.TransportShutdownStatus);
+    }
+}
+
+//
+// Sets the connection's local and remote address with QUIC_PARAM_CONN_ADD_PATH
+// instead of QUIC_PARAM_CONN_LOCAL_ADDRESS/REMOTE_ADDRESS. Before the
+// connection is started, ADD_PATH configures Paths[0] rather than opening an
+// additional path, so it has to satisfy the unconnected socket's requirement
+// for a specific local address the same way the individual parameters do.
+//
+void QuicTestUnconnectedSocketAddPathBeforeStart(const FamilyArgs& Params)
+{
+    const int Family = Params.Family;
+    const QUIC_ADDRESS_FAMILY QuicAddrFamily =
+        (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+
+    MsQuicRegistration Registration(true);
+    TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
+    TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
+
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", MsQuicCredentialConfig());
+    TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest"));
+    QuicAddr ServerAddr;
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerAddr));
+
+    QuicAddr LocalAddr(QuicAddrFamily, true);
+    QuicAddr RemoteAddr(QuicAddrFamily, true);
+    if (UseDuoNic) {
+        QuicAddrSetToDuoNic(&LocalAddr.SockAddr);
+        QuicAddrSetToDuoNic(&RemoteAddr.SockAddr);
+    }
+    RemoteAddr.SetPort(ServerAddr.GetPort());
+
+    QUIC_PATH_PARAM PathParam = { &LocalAddr.SockAddr, &RemoteAddr.SockAddr };
+
+    //
+    // A wildcard local address is rejected, since an unconnected socket has no
+    // source address of its own to send the connection's first packet from.
+    //
+    {
+        QuicAddr WildcardLocalAddr(QuicAddrFamily);
+        QUIC_PATH_PARAM WildcardParam = { &WildcardLocalAddr.SockAddr, &RemoteAddr.SockAddr };
+
+        MsQuicConnection Connection(Registration);
+        TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+        TEST_QUIC_SUCCEEDED(Connection.SetShareUdpBinding());
+        TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket());
+        TEST_QUIC_SUCCEEDED(
+            Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(WildcardParam), &WildcardParam));
+        TEST_QUIC_SUCCEEDED(
+            Connection.Start(ClientConfiguration, QuicAddrFamily, nullptr, ServerAddr.GetPort()));
+
+        TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+        TEST_FALSE(Connection.HandshakeComplete);
+        TEST_EQUAL(QUIC_STATUS_INVALID_PARAMETER, Connection.TransportShutdownStatus);
+    }
+
+    //
+    // With a specific one the connection is established, on the address that
+    // was named.
+    //
+    {
+        MsQuicConnection Connection(Registration);
+        TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+        TEST_QUIC_SUCCEEDED(Connection.SetShareUdpBinding());
+        TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket());
+        TEST_QUIC_SUCCEEDED(
+            Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam));
+        TEST_QUIC_SUCCEEDED(
+            Connection.Start(ClientConfiguration, QuicAddrFamily, nullptr, ServerAddr.GetPort()));
+
+        TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+        TEST_TRUE(Connection.HandshakeComplete);
+
+        QuicAddr ActualLocalAddr;
+        TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ActualLocalAddr));
+        TEST_FALSE(QuicAddrIsWildCard(&ActualLocalAddr.SockAddr));
+        TEST_NOT_EQUAL(0, ActualLocalAddr.GetPort());
+
+        QuicAddr ActualRemoteAddr;
+        TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(ActualRemoteAddr));
+        TEST_EQUAL(ServerAddr.GetPort(), ActualRemoteAddr.GetPort());
+    }
+}
+
+//
+// Adds a path with QUIC_PARAM_CONN_ADD_PATH once the connection is established.
+// Unlike the pre-start case, this opens a binding of its own, so it is the path
+// that exercises the unconnected socket handling in QuicConnOpenNewPath.
+//
+void QuicTestUnconnectedSocketAddPathAfterStart(const FamilyArgs& Params)
+{
+    const int Family = Params.Family;
+    const QUIC_ADDRESS_FAMILY QuicAddrFamily =
+        (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+
+    MsQuicRegistration Registration(true);
+    TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
+    TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
+
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", MsQuicCredentialConfig());
+    TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
+
+    //
+    // A second server, so the added path has a remote address the connected
+    // socket of the first path could not have reached.
+    //
+    MsQuicAutoAcceptListener Listener1(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener1.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener1.Start("MsQuicTest"));
+    QuicAddr Server1Addr;
+    TEST_QUIC_SUCCEEDED(Listener1.GetLocalAddr(Server1Addr));
+
+    MsQuicAutoAcceptListener Listener2(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener2.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener2.Start("MsQuicTest"));
+    QuicAddr Server2Addr;
+    TEST_QUIC_SUCCEEDED(Listener2.GetLocalAddr(Server2Addr));
+
+    TEST_NOT_EQUAL(Server1Addr.GetPort(), Server2Addr.GetPort());
+
+    QuicAddr LocalAddr(QuicAddrFamily, true);
+    if (UseDuoNic) {
+        QuicAddrSetToDuoNic(&LocalAddr.SockAddr);
+    }
+
+    MsQuicConnection Connection(Registration);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Connection.SetShareUdpBinding());
+    TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket());
+    TEST_QUIC_SUCCEEDED(Connection.SetLocalAddr(LocalAddr));
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QuicAddrFamily,
+            QUIC_TEST_LOOPBACK_FOR_AF(QuicAddrFamily),
+            Server1Addr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Connection.HandshakeComplete);
+
+    QuicAddr ClientAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ClientAddr));
+    QuicAddr Peer1Addr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(Peer1Addr));
+
+    QuicAddr Peer2Addr = Peer1Addr;
+    Peer2Addr.SetPort(Server2Addr.GetPort());
+
+    //
+    // The address pair the connection already runs on is not a new path.
+    //
+    {
+        QUIC_PATH_PARAM PathParam = { &ClientAddr.SockAddr, &Peer1Addr.SockAddr };
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_ADDRESS_IN_USE,
+            Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam));
+    }
+
+    //
+    // A wildcard local address is rejected: the added path's socket is left
+    // unconnected, so it has no source address of its own to send from.
+    //
+    {
+        QuicAddr WildcardLocalAddr(QuicAddrFamily);
+        QUIC_PATH_PARAM PathParam = { &WildcardLocalAddr.SockAddr, &Peer2Addr.SockAddr };
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_INVALID_PARAMETER,
+            Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam));
+    }
+
+    //
+    // The same local address towards the second server is a new path, and it
+    // shares the binding the connection is already using.
+    //
+    {
+        QUIC_PATH_PARAM PathParam = { &ClientAddr.SockAddr, &Peer2Addr.SockAddr };
+        TEST_QUIC_SUCCEEDED(
+            Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam));
+
+        QuicAddr StillClientAddr;
+        TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(StillClientAddr));
+        TEST_EQUAL(ClientAddr.GetPort(), StillClientAddr.GetPort());
     }
 }
 

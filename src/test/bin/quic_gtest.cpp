@@ -1062,6 +1062,24 @@ TEST_P(WithFamilyArgs, ConnectUnconnectedSocket) {
     }
 }
 
+TEST_P(WithFamilyArgs, UnconnectedSocketAddPathBeforeStart) {
+    TestLoggerT<ParamType> Logger("QuicTestUnconnectedSocketAddPathBeforeStart", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestUnconnectedSocketAddPathBeforeStart), GetParam()));
+    } else {
+        QuicTestUnconnectedSocketAddPathBeforeStart(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, UnconnectedSocketAddPathAfterStart) {
+    TestLoggerT<ParamType> Logger("QuicTestUnconnectedSocketAddPathAfterStart", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestUnconnectedSocketAddPathAfterStart), GetParam()));
+    } else {
+        QuicTestUnconnectedSocketAddPathAfterStart(GetParam());
+    }
+}
+
 TEST(Basic, UnconnectedSocketRequirements) {
     TestLogger Logger("QuicTestUnconnectedSocketRequirements");
     if (TestingKernelMode) {

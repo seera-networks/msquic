@@ -1666,7 +1666,7 @@ QuicConnStart(
             // goes out before anything has been learned from the peer, so the
             // application has to name the address to send from.
             //
-            Status = QUIC_STATUS_INVALID_STATE;
+            Status = QUIC_STATUS_INVALID_PARAMETER;
             QuicTraceEvent(
                 ConnError,
                 "[conn][%p] ERROR, %s.",
@@ -6844,12 +6844,51 @@ QuicConnOpenNewPath(
 
     QUIC_BINDING* NewBinding = NULL;
     CXPLAT_UDP_CONFIG UdpConfig = {0};
+
+    if (Connection->State.UnconnectedSocket) {
+        if (!Connection->State.ShareBinding) {
+            //
+            // Setting the parameter requires a shared binding, so this only
+            // catches a binding that was un-shared afterwards.
+            //
+            Status = QUIC_STATUS_INVALID_STATE;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Unconnected socket requires a shared binding");
+            goto Error;
+        }
+
+        if (QuicAddrIsWildCard(&Path->Route.LocalAddress)) {
+            //
+            // A connected socket takes its source address from the kernel when
+            // it is connected. An unconnected one does not, and the path's first
+            // packet goes out before anything has been learned from the peer, so
+            // the caller has to name the address to send from.
+            //
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Unconnected socket requires a specific local address");
+            goto Error;
+        }
+    }
+
     if (QuicAddrIsWildCard(&Path->Route.LocalAddress) && QuicAddrGetPort(&Path->Route.LocalAddress) == 0) {
         UdpConfig.LocalAddress = NULL;
     } else {
         UdpConfig.LocalAddress = &Path->Route.LocalAddress;
     }
-    if (QuicAddrIsWildCard(&Path->Route.RemoteAddress) && QuicAddrGetPort(&Path->Route.RemoteAddress) == 0) {
+    if (Connection->State.UnconnectedSocket) {
+        //
+        // Passing no remote address leaves the socket unconnected, which is what
+        // lets a single binding carry connections to different remote addresses.
+        //
+        UdpConfig.RemoteAddress = NULL;
+    } else if (QuicAddrIsWildCard(&Path->Route.RemoteAddress) && QuicAddrGetPort(&Path->Route.RemoteAddress) == 0) {
         UdpConfig.RemoteAddress = &Connection->Paths[0].Route.RemoteAddress;
     } else {
         UdpConfig.RemoteAddress = &Path->Route.RemoteAddress;

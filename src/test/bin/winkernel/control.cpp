@@ -522,6 +522,8 @@ ExecuteTestRequest(
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
     RegisterTestFunction(QuicTestConnectUnconnectedSocket);
     RegisterTestFunction(QuicTestUnconnectedSocketRequirements);
+    RegisterTestFunction(QuicTestUnconnectedSocketAddPathBeforeStart);
+    RegisterTestFunction(QuicTestUnconnectedSocketAddPathAfterStart);
 #endif
     RegisterTestFunction(QuicTestConnect_Connect);
 #ifndef QUIC_DISABLE_RESUMPTION
