@@ -550,7 +550,7 @@ QuicLookupInsertLocalCid(
         LookupCidInsert,
         "[look][%p] Insert Conn=%p Hash=%u",
         Lookup,
-        SourceCid->Connection,
+        SourceCid->PathID->Connection,
         Hash);
 #endif
 
@@ -635,7 +635,7 @@ QuicLookupRemoveLocalCidInt(
         LookupCidRemoved,
         "[look][%p] Remove Conn=%p",
         Lookup,
-        SourceCid->Connection);
+        SourceCid->PathID->Connection);
 #endif
 
     if (Lookup->PartitionCount == 0) {

@@ -6746,7 +6746,24 @@ QuicConnProcessPathValidationTimerOperation(
         if (Connection->PathsCount > 1 &&
             Connection->Paths[i].Binding != NULL) {
             if (!Connection->Paths[i].UseBound) {
-                QuicBindingRemoveAllSourceConnectionIDs(Connection->Paths[i].Binding, Connection);
+                //
+                // An unconnected binding is matched on local port alone, so
+                // paths to different remote addresses can share one. The source
+                // connection IDs registered on it belong to the connection, not
+                // to this path, and the paths still using the binding are still
+                // reached through them. Only withdraw them once no other path
+                // holds the same binding, or those paths stop receiving.
+                //
+                BOOLEAN IsCommonBinding = FALSE;
+                for (uint8_t j = 0; j < Connection->PathsCount; ++j) {
+                    if (i != j && Connection->Paths[i].Binding == Connection->Paths[j].Binding) {
+                        IsCommonBinding = TRUE;
+                        break;
+                    }
+                }
+                if (!IsCommonBinding) {
+                    QuicBindingRemoveAllSourceConnectionIDs(Connection->Paths[i].Binding, Connection);
+                }
             }
             QuicLibraryReleaseBinding(Connection->Paths[i].Binding);
             Connection->Paths[i].Binding = NULL;
@@ -6924,6 +6941,22 @@ QuicConnOpenNewPath(
 
     Path->Binding = NewBinding;
 
+    //
+    // QuicLibraryGetBinding hands back an existing binding whenever one matches,
+    // so this path may well have joined a binding another path of this same
+    // connection is already on. That is the normal case for an unconnected
+    // socket, which is matched on local port alone and therefore shared across
+    // paths to different remote addresses. Whether the connection's source
+    // connection IDs still have to be registered below depends on which it was.
+    //
+    BOOLEAN ReallyNewBinding = TRUE;
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Path != &Connection->Paths[i] && Connection->Paths[i].Binding == NewBinding) {
+            ReallyNewBinding = FALSE;
+            break;
+        }
+    }
+
     QuicBindingGetLocalAddress(
         Path->Binding,
         &Path->Route.LocalAddress);
@@ -6960,26 +6993,34 @@ QuicConnOpenNewPath(
         Path->PathID = Connection->Paths[0].PathID;
     }
 
-    if (!Connection->State.ShareBinding) {
-        QUIC_CID_SLIST_ENTRY* SourceCid = QuicCidNewNullSource(Path->PathID);
-        if (SourceCid == NULL) {
-            Status = QUIC_STATUS_OUT_OF_MEMORY;
-            goto Error;
-        }
+    //
+    // Registering the source connection IDs is what makes the binding deliver
+    // this connection's packets, and it is per binding, not per path. A binding
+    // inherited from another path of this connection already carries them, so
+    // doing it again would either add a second null source CID for the same
+    // connection or re-register the ones already there.
+    //
+    if (ReallyNewBinding) {
+        if (!Connection->State.ShareBinding) {
+            QUIC_CID_SLIST_ENTRY* SourceCid = QuicCidNewNullSource(Path->PathID);
+            if (SourceCid == NULL) {
+                Status = QUIC_STATUS_OUT_OF_MEMORY;
+                goto Error;
+            }
 
-        Path->PathID->NextSourceCidSequenceNumber++;
-        QuicPathIDAddSourceCID(Path->PathID, SourceCid, FALSE);
+            Path->PathID->NextSourceCidSequenceNumber++;
+            QuicPathIDAddSourceCID(Path->PathID, SourceCid, FALSE);
 
-        if (!QuicBindingAddSourceConnectionID(NewBinding, SourceCid)) {
-            Status = QUIC_STATUS_OUT_OF_MEMORY;
-            goto Error;
-        }
-    } else {
-        if (!QuicBindingAddAllSourceConnectionIDs(NewBinding, Connection)) {
-            QuicPathIDSetGenerateNewSourceCids(&Connection->PathIDs, TRUE);
+            if (!QuicBindingAddSourceConnectionID(NewBinding, SourceCid)) {
+                Status = QUIC_STATUS_OUT_OF_MEMORY;
+                goto Error;
+            }
+        } else {
+            if (!QuicBindingAddAllSourceConnectionIDs(NewBinding, Connection)) {
+                QuicPathIDSetGenerateNewSourceCids(&Connection->PathIDs, TRUE);
+            }
         }
     }
-
 
     QuicTraceEvent(
         ConnLocalAddrAdded,
