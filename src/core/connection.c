@@ -1658,6 +1658,24 @@ QuicConnStart(
             goto Exit;
         }
 
+        if (Connection->Settings.QTIPEnabled) {
+            //
+            // The raw datapath reads a socket with no remote address as a
+            // server listener, and requires a wildcard local address of one
+            // (see RawSocketCreateUdp). An unconnected socket has neither: no
+            // remote address by definition, and a specific local address by
+            // requirement. Without QTIP that only costs the raw datapath, since
+            // the socket falls back to an OS one; with it there is no fallback.
+            //
+            Status = QUIC_STATUS_INVALID_STATE;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Unconnected socket is not supported with QTIP");
+            goto Exit;
+        }
+
         if (!Connection->State.LocalAddressSet ||
             QuicAddrIsWildCard(&Path->Route.LocalAddress)) {
             //
@@ -6877,6 +6895,24 @@ QuicConnOpenNewPath(
             goto Error;
         }
 
+        if (Connection->Settings.QTIPEnabled) {
+            //
+            // The raw datapath reads a socket with no remote address as a
+            // server listener, and requires a wildcard local address of one
+            // (see RawSocketCreateUdp). An unconnected socket has neither: no
+            // remote address by definition, and a specific local address by
+            // requirement. Without QTIP that only costs the raw datapath, since
+            // the socket falls back to an OS one; with it there is no fallback.
+            //
+            Status = QUIC_STATUS_INVALID_STATE;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Unconnected socket is not supported with QTIP");
+            goto Error;
+        }
+
         if (QuicAddrIsWildCard(&Path->Route.LocalAddress)) {
             //
             // A connected socket takes its source address from the kernel when
@@ -7199,8 +7235,27 @@ QuicConnAddBoundAddress(
 
     BOOLEAN PortUnspecified = QuicAddrGetPort(Param) == 0;
 
+    //
+    // The binding carries no remote address, which the raw datapath reads as a
+    // server listener and then requires a wildcard local address of (see
+    // RawSocketCreateUdp). Under QTIP there is no falling back to an OS socket,
+    // so bind the wildcard and keep only the port, as this did before it learnt
+    // to bind the address it was given. The address the peer is told about is
+    // still the one the caller named; what is lost is the choice of interface
+    // to receive on, which QTIP could not honour anyway.
+    //
+    QUIC_ADDR WildcardAddress = {0};
+    if (Connection->Settings.QTIPEnabled) {
+        QuicAddrSetFamily(&WildcardAddress, QUIC_ADDRESS_FAMILY_INET6);
+        QuicAddrSetPort(&WildcardAddress, QuicAddrGetPort(Param));
+        QuicTraceLogConnInfo(
+            BoundAddressWildcardForQtip,
+            Connection,
+            "Binding a bound address on the wildcard, as QTIP requires");
+    }
+
     CXPLAT_UDP_CONFIG UdpConfig = {0};
-    UdpConfig.LocalAddress = Param;
+    UdpConfig.LocalAddress = Connection->Settings.QTIPEnabled ? &WildcardAddress : Param;
     UdpConfig.RemoteAddress = NULL;
     UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
     UdpConfig.InterfaceIndex = 0;

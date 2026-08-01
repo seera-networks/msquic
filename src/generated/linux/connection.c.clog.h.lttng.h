@@ -834,6 +834,26 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, UpdatePeerPacketTolerance,
 )
 
 
+/*----------------------------------------------------------
+// Decoder Ring for BoundAddressWildcardForQtip
+// [conn][%p] Binding a bound address on the wildcard, as QTIP requires
+// QuicTraceLogConnInfo(
+            BoundAddressWildcardForQtip,
+            Connection,
+            "Binding a bound address on the wildcard, as QTIP requires");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, BoundAddressWildcardForQtip,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+
 
 /*----------------------------------------------------------
 // Decoder Ring for UpdateShareBinding

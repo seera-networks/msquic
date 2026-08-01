@@ -351,10 +351,10 @@ void QuicTestAddrFunctions(const FamilyArgs& Params)
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 
 //
-// QTIP carries QUIC over a TCP connection through the raw datapath, which
-// refuses a socket with no remote address unless its local address is the
-// wildcard. An unconnected socket has neither, and under QTIP there is no
-// falling back to an OS socket, so the tests below have nothing to check.
+// The raw datapath reads a socket with no remote address as a server listener
+// and requires a wildcard local address of one. An unconnected socket has
+// neither, and under QTIP there is no falling back to an OS socket, so the
+// tests below have nothing to check there.
 //
 static bool QuicTestUnconnectedSocketUnavailable(_In_ MsQuicRegistration& Registration)
 {
