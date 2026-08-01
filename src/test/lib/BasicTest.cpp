@@ -350,6 +350,25 @@ void QuicTestAddrFunctions(const FamilyArgs& Params)
 
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 
+//
+// QTIP carries QUIC over a TCP connection, which the raw datapath cannot
+// establish without a destination, so an unconnected socket is rejected there.
+// The tests below are about what the parameter does when it is available, so
+// they have nothing to check under QTIP.
+//
+static bool QuicTestUnconnectedSocketUnavailable(_In_ MsQuicRegistration& Registration)
+{
+    MsQuicConnection Connection(Registration);
+    if (QUIC_FAILED(Connection.GetInitStatus())) {
+        return false;
+    }
+    MsQuicSettings Settings;
+    if (QUIC_FAILED(Connection.GetSettings(&Settings))) {
+        return false;
+    }
+    return Settings.QTIPEnabled != 0;
+}
+
 void QuicTestConnectUnconnectedSocket(const FamilyArgs& Params)
 {
     const int Family = Params.Family;
@@ -358,6 +377,10 @@ void QuicTestConnectUnconnectedSocket(const FamilyArgs& Params)
 
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
 
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
@@ -439,6 +462,10 @@ void QuicTestUnconnectedSocketRequirements()
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
 
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
+
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
 
@@ -511,6 +538,10 @@ void QuicTestUnconnectedSocketAddPathBeforeStart(const FamilyArgs& Params)
 
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
 
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
@@ -597,6 +628,10 @@ void QuicTestUnconnectedSocketAddPathAfterStart(const FamilyArgs& Params)
 
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
 
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());

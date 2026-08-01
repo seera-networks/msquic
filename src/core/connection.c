@@ -1658,6 +1658,21 @@ QuicConnStart(
             goto Exit;
         }
 
+        if (Connection->Settings.QTIPEnabled) {
+            //
+            // QTIP carries QUIC over a TCP connection, which the raw datapath
+            // cannot establish without a destination. An unconnected socket
+            // deliberately has none, so the two cannot be combined.
+            //
+            Status = QUIC_STATUS_INVALID_STATE;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Unconnected socket is not supported with QTIP");
+            goto Exit;
+        }
+
         if (!Connection->State.LocalAddressSet ||
             QuicAddrIsWildCard(&Path->Route.LocalAddress)) {
             //
@@ -6874,6 +6889,21 @@ QuicConnOpenNewPath(
                 "[conn][%p] ERROR, %s.",
                 Connection,
                 "Unconnected socket requires a shared binding");
+            goto Error;
+        }
+
+        if (Connection->Settings.QTIPEnabled) {
+            //
+            // QTIP carries QUIC over a TCP connection, which the raw datapath
+            // cannot establish without a destination. An unconnected socket
+            // deliberately has none, so the two cannot be combined.
+            //
+            Status = QUIC_STATUS_INVALID_STATE;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Unconnected socket is not supported with QTIP");
             goto Error;
         }
 
