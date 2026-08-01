@@ -777,6 +777,24 @@ tracepoint(CLOG_CONNECTION_C, UpdatePeerPacketTolerance , arg1, arg3);\
 
 #endif
 
+/*----------------------------------------------------------
+// Decoder Ring for BoundAddressWildcardForQtip
+// [conn][%p] Binding a bound address on the wildcard, as QTIP requires
+// QuicTraceLogConnInfo(
+            BoundAddressWildcardForQtip,
+            Connection,
+            "Binding a bound address on the wildcard, as QTIP requires");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_BoundAddressWildcardForQtip
+#define _clog_3_ARGS_TRACE_BoundAddressWildcardForQtip(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
+
+#endif
+
+
+
+
 
 
 
