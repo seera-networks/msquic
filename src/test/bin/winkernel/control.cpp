@@ -524,6 +524,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestUnconnectedSocketRequirements);
     RegisterTestFunction(QuicTestUnconnectedSocketAddPathBeforeStart);
     RegisterTestFunction(QuicTestUnconnectedSocketAddPathAfterStart);
+    RegisterTestFunction(QuicTestSharedBindingPathRemoval);
 #endif
     RegisterTestFunction(QuicTestConnect_Connect);
 #ifndef QUIC_DISABLE_RESUMPTION

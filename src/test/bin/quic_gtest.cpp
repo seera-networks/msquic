@@ -1080,6 +1080,15 @@ TEST_P(WithFamilyArgs, UnconnectedSocketAddPathAfterStart) {
     }
 }
 
+TEST_P(WithFamilyArgs, SharedBindingPathRemoval) {
+    TestLoggerT<ParamType> Logger("QuicTestSharedBindingPathRemoval", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestSharedBindingPathRemoval), GetParam()));
+    } else {
+        QuicTestSharedBindingPathRemoval(GetParam());
+    }
+}
+
 TEST(Basic, UnconnectedSocketRequirements) {
     TestLogger Logger("QuicTestUnconnectedSocketRequirements");
     if (TestingKernelMode) {

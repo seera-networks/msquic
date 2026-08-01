@@ -773,6 +773,15 @@ QuicPathIDAssignCids(
         Assigned = TRUE;
     }
 
+    if (Assigned) {
+        //
+        // Starting a validation is not enough on its own: without the timer
+        // there is nothing to notice that it never completed, and a path whose
+        // peer never answers stays on the connection for good.
+        //
+        QuicConnPathValidationTimerUpdate(PathID->Connection);
+    }
+
     return Assigned;
 }
 

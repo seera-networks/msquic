@@ -350,6 +350,25 @@ void QuicTestAddrFunctions(const FamilyArgs& Params)
 
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 
+//
+// QTIP carries QUIC over a TCP connection through the raw datapath, which
+// refuses a socket with no remote address unless its local address is the
+// wildcard. An unconnected socket has neither, and under QTIP there is no
+// falling back to an OS socket, so the tests below have nothing to check.
+//
+static bool QuicTestUnconnectedSocketUnavailable(_In_ MsQuicRegistration& Registration)
+{
+    MsQuicConnection Connection(Registration);
+    if (QUIC_FAILED(Connection.GetInitStatus())) {
+        return false;
+    }
+    MsQuicSettings Settings;
+    if (QUIC_FAILED(Connection.GetSettings(&Settings))) {
+        return false;
+    }
+    return Settings.QTIPEnabled != 0;
+}
+
 void QuicTestConnectUnconnectedSocket(const FamilyArgs& Params)
 {
     const int Family = Params.Family;
@@ -358,6 +377,10 @@ void QuicTestConnectUnconnectedSocket(const FamilyArgs& Params)
 
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
 
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
@@ -439,6 +462,10 @@ void QuicTestUnconnectedSocketRequirements()
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
 
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
+
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
 
@@ -511,6 +538,10 @@ void QuicTestUnconnectedSocketAddPathBeforeStart(const FamilyArgs& Params)
 
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
 
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
@@ -598,6 +629,10 @@ void QuicTestUnconnectedSocketAddPathAfterStart(const FamilyArgs& Params)
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
 
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
+
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
 
@@ -683,6 +718,157 @@ void QuicTestUnconnectedSocketAddPathAfterStart(const FamilyArgs& Params)
         QuicAddr StillClientAddr;
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(StillClientAddr));
         TEST_EQUAL(ClientAddr.GetPort(), StillClientAddr.GetPort());
+    }
+}
+
+struct SharedBindingPathContext {
+    CxPlatEvent ServerConnectedEvent;
+    CxPlatEvent ClientPeerStreamEvent;
+    MsQuicConnection* ServerConnection {nullptr};
+
+    static QUIC_STATUS QUIC_API ServerConnCallback(_In_ MsQuicConnection* Conn, _In_opt_ void* Context, _Inout_ QUIC_CONNECTION_EVENT* Event) {
+        auto Ctx = (SharedBindingPathContext*)Context;
+        if (Event->Type == QUIC_CONNECTION_EVENT_CONNECTED) {
+            Ctx->ServerConnection = Conn;
+            Ctx->ServerConnectedEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE) {
+            Ctx->ServerConnection = nullptr;
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    static QUIC_STATUS QUIC_API ClientConnCallback(_In_ MsQuicConnection*, _In_opt_ void* Context, _Inout_ QUIC_CONNECTION_EVENT* Event) {
+        auto Ctx = (SharedBindingPathContext*)Context;
+        if (Event->Type == QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED) {
+            MsQuic->StreamClose(Event->PEER_STREAM_STARTED.Stream);
+            Ctx->ClientPeerStreamEvent.Set();
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+};
+
+//
+// A connection whose socket is left unconnected reaches several remote
+// addresses through one binding, so its paths share it. The source connection
+// IDs registered on that binding are what makes it deliver the connection's
+// packets, and they belong to the connection rather than to any one path.
+// Abandoning one path must therefore leave the others receiving.
+//
+void QuicTestSharedBindingPathRemoval(const FamilyArgs& Params)
+{
+    const int Family = Params.Family;
+    const QUIC_ADDRESS_FAMILY QuicAddrFamily =
+        (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+
+    MsQuicRegistration Registration(true);
+    TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
+
+    MsQuicSettings Settings;
+    Settings.SetPeerBidiStreamCount(4).SetPeerUnidiStreamCount(4);
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
+
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, MsQuicCredentialConfig());
+    TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
+
+    SharedBindingPathContext Context;
+
+    //
+    // The path that survives is the connection's first, to the first server.
+    // The path that is abandoned goes to the second, so that dropping traffic
+    // by port separates the two.
+    //
+    MsQuicAutoAcceptListener Listener1(Registration, ServerConfiguration, SharedBindingPathContext::ServerConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener1.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener1.Start("MsQuicTest"));
+    QuicAddr Server1Addr;
+    TEST_QUIC_SUCCEEDED(Listener1.GetLocalAddr(Server1Addr));
+
+    MsQuicAutoAcceptListener Listener2(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener2.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener2.Start("MsQuicTest"));
+    QuicAddr Server2Addr;
+    TEST_QUIC_SUCCEEDED(Listener2.GetLocalAddr(Server2Addr));
+
+    TEST_NOT_EQUAL(Server1Addr.GetPort(), Server2Addr.GetPort());
+
+    QuicAddr LocalAddr(QuicAddrFamily, true);
+    if (UseDuoNic) {
+        QuicAddrSetToDuoNic(&LocalAddr.SockAddr);
+    }
+
+    MsQuicConnection Connection(Registration, CleanUpManual, SharedBindingPathContext::ClientConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Connection.SetShareUdpBinding());
+    TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket());
+    TEST_QUIC_SUCCEEDED(Connection.SetLocalAddr(LocalAddr));
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QuicAddrFamily,
+            QUIC_TEST_LOOPBACK_FOR_AF(QuicAddrFamily),
+            Server1Addr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Connection.HandshakeComplete);
+    TEST_TRUE(Context.ServerConnectedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.ServerConnection);
+
+    //
+    // Wait for handshake confirmation, so the path below is opened rather than
+    // left pending.
+    //
+    CxPlatSleep(100);
+
+    QuicAddr ClientAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ClientAddr));
+    QuicAddr Peer1Addr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(Peer1Addr));
+    QuicAddr Peer2Addr = Peer1Addr;
+    Peer2Addr.SetPort(Server2Addr.GetPort());
+
+    //
+    // Drop everything to and from the second server, so the path added below
+    // never validates and is eventually abandoned.
+    //
+    PathProbeHelper ProbeHelper(Server2Addr.GetPort(), 255, 255, TRUE);
+
+    QUIC_PATH_PARAM PathParam = { &ClientAddr.SockAddr, &Peer2Addr.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam));
+
+    //
+    // The added path shares the binding, which is the case under test.
+    //
+    QuicAddr StillClientAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(StillClientAddr));
+    TEST_EQUAL(ClientAddr.GetPort(), StillClientAddr.GetPort());
+
+    //
+    // Let path validation run out. The timeout is the larger of three PTOs and
+    // six times the initial RTT, so a few seconds covers it on loopback.
+    //
+    CxPlatSleep(5000);
+
+    //
+    // The first path must still be able to receive. A stream opened by the
+    // server only arrives if the binding still carries the connection's source
+    // connection IDs.
+    //
+    TEST_NOT_EQUAL(nullptr, Context.ServerConnection);
+    {
+        MsQuicStream Stream(*Context.ServerConnection, QUIC_STREAM_OPEN_FLAG_UNIDIRECTIONAL, CleanUpManual, MsQuicStream::NoOpCallback);
+        TEST_QUIC_SUCCEEDED(Stream.GetInitStatus());
+        TEST_QUIC_SUCCEEDED(Stream.Start(QUIC_STREAM_START_FLAG_IMMEDIATE));
+
+        uint8_t RawBuffer[16] = {0};
+        QUIC_BUFFER SendBuffer { sizeof(RawBuffer), RawBuffer };
+        TEST_QUIC_SUCCEEDED(Stream.Send(&SendBuffer, 1, QUIC_SEND_FLAG_FIN));
+
+        TEST_TRUE(Context.ClientPeerStreamEvent.WaitTimeout(TestWaitTimeout));
     }
 }
 
