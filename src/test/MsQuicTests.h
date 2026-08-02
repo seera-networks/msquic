@@ -977,6 +977,10 @@ QuicTestStreamAbortRecvFinRace(
     );
 
 void
+QuicTestStreamReceiveCompleteWithNoPendingReceive(
+    );
+
+void
 QuicTestStreamAbortConnFlowControl(
     );
 
