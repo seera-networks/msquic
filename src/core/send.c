@@ -1424,6 +1424,75 @@ CxPlatIsRouteReady(
 }
 
 //
+// This function sends a keep alive PING out on every path that needs one. With
+// multipath the connection is only as alive as its paths: a path the peer stops
+// hearing from is eventually abandoned, so keeping the connection alive means
+// sending on all of them rather than on the active one alone. Like path
+// challenges, these cannot be piggybacked onto the active path's packet.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicSendPathKeepAlives(
+    _In_ QUIC_SEND* Send
+    )
+{
+    QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
+
+    CXPLAT_DBG_ASSERT(Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_1_RTT] != NULL);
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+
+        QUIC_PATH* Path = &Connection->Paths[i];
+        if (!Path->SendKeepAlive ||
+            Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            continue;
+        }
+
+        if (!CxPlatIsRouteReady(Connection, Path)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE;
+            continue;
+        }
+
+        QUIC_PACKET_BUILDER Builder = { 0 };
+        if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
+            continue;
+        }
+        _Analysis_assume_(Builder.Metadata != NULL);
+
+        if (!QuicPacketBuilderPrepareForControlFrames(
+                &Builder, FALSE, QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE)) {
+            continue;
+        }
+
+        uint16_t AvailableBufferLength =
+            (uint16_t)Builder.Datagram->Length - Builder.EncryptionOverhead;
+
+        if (Builder.DatagramLength < AvailableBufferLength) {
+            Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
+            if (Connection->KeepAlivePadding) {
+                Builder.MinimumDatagramLength =
+                    Builder.DatagramLength + Connection->KeepAlivePadding + Builder.EncryptionOverhead;
+                if (Builder.MinimumDatagramLength > (uint16_t)Builder.Datagram->Length) {
+                    Builder.MinimumDatagramLength = (uint16_t)Builder.Datagram->Length;
+                }
+            } else {
+                Builder.MinimumDatagramLength = (uint16_t)Builder.Datagram->Length;
+            }
+            (void)QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PING, TRUE);
+            Path->SendKeepAlive = FALSE;
+        } else {
+            //
+            // No room left in this datagram; try again on the next flush.
+            //
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE;
+        }
+
+        QuicPacketBuilderFinalize(&Builder, TRUE);
+        QuicPacketBuilderCleanup(&Builder);
+    }
+}
+
+//
 // This function sends a path challenge frame out on all paths that currently
 // need one sent.
 //
@@ -1714,6 +1783,17 @@ QuicSendFlush(
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_RESPONSE) {
         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_RESPONSE;
         QuicSendPathResponses(Send);
+    }
+
+    //
+    // Send keep alive PINGs.
+    // One per path, so - like path challenges - they cannot be piggybacked onto
+    // the active path's packet. `QuicSendPathKeepAlives` might re-queue one if
+    // the route isn't ready or the datagram filled up.
+    //
+    if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE) {
+        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE;
+        QuicSendPathKeepAlives(Send);
     }
 
     QUIC_PACKET_BUILDER Builder = { 0 };

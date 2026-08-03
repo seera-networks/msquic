@@ -106,6 +106,13 @@ typedef struct QUIC_PATH {
     //
     BOOLEAN SendResponse : 1;
 
+    //
+    // A keep alive PING needs to be sent out on this path. Only used when
+    // multipath is negotiated, where keeping the connection alive means
+    // keeping every path alive rather than just the active one.
+    //
+    BOOLEAN SendKeepAlive : 1;
+
     BOOLEAN SendStatus : 1;
 
     BOOLEAN LocalClose : 1;

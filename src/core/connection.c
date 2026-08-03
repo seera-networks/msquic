@@ -6650,7 +6650,27 @@ QuicConnProcessKeepAliveOperation(
     // Send a PING frame to keep the connection alive.
     //
     Connection->Send.TailLossProbeNeeded = TRUE;
-    QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PING);
+    if (Connection->State.MultipathNegotiated) {
+        //
+        // Every path has to be kept alive, not just the active one: a path the
+        // peer stops hearing from is eventually abandoned, taking with it the
+        // capacity the connection was spread across.
+        //
+        BOOLEAN AnyPath = FALSE;
+        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+            QUIC_PATH* Path = &Connection->Paths[i];
+            if (!Path->InUse || Path->Binding == NULL || Path->DestCid == NULL) {
+                continue;
+            }
+            Path->SendKeepAlive = TRUE;
+            AnyPath = TRUE;
+        }
+        if (AnyPath) {
+            QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE);
+        }
+    } else {
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PING);
+    }
 
     //
     // Restart the keep alive timer.
