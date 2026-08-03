@@ -1907,9 +1907,17 @@ QuicSendFlush(
 
         BOOLEAN WrotePacketFrames = FALSE;
         BOOLEAN FlushBatchedDatagrams = FALSE;
+        //
+        // The excluded flags are sent per path, above, and are re-raised there
+        // when a path could not take one yet. Treating a re-raised one as a
+        // reason to build a packet on the active path would produce a packet
+        // with nothing in it, since the frame belongs to a different path.
+        //
         BOOLEAN SendConnectionControlData =
             (SendFlags & ~(QUIC_CONN_SEND_FLAG_DPLPMTUD |
-                            QUIC_CONN_SEND_FLAG_PATH_CHALLENGE)) != 0;
+                            QUIC_CONN_SEND_FLAG_PATH_CHALLENGE |
+                            QUIC_CONN_SEND_FLAG_PATH_RESPONSE |
+                            QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE)) != 0;
         if (SendConnectionControlData) {
             CXPLAT_DBG_ASSERT(QuicSendCanSendFlagsNow(Send));
             if (!QuicPacketBuilderPrepareForControlFrames(

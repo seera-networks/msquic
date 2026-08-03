@@ -448,7 +448,8 @@ QuicPathIDWriteNewConnectionIDFrame(
     _Inout_ QUIC_PACKET_BUILDER* Builder,
     _In_ uint16_t AvailableBufferLength,
     _Inout_ BOOLEAN* HasMoreCidsToSend,
-    _Inout_ BOOLEAN* MaxFrameLimitHit
+    _Inout_ BOOLEAN* MaxFrameLimitHit,
+    _In_ BOOLEAN NoRoom
     );
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -458,7 +459,8 @@ QuicPathIDWriteRetireConnectionIDFrame(
     _Inout_ QUIC_PACKET_BUILDER* Builder,
     _In_ uint16_t AvailableBufferLength,
     _Inout_ BOOLEAN* HasMoreCidsToSend,
-    _Inout_ BOOLEAN* MaxFrameLimitHit
+    _Inout_ BOOLEAN* MaxFrameLimitHit,
+    _In_ BOOLEAN NoRoom
     );
 
 //

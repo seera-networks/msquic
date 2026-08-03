@@ -792,7 +792,8 @@ QuicPathIDWriteNewConnectionIDFrame(
     _Inout_ QUIC_PACKET_BUILDER* Builder,
     _In_ uint16_t AvailableBufferLength,
     _Inout_ BOOLEAN* HasMoreCidsToSend,
-    _Inout_ BOOLEAN* MaxFrameLimitHit
+    _Inout_ BOOLEAN* MaxFrameLimitHit,
+    _In_ BOOLEAN NoRoom
     )
 {
     QUIC_FRAME_TYPE FrameType =
@@ -809,9 +810,14 @@ QuicPathIDWriteNewConnectionIDFrame(
         if (!SourceCid->CID.NeedsToSend) {
             continue;
         }
-        if (*MaxFrameLimitHit) {
+        //
+        // This CID cannot go in the current packet, but it still wants to be
+        // sent. Saying so is what keeps the send flag raised for the next one;
+        // returning without saying it would drop the CID for good.
+        //
+        if (*MaxFrameLimitHit || NoRoom) {
             *HasMoreCidsToSend = TRUE;
-            return TRUE;
+            return !NoRoom;
         }
 
         QUIC_NEW_CONNECTION_ID_EX Frame = {
@@ -868,7 +874,8 @@ QuicPathIDWriteRetireConnectionIDFrame(
     _Inout_ QUIC_PACKET_BUILDER* Builder,
     _In_ uint16_t AvailableBufferLength,
     _Inout_ BOOLEAN* HasMoreCidsToSend,
-    _Inout_ BOOLEAN* MaxFrameLimitHit
+    _Inout_ BOOLEAN* MaxFrameLimitHit,
+    _In_ BOOLEAN NoRoom
     )
 {
     QUIC_FRAME_TYPE FrameType =
@@ -887,9 +894,14 @@ QuicPathIDWriteRetireConnectionIDFrame(
         }
         CXPLAT_DBG_ASSERT(DestCid->CID.Retired);
 
-        if (*MaxFrameLimitHit) {
+        //
+        // This CID cannot go in the current packet, but it still wants to be
+        // sent. Saying so is what keeps the send flag raised for the next one;
+        // returning without saying it would drop the CID for good.
+        //
+        if (*MaxFrameLimitHit || NoRoom) {
             *HasMoreCidsToSend = TRUE;
-            return TRUE;
+            return !NoRoom;
         }
 
         QUIC_RETIRE_CONNECTION_ID_EX Frame = {

@@ -199,6 +199,7 @@ QuicConnAlloc(
         QuicPathIDAddRef(PathID, QUIC_PATHID_REF_PATH);
         Path->PathID = PathID;
         PathID->Path = Path;
+        PathID->Flags.InUse = TRUE;
         QuicCongestionControlInitialize(&PathID->CongestionControl, &Connection->Settings);
 
         Path->DestCid =
@@ -239,6 +240,7 @@ QuicConnAlloc(
         QuicPathIDAddRef(PathID, QUIC_PATHID_REF_PATH);
         Path->PathID = PathID;
         PathID->Path = Path;
+        PathID->Flags.InUse = TRUE;
         QuicCongestionControlInitialize(&PathID->CongestionControl, &Connection->Settings);
 
         Path->DestCid = QuicCidNewRandomDestination();

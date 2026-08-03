@@ -384,21 +384,24 @@ QuicPathIDSetWriteNewConnectionIDFrame(
     uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
     QuicPathIDSetGetPathIDs(PathIDSet, PathIDs, &PathIDCount);
 
-    BOOLEAN HasMoreCidsToSend1 = FALSE;
-    BOOLEAN MaxFrameLimitHit1 = FALSE;
+    //
+    // Every path ID is visited even once the packet can take no more frames, so
+    // that each still gets to report the CIDs it has waiting. Skipping them
+    // instead leaves HasMoreCidsToSend clear, and the caller then clears the
+    // send flag and never comes back for them.
+    //
+    *HasMoreCidsToSend = FALSE;
+    *MaxFrameLimitHit = FALSE;
     for (uint8_t i = 0; i < PathIDCount; i++) {
-        if (!MaxFrameLimitHit1) {
-            HaveRoom = QuicPathIDWriteNewConnectionIDFrame(
-                PathIDs[i],
-                Builder,
-                AvailableBufferLength,
-                &HasMoreCidsToSend1,
-                &MaxFrameLimitHit1);
-        }
+        HaveRoom = QuicPathIDWriteNewConnectionIDFrame(
+            PathIDs[i],
+            Builder,
+            AvailableBufferLength,
+            HasMoreCidsToSend,
+            MaxFrameLimitHit,
+            !HaveRoom);
         QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
     }
-    *HasMoreCidsToSend = HasMoreCidsToSend1;
-    *MaxFrameLimitHit = MaxFrameLimitHit1;
 
     return HaveRoom;
 }
@@ -418,21 +421,24 @@ QuicPathIDSetWriteRetireConnectionIDFrame(
     uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
     QuicPathIDSetGetPathIDs(PathIDSet, PathIDs, &PathIDCount);
 
-    BOOLEAN HasMoreCidsToSend1 = FALSE;
-    BOOLEAN MaxFrameLimitHit1 = FALSE;
+    //
+    // Every path ID is visited even once the packet can take no more frames, so
+    // that each still gets to report the CIDs it has waiting. Skipping them
+    // instead leaves HasMoreCidsToSend clear, and the caller then clears the
+    // send flag and never comes back for them.
+    //
+    *HasMoreCidsToSend = FALSE;
+    *MaxFrameLimitHit = FALSE;
     for (uint8_t i = 0; i < PathIDCount; i++) {
-        if (!MaxFrameLimitHit1) {
-            HaveRoom = QuicPathIDWriteRetireConnectionIDFrame(
-                PathIDs[i],
-                Builder,
-                AvailableBufferLength,
-                &HasMoreCidsToSend1,
-                &MaxFrameLimitHit1);
-        }
+        HaveRoom = QuicPathIDWriteRetireConnectionIDFrame(
+            PathIDs[i],
+            Builder,
+            AvailableBufferLength,
+            HasMoreCidsToSend,
+            MaxFrameLimitHit,
+            !HaveRoom);
         QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
     }
-    *HasMoreCidsToSend = HasMoreCidsToSend1;
-    *MaxFrameLimitHit = MaxFrameLimitHit1;
 
     return HaveRoom;
 }

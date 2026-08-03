@@ -311,7 +311,9 @@ QuicConnGetPathForPacket(
     CXPLAT_DBG_ASSERT(!FatalError);
     if (PathID == NULL) {
         return NULL;
-    }   
+    }
+    BOOLEAN IsRebind = FALSE;
+
     for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
         if (PathID != Connection->Paths[i].PathID ||
             !QuicAddrCompare(
@@ -327,6 +329,20 @@ QuicConnGetPathForPacket(
                 QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
                 return NULL;
             }
+            if (!IsRebind) {
+                //
+                // The packet did not match this path, but it may still be the
+                // same path seen through a NAT that changed its port: same path
+                // ID, same local address, same remote address but for the port.
+                // That is a rebind of an existing path rather than a new one,
+                // and the check below lets it through.
+                //
+                IsRebind =
+                    PathID == Connection->Paths[i].PathID &&
+                    QuicAddrGetFamily(&Packet->Route->RemoteAddress) == QuicAddrGetFamily(&Connection->Paths[i].Route.RemoteAddress)
+                    && QuicAddrCompareIp(&Packet->Route->RemoteAddress, &Connection->Paths[i].Route.RemoteAddress)
+                    && QuicAddrCompare(&Packet->Route->LocalAddress, &Connection->Paths[i].Route.LocalAddress);
+            }
             continue;
         }
         QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
@@ -336,6 +352,19 @@ QuicConnGetPathForPacket(
     if (!((QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||
           (QuicConnIsServer(Connection) && !Connection->State.ServerMigrationNegotiated))) {
         // Client doesn't create a new path.
+        QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
+        return NULL;
+    }
+
+    if (Connection->State.MultipathNegotiated &&
+        PathID->Flags.InUse &&
+        !IsRebind) {
+        //
+        // With multipath a path ID identifies one path, so a path ID that
+        // already has one cannot acquire a second. Reaching here means the
+        // packet carried a path ID in use, from an address that is neither that
+        // path's nor a rebind of it, which is not something to open a path for.
+        //
         QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
         return NULL;
     }
@@ -430,10 +459,17 @@ QuicConnGetPathForPacket(
     QuicPathIDAddRef(PathID, QUIC_PATHID_REF_PATH);
     Path->PathID = PathID;
     PathID->Path = Path;
-    if (Connection->State.MultipathNegotiated) {
-        QuicCongestionControlInitialize(&PathID->CongestionControl, &Connection->Settings);
+    //
+    // Only a path ID being claimed for the first time needs its congestion
+    // control set up. Getting here with one already in use means a rebind, and
+    // the path it rebinds carries on with the state it had built up.
+    //
+    if (!PathID->Flags.InUse) {
+        if (Connection->State.MultipathNegotiated) {
+            QuicCongestionControlInitialize(&PathID->CongestionControl, &Connection->Settings);
+        }
+        PathID->Flags.InUse = TRUE;
     }
-    PathID->Flags.InUse = TRUE;
     QuicCopyRouteInfo(&Path->Route, Packet->Route);
     Path->Route.State = RouteUnresolved;
     Path->Route.Queue = NULL;
