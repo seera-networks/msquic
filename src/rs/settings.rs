@@ -131,6 +131,7 @@ impl Settings {
     define_settings_entry!(set_MaxAckDelayMs, MaxAckDelayMs, u32);
     define_settings_entry!(set_DisconnectTimeoutMs, DisconnectTimeoutMs, u32);
     define_settings_entry!(set_KeepAliveIntervalMs, KeepAliveIntervalMs, u32);
+    define_settings_entry!(set_PathKeepAliveIntervalMs, PathKeepAliveIntervalMs, u32);
     define_settings_entry!(
         set_CongestionControlAlgorithm,
         CongestionControlAlgorithm,

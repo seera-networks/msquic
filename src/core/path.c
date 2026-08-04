@@ -39,6 +39,11 @@ QuicPathInitialize(
     Path->RttVariance = Path->SmoothedRtt / 2;
     Path->EcnValidationState =
         Connection->Settings.EcnEnabled ? ECN_VALIDATION_TESTING : ECN_VALIDATION_FAILED;
+    //
+    // A path that has never sent anything is not yet in need of a keep alive;
+    // start its idle time from now.
+    //
+    Path->LastSendTimeUs = CxPlatTimeUs64();
 
     if (Connection->Settings.QTIPEnabled) {
         CxPlatRandom(sizeof(Path->Route.TcpState.SequenceNumber), &Path->Route.TcpState.SequenceNumber);

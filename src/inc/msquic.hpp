@@ -750,6 +750,7 @@ public:
     MsQuicSettings& SetMultipathEnabled(bool value) { MultipathEnabled = value; IsSet.MultipathEnabled = TRUE; return *this; }
     MsQuicSettings& SetSendObservedAddressReports(bool value) { SendObservedAddressReports = value; IsSet.SendObservedAddressReports = TRUE; return *this; }
     MsQuicSettings& SetReceiveObservedAddressReports(bool value) { ReceiveObservedAddressReports = value; IsSet.ReceiveObservedAddressReports = TRUE; return *this; }
+    MsQuicSettings& SetPathKeepAlive(uint32_t Time) { PathKeepAliveIntervalMs = Time; IsSet.PathKeepAliveIntervalMs = TRUE; return *this; }
 #endif
 
     QUIC_STATUS

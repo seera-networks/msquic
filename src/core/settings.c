@@ -75,6 +75,9 @@ QuicSettingsSetDefault(
     if (!Settings->IsSet.KeepAliveIntervalMs) {
         Settings->KeepAliveIntervalMs = QUIC_DEFAULT_KEEP_ALIVE_INTERVAL;
     }
+    if (!Settings->IsSet.PathKeepAliveIntervalMs) {
+        Settings->PathKeepAliveIntervalMs = QUIC_DEFAULT_PATH_KEEP_ALIVE_INTERVAL;
+    }
     if (!Settings->IsSet.IdleTimeoutMs) {
         Settings->IdleTimeoutMs = QUIC_DEFAULT_IDLE_TIMEOUT;
     }
@@ -253,6 +256,9 @@ QuicSettingsCopy(
     }
     if (!Destination->IsSet.KeepAliveIntervalMs) {
         Destination->KeepAliveIntervalMs = Source->KeepAliveIntervalMs;
+    }
+    if (!Destination->IsSet.PathKeepAliveIntervalMs) {
+        Destination->PathKeepAliveIntervalMs = Source->PathKeepAliveIntervalMs;
     }
     if (!Destination->IsSet.IdleTimeoutMs) {
         Destination->IdleTimeoutMs = Source->IdleTimeoutMs;
@@ -550,6 +556,10 @@ QuicSettingApply(
     if (Source->IsSet.KeepAliveIntervalMs && (!Destination->IsSet.KeepAliveIntervalMs || OverWrite)) {
         Destination->KeepAliveIntervalMs = Source->KeepAliveIntervalMs;
         Destination->IsSet.KeepAliveIntervalMs = TRUE;
+    }
+    if (Source->IsSet.PathKeepAliveIntervalMs && (!Destination->IsSet.PathKeepAliveIntervalMs || OverWrite)) {
+        Destination->PathKeepAliveIntervalMs = Source->PathKeepAliveIntervalMs;
+        Destination->IsSet.PathKeepAliveIntervalMs = TRUE;
     }
     if (Source->IsSet.IdleTimeoutMs && (!Destination->IsSet.IdleTimeoutMs || OverWrite)) {
         if (Source->IdleTimeoutMs > QUIC_VAR_INT_MAX) {
@@ -1036,6 +1046,15 @@ QuicSettingsLoad(
             Storage,
             QUIC_SETTING_KEEP_ALIVE_INTERVAL,
             (uint8_t*)&Settings->KeepAliveIntervalMs,
+            &ValueLen);
+    }
+
+    if (!Settings->IsSet.PathKeepAliveIntervalMs) {
+        ValueLen = sizeof(Settings->PathKeepAliveIntervalMs);
+        CxPlatStorageReadValue(
+            Storage,
+            QUIC_SETTING_PATH_KEEP_ALIVE_INTERVAL,
+            (uint8_t*)&Settings->PathKeepAliveIntervalMs,
             &ValueLen);
     }
 
@@ -1618,6 +1637,7 @@ QuicSettingsDump(
     QuicTraceLogVerbose(SettingDumpMaxAckDelayMs,           "[sett] MaxAckDelayMs          = %u", Settings->MaxAckDelayMs);
     QuicTraceLogVerbose(SettingDumpDisconnectTimeoutMs,     "[sett] DisconnectTimeoutMs    = %u", Settings->DisconnectTimeoutMs);
     QuicTraceLogVerbose(SettingDumpKeepAliveIntervalMs,     "[sett] KeepAliveIntervalMs    = %u", Settings->KeepAliveIntervalMs);
+    QuicTraceLogVerbose(SettingDumpPathKeepAliveIntervalMs, "[sett] PathKeepAliveIntervalMs= %u", Settings->PathKeepAliveIntervalMs);
     QuicTraceLogVerbose(SettingDumpIdleTimeoutMs,           "[sett] IdleTimeoutMs          = %llu", Settings->IdleTimeoutMs);
     QuicTraceLogVerbose(SettingDumpHandshakeIdleTimeoutMs,  "[sett] HandshakeIdleTimeoutMs = %llu", Settings->HandshakeIdleTimeoutMs);
     QuicTraceLogVerbose(SettingDumpBidiStreamCount,         "[sett] PeerBidiStreamCount    = %hu", Settings->PeerBidiStreamCount);
@@ -1725,6 +1745,9 @@ QuicSettingsDumpNew(
     }
     if (Settings->IsSet.KeepAliveIntervalMs) {
         QuicTraceLogVerbose(SettingDumpKeepAliveIntervalMs,         "[sett] KeepAliveIntervalMs    = %u", Settings->KeepAliveIntervalMs);
+    }
+    if (Settings->IsSet.PathKeepAliveIntervalMs) {
+        QuicTraceLogVerbose(SettingDumpPathKeepAliveIntervalMs,     "[sett] PathKeepAliveIntervalMs= %u", Settings->PathKeepAliveIntervalMs);
     }
     if (Settings->IsSet.IdleTimeoutMs) {
         QuicTraceLogVerbose(SettingDumpIdleTimeoutMs,               "[sett] IdleTimeoutMs          = %llu", Settings->IdleTimeoutMs);
@@ -2183,6 +2206,13 @@ QuicSettingsSettingsToInternal(
         SettingsSize,
         InternalSettings);
 
+    SETTING_COPY_TO_INTERNAL_SIZED(
+        PathKeepAliveIntervalMs,
+        QUIC_SETTINGS,
+        Settings,
+        SettingsSize,
+        InternalSettings);
+
     return QUIC_STATUS_SUCCESS;
 }
 
@@ -2411,6 +2441,13 @@ QuicSettingsGetSettings(
     SETTING_COPY_FLAG_FROM_INTERNAL_SIZED(
         Flags,
         ReceiveObservedAddressReports,
+        QUIC_SETTINGS,
+        Settings,
+        *SettingsLength,
+        InternalSettings);
+
+    SETTING_COPY_FROM_INTERNAL_SIZED(
+        PathKeepAliveIntervalMs,
         QUIC_SETTINGS,
         Settings,
         *SettingsLength,

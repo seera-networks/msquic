@@ -1424,11 +1424,11 @@ CxPlatIsRouteReady(
 }
 
 //
-// This function sends a keep alive PING out on every path that needs one. With
-// multipath the connection is only as alive as its paths: a path the peer stops
-// hearing from is eventually abandoned, so keeping the connection alive means
-// sending on all of them rather than on the active one alone. Like path
-// challenges, these cannot be piggybacked onto the active path's packet.
+// This function sends a keep alive PING out on every path that needs one. A
+// path the peer stops hearing from is eventually abandoned, taking with it the
+// capacity the connection was spread across, so each path is kept alive on its
+// own. Like path challenges, these cannot be piggybacked onto the active path's
+// packet.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void

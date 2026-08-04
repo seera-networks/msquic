@@ -270,6 +270,21 @@ tracepoint(CLOG_SETTINGS_C, SettingDumpKeepAliveIntervalMs , arg2);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for SettingDumpPathKeepAliveIntervalMs
+// [sett] PathKeepAliveIntervalMs= %u
+// QuicTraceLogVerbose(SettingDumpPathKeepAliveIntervalMs, "[sett] PathKeepAliveIntervalMs= %u", Settings->PathKeepAliveIntervalMs);
+// arg2 = arg2 = Settings->PathKeepAliveIntervalMs = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_SettingDumpPathKeepAliveIntervalMs
+#define _clog_3_ARGS_TRACE_SettingDumpPathKeepAliveIntervalMs(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_SETTINGS_C, SettingDumpPathKeepAliveIntervalMs , arg2);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for SettingDumpIdleTimeoutMs
 // [sett] IdleTimeoutMs          = %llu
 // QuicTraceLogVerbose(SettingDumpIdleTimeoutMs,           "[sett] IdleTimeoutMs          = %llu", Settings->IdleTimeoutMs);

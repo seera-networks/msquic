@@ -107,9 +107,7 @@ typedef struct QUIC_PATH {
     BOOLEAN SendResponse : 1;
 
     //
-    // A keep alive PING needs to be sent out on this path. Only used when
-    // multipath is negotiated, where keeping the connection alive means
-    // keeping every path alive rather than just the active one.
+    // A keep alive PING needs to be sent out on this path.
     //
     BOOLEAN SendKeepAlive : 1;
 
@@ -236,6 +234,13 @@ typedef struct QUIC_PATH {
     // Time when path validation was begun. Used for timing out path validation.
     //
     uint64_t PathValidationStartTime;
+
+    //
+    // Time (in microseconds) the last datagram was sent on this path. Drives
+    // the per-path keep alive, which cares about what this path carried rather
+    // than about what the connection as a whole has been doing.
+    //
+    uint64_t LastSendTimeUs;
 
 } QUIC_PATH;
 

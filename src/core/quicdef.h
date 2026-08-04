@@ -350,6 +350,14 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_DEFAULT_KEEP_ALIVE_INTERVAL        0
 
 //
+// The default per-path keep alive interval (in milliseconds). Unlike the
+// connection keep alive above, this one is not reset by connection activity,
+// so it can keep an individual path alive while the connection is busy
+// elsewhere.
+//
+#define QUIC_DEFAULT_PATH_KEEP_ALIVE_INTERVAL   0
+
+//
 // The flow control window is doubled when more than (1 / ratio) of the current
 // window is delivered to the app within 1 RTT.
 //
@@ -777,6 +785,7 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_SETTING_MAX_ACK_DELAY                  "MaxAckDelayMs"
 #define QUIC_SETTING_DISCONNECT_TIMEOUT             "DisconnectTimeoutMs"
 #define QUIC_SETTING_KEEP_ALIVE_INTERVAL            "KeepAliveIntervalMs"
+#define QUIC_SETTING_PATH_KEEP_ALIVE_INTERVAL       "PathKeepAliveIntervalMs"
 #define QUIC_SETTING_IDLE_TIMEOUT                   "IdleTimeoutMs"
 #define QUIC_SETTING_HANDSHAKE_IDLE_TIMEOUT         "HandshakeIdleTimeoutMs"
 

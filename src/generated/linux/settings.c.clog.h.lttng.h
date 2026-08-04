@@ -258,6 +258,22 @@ TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingDumpKeepAliveIntervalMs,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for SettingDumpPathKeepAliveIntervalMs
+// [sett] PathKeepAliveIntervalMs= %u
+// QuicTraceLogVerbose(SettingDumpPathKeepAliveIntervalMs, "[sett] PathKeepAliveIntervalMs= %u", Settings->PathKeepAliveIntervalMs);
+// arg2 = arg2 = Settings->PathKeepAliveIntervalMs = arg2
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingDumpPathKeepAliveIntervalMs,
+    TP_ARGS(
+        unsigned int, arg2), 
+    TP_FIELDS(
+        ctf_integer(unsigned int, arg2, arg2)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for SettingDumpIdleTimeoutMs
 // [sett] IdleTimeoutMs          = %llu
 // QuicTraceLogVerbose(SettingDumpIdleTimeoutMs,           "[sett] IdleTimeoutMs          = %llu", Settings->IdleTimeoutMs);

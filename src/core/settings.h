@@ -71,7 +71,8 @@ typedef struct QUIC_SETTINGS_INTERNAL {
             uint64_t MultipathEnabled                       : 1;
             uint64_t SendObservedAddressReports             : 1;
             uint64_t ReceiveObservedAddressReports          : 1;
-            uint64_t RESERVED                               : 7;
+            uint64_t PathKeepAliveIntervalMs                : 1;
+            uint64_t RESERVED                               : 6;
         } IsSet;
     };
 
@@ -96,6 +97,7 @@ typedef struct QUIC_SETTINGS_INTERNAL {
     uint32_t MaxAckDelayMs;
     uint32_t DisconnectTimeoutMs;
     uint32_t KeepAliveIntervalMs;
+    uint32_t PathKeepAliveIntervalMs;
     uint32_t DestCidUpdateIdleTimeoutMs;
     uint32_t FixedServerID;                 // Global only
     uint16_t PeerBidiStreamCount;

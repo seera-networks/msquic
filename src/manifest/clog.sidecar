@@ -12281,6 +12281,18 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "SettingDumpPathKeepAliveIntervalMs": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] PathKeepAliveIntervalMs= %u",
+      "UniqueId": "SettingDumpPathKeepAliveIntervalMs",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "SettingDumpRetryMemoryLimit": {
       "ModuleProperites": {},
       "TraceString": "[sett] RetryMemoryLimit       = %hu",
@@ -18498,6 +18510,11 @@
         "UniquenessHash": "50c8e61a-10db-0422-9497-26f288b36eed",
         "TraceID": "SettingDumpPacingEnabled",
         "EncodingString": "[sett] PacingEnabled          = %hhu"
+      },
+      {
+        "UniquenessHash": "69c8960e-da41-9a47-5acc-11c801828c3a",
+        "TraceID": "SettingDumpPathKeepAliveIntervalMs",
+        "EncodingString": "[sett] PathKeepAliveIntervalMs= %u"
       },
       {
         "UniquenessHash": "8dd44e38-a5b3-1ee8-e082-ff903f39f574",

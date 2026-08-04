@@ -6652,27 +6652,7 @@ QuicConnProcessKeepAliveOperation(
     // Send a PING frame to keep the connection alive.
     //
     Connection->Send.TailLossProbeNeeded = TRUE;
-    if (Connection->State.MultipathNegotiated) {
-        //
-        // Every path has to be kept alive, not just the active one: a path the
-        // peer stops hearing from is eventually abandoned, taking with it the
-        // capacity the connection was spread across.
-        //
-        BOOLEAN AnyPath = FALSE;
-        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-            QUIC_PATH* Path = &Connection->Paths[i];
-            if (!Path->InUse || Path->Binding == NULL || Path->DestCid == NULL) {
-                continue;
-            }
-            Path->SendKeepAlive = TRUE;
-            AnyPath = TRUE;
-        }
-        if (AnyPath) {
-            QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE);
-        }
-    } else {
-        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PING);
-    }
+    QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PING);
 
     //
     // Restart the keep alive timer.
@@ -6681,6 +6661,55 @@ QuicConnProcessKeepAliveOperation(
         Connection,
         QUIC_CONN_TIMER_KEEP_ALIVE,
         MS_TO_US(Connection->Settings.KeepAliveIntervalMs));
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnPathKeepAliveTimerUpdate(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    if (Connection->Settings.PathKeepAliveIntervalMs == 0 ||
+        !Connection->State.Connected ||
+        QuicConnIsClosed(Connection)) {
+        QuicConnTimerCancel(Connection, QUIC_CONN_TIMER_PATH_KEEP_ALIVE);
+        return;
+    }
+
+    const uint64_t IntervalUs =
+        MS_TO_US((uint64_t)Connection->Settings.PathKeepAliveIntervalMs);
+    const uint64_t TimeNow = CxPlatTimeUs64();
+
+    //
+    // A path that hasn't sent anything for the whole interval gets a PING. The
+    // rest tell us how long we can wait before looking again: the timer is set
+    // for whichever path comes due first.
+    //
+    uint64_t NextDelayUs = IntervalUs;
+    BOOLEAN AnyPath = FALSE;
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        QUIC_PATH* Path = &Connection->Paths[i];
+        if (!Path->InUse || Path->Binding == NULL || Path->DestCid == NULL) {
+            continue;
+        }
+        const uint64_t IdleUs = CxPlatTimeDiff64(Path->LastSendTimeUs, TimeNow);
+        if (IdleUs >= IntervalUs) {
+            Path->SendKeepAlive = TRUE;
+            AnyPath = TRUE;
+        } else if (IntervalUs - IdleUs < NextDelayUs) {
+            NextDelayUs = IntervalUs - IdleUs;
+        }
+    }
+
+    if (AnyPath) {
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE);
+    }
+
+    QuicConnTimerSet(
+        Connection,
+        QUIC_CONN_TIMER_PATH_KEEP_ALIVE,
+        NextDelayUs);
 }
 
 //
@@ -9913,6 +9942,14 @@ QuicConnApplyNewSettings(
         }
     }
 
+    if (NewSettings->IsSet.PathKeepAliveIntervalMs) {
+        //
+        // Before the handshake completes this only cancels the timer; the
+        // connection arms it itself once it gets there.
+        //
+        QuicConnPathKeepAliveTimerUpdate(Connection);
+    }
+
 #if QUIC_TEST_MANUAL_CONN_ID_GENERATION
     if (NewSettings->IsSet.ConnIDGenDisabled) {
         Connection->State.DisableConnIDGen = NewSettings->ConnIDGenDisabled;
@@ -10159,6 +10196,9 @@ QuicConnProcessExpiredTimer(
         break;
     case QUIC_CONN_TIMER_KEEP_ALIVE:
         QuicConnProcessKeepAliveOperation(Connection);
+        break;
+    case QUIC_CONN_TIMER_PATH_KEEP_ALIVE:
+        QuicConnPathKeepAliveTimerUpdate(Connection);
         break;
     case QUIC_CONN_TIMER_PATH_VALIDATION:
         QuicConnProcessPathValidationTimerOperation(Connection);

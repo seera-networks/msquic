@@ -1325,4 +1325,136 @@ QuicTestMultipath(
 
 }
 
+//
+// Counts the datagrams the client sends on one particular local port, so a test
+// can tell whether a given path is carrying anything.
+//
+struct PathSendCounter : public DatapathHook
+{
+    uint16_t PathPort;
+    long Count {0};
+    PathSendCounter(uint16_t Port) : PathPort(Port) {
+        DatapathHooks::Instance->AddHook(this);
+    }
+    ~PathSendCounter() {
+        DatapathHooks::Instance->RemoveHook(this);
+    }
+    _IRQL_requires_max_(DISPATCH_LEVEL)
+    BOOLEAN
+    Receive(
+        _Inout_ struct CXPLAT_RECV_DATA* Datagram
+        ) {
+        if (QuicAddrGetPort(&Datagram->Route->RemoteAddress) == PathPort) {
+            InterlockedIncrement(&Count);
+        }
+        return FALSE;
+    }
+};
+
+void
+QuicTestPathKeepAlive(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    //
+    // Neither side has a connection keep alive and the application sends
+    // nothing, so once both paths are up the only thing that can put a packet
+    // on either of them is the client's per-path keep alive.
+    //
+    const uint32_t PathKeepAliveMs = 100;
+    const uint32_t ObserveMs = 600;
+
+    //
+    // MTU discovery would otherwise probe both paths during the window below
+    // and be counted as traffic. Pinning the MTU leaves it nothing to search.
+    //
+    const uint16_t FixedMtu = 1280;
+
+    PathTestContext Context;
+    PathTestClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicConfiguration ServerConfiguration(Registration,
+        "MsQuicTest",
+        MsQuicSettings{}.SetMultipathEnabled(TRUE).SetMinimumMtu(FixedMtu).SetMaximumMtu(FixedMtu),
+        ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration,
+        "MsQuicTest",
+        MsQuicSettings{}.SetMultipathEnabled(TRUE).SetMinimumMtu(FixedMtu).SetMaximumMtu(FixedMtu).SetPathKeepAlive(PathKeepAliveMs),
+        ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathTestClientContext::ClientCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    QuicAddr FirstLocalAddr, SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(FirstLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(
+            QUIC_PARAM_CONN_ADD_PATH,
+            sizeof(PathParam),
+            &PathParam);
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+            SecondLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+        }
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    delete ProbeHelper;
+
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+
+    //
+    // Both paths are validated and the connection goes quiet from here. Every
+    // datagram the server now sees is a keep alive, and each path has to get
+    // its own: keeping the connection alive is not the same as keeping the
+    // paths alive.
+    //
+    PathSendCounter FirstPathCounter(FirstLocalAddr.GetPort());
+    PathSendCounter SecondPathCounter(SecondLocalAddr.GetPort());
+    CxPlatSleep(ObserveMs);
+
+    //
+    // Half the expected count, to leave room for scheduling slop.
+    //
+    const long Expected = (long)((ObserveMs / PathKeepAliveMs) / 2);
+    TEST_TRUE(FirstPathCounter.Count >= Expected);
+    TEST_TRUE(SecondPathCounter.Count >= Expected);
+}
+
 #endif

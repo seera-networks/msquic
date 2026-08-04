@@ -957,6 +957,15 @@ TEST_P(WithFamilyArgs, Multipath) {
         QuicTestMultipath(GetParam());
     }
 }
+
+TEST_P(WithFamilyArgs, PathKeepAlive) {
+    TestLoggerT<ParamType> Logger("QuicTestPathKeepAlive", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestPathKeepAlive), GetParam()));
+    } else {
+        QuicTestPathKeepAlive(GetParam());
+    }
+}
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Mtu, Settings) {

@@ -853,7 +853,8 @@ typedef struct QUIC_SETTINGS {
             uint64_t MultipathEnabled                       : 1;
             uint64_t SendObservedAddressReports             : 1;
             uint64_t ReceiveObservedAddressReports          : 1;
-            uint64_t RESERVED                               : 12;
+            uint64_t PathKeepAliveIntervalMs                : 1;
+            uint64_t RESERVED                               : 11;
 #else
             uint64_t RESERVED                               : 26;
 #endif
@@ -922,6 +923,7 @@ typedef struct QUIC_SETTINGS {
     uint32_t StreamRecvWindowBidiRemoteDefault;
     uint32_t StreamRecvWindowUnidiDefault;
     uint8_t AddAddressMode;                     // QUIC_ADD_ADDRESS_MODE
+    uint32_t PathKeepAliveIntervalMs;
 
 } QUIC_SETTINGS;
 

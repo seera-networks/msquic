@@ -1697,6 +1697,12 @@ QuicCryptoProcessTlsCompletion(
         //
         QuicMtuDiscoveryPeerValidated(&Path->MtuDiscovery, Connection);
 
+        //
+        // The per-path keep alive needs 1-RTT keys, so this is the earliest it
+        // can be armed.
+        //
+        QuicConnPathKeepAliveTimerUpdate(Connection);
+
         if (QuicConnIsServer(Connection) &&
             Crypto->TlsState.BufferOffset1Rtt != 0 &&
             Crypto->UnAckedOffset == Crypto->TlsState.BufferTotalLength) {

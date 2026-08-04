@@ -1580,6 +1580,19 @@ QuicConnResetIdleTimeout(
     );
 
 //
+// Sends a keep alive PING on every path that has gone quiet for the configured
+// interval, and arms the timer for whichever path comes due next. Unlike the
+// connection keep alive, this is deliberately not reset by connection activity:
+// each path is judged by what it carried, not by what the connection as a whole
+// has been doing.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnPathKeepAliveTimerUpdate(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
 // Queues a received packet chain to a connection for processing.
 //
 _IRQL_requires_max_(DISPATCH_LEVEL)

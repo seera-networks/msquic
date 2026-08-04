@@ -2077,6 +2077,7 @@ pub struct QUIC_SETTINGS {
     pub StreamRecvWindowBidiRemoteDefault: u32,
     pub StreamRecvWindowUnidiDefault: u32,
     pub AddAddressMode: u8,
+    pub PathKeepAliveIntervalMs: u32,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -3816,14 +3817,47 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         }
     }
     #[inline]
+    pub fn PathKeepAliveIntervalMs(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(52usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_PathKeepAliveIntervalMs(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(52usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn PathKeepAliveIntervalMs_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                52usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_PathKeepAliveIntervalMs_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                52usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
     pub fn RESERVED(&self) -> u64 {
-        unsafe { ::std::mem::transmute(self._bitfield_1.get(52usize, 12u8) as u64) }
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(53usize, 11u8) as u64) }
     }
     #[inline]
     pub fn set_RESERVED(&mut self, val: u64) {
         unsafe {
             let val: u64 = ::std::mem::transmute(val);
-            self._bitfield_1.set(52usize, 12u8, val as u64)
+            self._bitfield_1.set(53usize, 11u8, val as u64)
         }
     }
     #[inline]
@@ -3831,8 +3865,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         unsafe {
             ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
                 ::std::ptr::addr_of!((*this)._bitfield_1),
-                52usize,
-                12u8,
+                53usize,
+                11u8,
             ) as u64)
         }
     }
@@ -3842,8 +3876,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
             let val: u64 = ::std::mem::transmute(val);
             <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
                 ::std::ptr::addr_of_mut!((*this)._bitfield_1),
-                52usize,
-                12u8,
+                53usize,
+                11u8,
                 val as u64,
             )
         }
@@ -3902,6 +3936,7 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         MultipathEnabled: u64,
         SendObservedAddressReports: u64,
         ReceiveObservedAddressReports: u64,
+        PathKeepAliveIntervalMs: u64,
         RESERVED: u64,
     ) -> __BindgenBitfieldUnit<[u8; 8usize]> {
         let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 8usize]> = Default::default();
@@ -4138,7 +4173,12 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
                 unsafe { ::std::mem::transmute(ReceiveObservedAddressReports) };
             ReceiveObservedAddressReports as u64
         });
-        __bindgen_bitfield_unit.set(52usize, 12u8, {
+        __bindgen_bitfield_unit.set(52usize, 1u8, {
+            let PathKeepAliveIntervalMs: u64 =
+                unsafe { ::std::mem::transmute(PathKeepAliveIntervalMs) };
+            PathKeepAliveIntervalMs as u64
+        });
+        __bindgen_bitfield_unit.set(53usize, 11u8, {
             let RESERVED: u64 = unsafe { ::std::mem::transmute(RESERVED) };
             RESERVED as u64
         });
@@ -4769,7 +4809,7 @@ const _: () = {
 };
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of QUIC_SETTINGS"][::std::mem::size_of::<QUIC_SETTINGS>() - 144usize];
+    ["Size of QUIC_SETTINGS"][::std::mem::size_of::<QUIC_SETTINGS>() - 152usize];
     ["Alignment of QUIC_SETTINGS"][::std::mem::align_of::<QUIC_SETTINGS>() - 8usize];
     ["Offset of field: QUIC_SETTINGS::MaxBytesPerKey"]
         [::std::mem::offset_of!(QUIC_SETTINGS, MaxBytesPerKey) - 8usize];
@@ -4833,6 +4873,8 @@ const _: () = {
         [::std::mem::offset_of!(QUIC_SETTINGS, StreamRecvWindowUnidiDefault) - 136usize];
     ["Offset of field: QUIC_SETTINGS::AddAddressMode"]
         [::std::mem::offset_of!(QUIC_SETTINGS, AddAddressMode) - 140usize];
+    ["Offset of field: QUIC_SETTINGS::PathKeepAliveIntervalMs"]
+        [::std::mem::offset_of!(QUIC_SETTINGS, PathKeepAliveIntervalMs) - 144usize];
 };
 impl QUIC_SETTINGS {
     #[inline]

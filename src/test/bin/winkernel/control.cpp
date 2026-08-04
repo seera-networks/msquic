@@ -603,6 +603,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestServerProbePath);
     RegisterTestFunction(QuicTestServerMigration);
     RegisterTestFunction(QuicTestMultipath);
+    RegisterTestFunction(QuicTestPathKeepAlive);
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 #endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
     RegisterTestFunction(QuicTestChangeMaxStreamID);
