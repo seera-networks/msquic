@@ -15,6 +15,10 @@ fn main() {
     overwrite_bindgen();
 }
 
+/// Default minimum iOS version, kept in sync with `scripts/build.ps1 -Platform ios`.
+#[cfg(feature = "src")]
+const IOS_DEPLOYMENT_TARGET: &str = "13.0";
+
 #[cfg(feature = "src")]
 fn cmake_build() {
     use cmake::Config;
@@ -26,6 +30,8 @@ fn cmake_build() {
     }
 
     let target = env::var("TARGET").unwrap().replace("\\", "/");
+    let apple_ios = target.contains("-apple-ios");
+    let android = target.contains("-linux-android");
     let out_dir = env::var("OUT_DIR").unwrap();
     // The output directory for the native MsQuic library.
     let quic_output_dir = if cfg!(windows) {
@@ -83,8 +89,128 @@ fn cmake_build() {
         config.define("QUIC_TLS_LIB", "quictls");
     }
 
-    if cfg!(feature = "static") {
+    if cfg!(feature = "static") || apple_ios {
         config.define("QUIC_BUILD_SHARED", "off");
+    }
+
+    // iOS needs the ios-cmake toolchain to select the SDK/architecture, and can
+    // only ever be built static (see the link attribute in src/rs/lib.rs). This
+    // mirrors `scripts/build.ps1 -Platform ios`.
+    if apple_ios {
+        // PLATFORM values are defined by cmake/toolchains/ios.cmake.
+        let platform = match target.as_str() {
+            "aarch64-apple-ios" => "OS64",
+            "aarch64-apple-ios-sim" => "SIMULATORARM64",
+            "x86_64-apple-ios" => "SIMULATOR64",
+            _ => panic!("Unsupported iOS target: {target}"),
+        };
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+        let toolchain_file = Path::new(&manifest_dir)
+            .join("cmake")
+            .join("toolchains")
+            .join("ios.cmake");
+        // Follow the consumer's IPHONEOS_DEPLOYMENT_TARGET when it sets one:
+        // rustc links against that version, and a link below the version these
+        // objects were compiled for leaves libSystem-versioned symbols such as
+        // `___chkstk_darwin` (iOS 12+) undefined.
+        let deployment_target = env::var("IPHONEOS_DEPLOYMENT_TARGET")
+            .unwrap_or_else(|_| IOS_DEPLOYMENT_TARGET.to_string());
+        config
+            .define("CMAKE_TOOLCHAIN_FILE", toolchain_file.to_str().unwrap())
+            .define("PLATFORM", platform)
+            .define("DEPLOYMENT_TARGET", &deployment_target)
+            .define("CMAKE_OSX_DEPLOYMENT_TARGET", &deployment_target)
+            .define("ENABLE_ARC", "0")
+            // Let the toolchain file own the compiler flags. Otherwise cmake-rs
+            // layers the `cc` crate's own -arch/-isysroot on top of the ones
+            // ios.cmake derived from PLATFORM.
+            .define("CMAKE_C_FLAGS", "")
+            .define("CMAKE_CXX_FLAGS", "");
+    }
+
+    // Android needs the NDK's own CMake toolchain, and above all `ANDROID_ABI`.
+    //
+    // Without it, cmake-rs sets `CMAKE_SYSTEM_NAME=Android` from the target
+    // triple and nothing else, so CMake takes its *built-in* Android support
+    // (`Modules/Platform/Android-Clang.cmake`) and `ANDROID_ABI` -- a variable
+    // the NDK toolchain file owns -- is never set. `submodules/CMakeLists.txt`
+    // reads it to choose quictls's `Configure` target and stops with "Unknown
+    // android abi type".
+    //
+    // The four defines below are what `scripts/build.ps1 -Platform android`
+    // passes; this is the same recipe reached from cargo instead of PowerShell.
+    // They cannot be supplied from outside: cmake-rs forwards only
+    // CMAKE_TOOLCHAIN_FILE, CMAKE_GENERATOR, CMAKE_PREFIX_PATH, CMAKE, EMCMAKE
+    // and EMMAKE from the environment, so `ANDROID_ABI` has to be passed here.
+    if android {
+        let abi = match target.as_str() {
+            "aarch64-linux-android" => "arm64-v8a",
+            "armv7-linux-androideabi" => "armeabi-v7a",
+            "i686-linux-android" => "x86",
+            "x86_64-linux-android" => "x86_64",
+            _ => panic!("Unsupported Android target: {target}"),
+        };
+        // `ANDROID_NDK_HOME` is what the NDK's own tooling and cargo-ndk set;
+        // `ANDROID_NDK_LATEST_HOME` is what GitHub's runners provide and what
+        // build.ps1 reads. Accept either rather than making the caller know
+        // which convention this build script grew up with.
+        let ndk = env::var("ANDROID_NDK_HOME")
+            .or_else(|_| env::var("ANDROID_NDK_ROOT"))
+            .or_else(|_| env::var("ANDROID_NDK_LATEST_HOME"))
+            .expect(
+                "building for Android needs the NDK: set ANDROID_NDK_HOME \
+                 (or ANDROID_NDK_ROOT / ANDROID_NDK_LATEST_HOME)",
+            );
+        let toolchain_file = Path::new(&ndk)
+            .join("build")
+            .join("cmake")
+            .join("android.toolchain.cmake");
+        assert!(
+            toolchain_file.exists(),
+            "no android.toolchain.cmake under {ndk}; is that an NDK?",
+        );
+        // quictls is configured by its own Perl script rather than by CMake,
+        // and `Configure android-arm64` looks the compiler up on PATH:
+        //
+        //     no NDK aarch64-linux-android-gcc on $PATH
+        //
+        // It also reads ANDROID_NDK_ROOT itself. build.ps1 sets both before
+        // invoking CMake; these are the same two, scoped to the child rather
+        // than to this process.
+        let host_tag = if cfg!(target_os = "macos") {
+            "darwin-x86_64"
+        } else if cfg!(windows) {
+            "windows-x86_64"
+        } else {
+            "linux-x86_64"
+        };
+        let ndk_bin = Path::new(&ndk)
+            .join("toolchains")
+            .join("llvm")
+            .join("prebuilt")
+            .join(host_tag)
+            .join("bin");
+        let path = match env::var_os("PATH") {
+            Some(existing) => {
+                let mut dirs = vec![ndk_bin];
+                dirs.extend(env::split_paths(&existing));
+                env::join_paths(dirs).expect("PATH with the NDK toolchain prepended")
+            }
+            None => ndk_bin.into_os_string(),
+        };
+        config
+            .define("CMAKE_TOOLCHAIN_FILE", toolchain_file.to_str().unwrap())
+            .define("ANDROID_NDK", &ndk)
+            .define("ANDROID_ABI", abi)
+            // The floor quictls's own sub-build hardcodes, and what bionic
+            // needs for the glob() in selfsign_openssl.c.
+            .define("ANDROID_PLATFORM", "android-29")
+            .env("PATH", path)
+            // Set from the NDK actually being used, so a machine with a second
+            // one already pointed at by this variable does not end up
+            // compiling with one and configuring with the other.
+            .env("ANDROID_NDK_ROOT", &ndk)
+            .env("ANDROID_NDK_HOME", &ndk);
     }
 
     // macos-latest's cargo automatically specify --target=${ARCH}-apple-macosx14.5
@@ -117,8 +243,14 @@ fn cmake_build() {
     if !found_lib_dir {
         panic!("no lib or lib64 directory found under {}", dst.display());
     }
-    if cfg!(feature = "static") {
-        if cfg!(target_os = "linux") {
+    if cfg!(feature = "static") || apple_ios {
+        // Keyed off the target rather than the host: cross-compiling to iOS
+        // happens from a macOS host, so `cfg!` would not tell them apart.
+        if target.contains("-apple-") {
+            // These back the darwin platform layer on macOS and iOS alike.
+            println!("cargo:rustc-link-lib=framework=CoreFoundation");
+            println!("cargo:rustc-link-lib=framework=Security");
+        } else if cfg!(target_os = "linux") {
             let numa_lib_path = match target.as_str() {
                 "x86_64-unknown-linux-gnu" => "/usr/lib/x86_64-linux-gnu",
                 "aarch64-unknown-linux-gnu" => "/usr/lib/aarch64-linux-gnu",
@@ -126,9 +258,6 @@ fn cmake_build() {
             };
             println!("cargo:rustc-link-search=native={numa_lib_path}");
             println!("cargo:rustc-link-lib=static:+whole-archive=numa");
-        } else if cfg!(target_os = "macos") {
-            println!("cargo:rustc-link-lib=framework=CoreFoundation");
-            println!("cargo:rustc-link-lib=framework=Security");
         } else if cfg!(windows) {
             // Windows system libraries that the static msquic.lib depends on.
             // These are excluded from the monolithic archive (via the inc/base_link

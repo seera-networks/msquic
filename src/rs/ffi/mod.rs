@@ -46,13 +46,17 @@ pub struct OVERLAPPED_ENTRY {
     pub dwNumberOfBytesTransferred: ::std::os::raw::c_ulong,
 }
 
-#[cfg(target_os = "linux")]
+// Android is bionic on the same kernel, so it has epoll and takes the real
+// type — unlike the darwin targets below, which are on kqueue.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub type epoll_event = libc::epoll_event;
 
-#[cfg(target_os = "macos")]
+// iOS shares the darwin platform layer (kqueue, not epoll) with macOS, so it
+// takes the same placeholder.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub type epoll_event = u32; // HACK: TODO - Fix once we have macOS support
 
-// TODO: macos currently is using the linux bindings.
+// TODO: macos/ios currently is using the linux bindings.
 #[cfg(not(target_os = "windows"))]
 pub type sa_family_t = u16;
 #[cfg(not(target_os = "windows"))]

@@ -253,6 +253,31 @@ else()
                             CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER})
             endif()
         endif()
+    elseif(CX_PLATFORM STREQUAL "darwin" AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # The darwin64-* targets bake in macOS-only configuration, so iOS picks
+        # its own OpenSSL target. SDK_NAME/CMAKE_OSX_ARCHITECTURES are set by
+        # cmake/toolchains/ios.cmake from PLATFORM.
+        if (SDK_NAME MATCHES "^iphonesimulator")
+            # iossimulator-xcrun leaves the architecture at the compiler default
+            # (the host's), so pin it to the one CMake is targeting. Configure
+            # reads a bare word as the target name, so the flag and its value
+            # have to arrive as one argument — %20 is Configure's own escape for
+            # the space (see the arg loop in quictls/Configure).
+            set(OPENSSL_CONFIG_CMD ${CMAKE_CURRENT_SOURCE_DIR}/${QUIC_OPENSSL}/Configure iossimulator-xcrun)
+            list(APPEND OPENSSL_CONFIG_FLAGS "-arch%20${CMAKE_OSX_ARCHITECTURES}")
+        elseif (CMAKE_OSX_ARCHITECTURES STREQUAL arm64)
+            set(OPENSSL_CONFIG_CMD ${CMAKE_CURRENT_SOURCE_DIR}/${QUIC_OPENSSL}/Configure ios64-xcrun)
+        else()
+            message(FATAL_ERROR "Unsupported iOS architecture: ${CMAKE_OSX_ARCHITECTURES}")
+        endif()
+
+        list(APPEND OPENSSL_CONFIG_FLAGS
+            -isysroot ${CMAKE_OSX_SYSROOT}
+            "-m${SDK_NAME}-version-min=${DEPLOYMENT_TARGET}")
+
+        if (ENABLE_BITCODE)
+            list(APPEND OPENSSL_CONFIG_FLAGS -fembed-bitcode)
+        endif()
     elseif(CX_PLATFORM STREQUAL "darwin")
         if (CMAKE_OSX_ARCHITECTURES STREQUAL arm64)
             set(OPENSSL_CONFIG_CMD ARCHFLAGS="-arch arm64" ${CMAKE_CURRENT_SOURCE_DIR}/${QUIC_OPENSSL}/Configure darwin64-arm64-cc)

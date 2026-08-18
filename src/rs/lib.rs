@@ -381,9 +381,16 @@ pub const PARAM_STREAM_0RTT_LENGTH: u32 = 0x08000001;
 pub const PARAM_STREAM_IDEAL_SEND_BUFFER_SIZE: u32 = 0x08000002;
 pub const PARAM_STREAM_PRIORITY: u32 = 0x08000003;
 
-#[cfg_attr(not(feature = "static"), link(name = "msquic", kind = "dylib"))]
+// iOS app bundles cannot load a side-loaded dylib, so msquic is always linked
+// statically there regardless of the `static` feature. scripts/build.rs forces
+// QUIC_BUILD_SHARED=off to match, the same way scripts/build.ps1 forces
+// -Static for -Platform ios.
 #[cfg_attr(
-    feature = "static",
+    all(not(feature = "static"), not(target_os = "ios")),
+    link(name = "msquic", kind = "dylib")
+)]
+#[cfg_attr(
+    any(feature = "static", target_os = "ios"),
     link(name = "msquic", kind = "static", modifiers = "-bundle")
 )]
 unsafe extern "C" {
