@@ -169,13 +169,48 @@ fn cmake_build() {
             toolchain_file.exists(),
             "no android.toolchain.cmake under {ndk}; is that an NDK?",
         );
+        // quictls is configured by its own Perl script rather than by CMake,
+        // and `Configure android-arm64` looks the compiler up on PATH:
+        //
+        //     no NDK aarch64-linux-android-gcc on $PATH
+        //
+        // It also reads ANDROID_NDK_ROOT itself. build.ps1 sets both before
+        // invoking CMake; these are the same two, scoped to the child rather
+        // than to this process.
+        let host_tag = if cfg!(target_os = "macos") {
+            "darwin-x86_64"
+        } else if cfg!(windows) {
+            "windows-x86_64"
+        } else {
+            "linux-x86_64"
+        };
+        let ndk_bin = Path::new(&ndk)
+            .join("toolchains")
+            .join("llvm")
+            .join("prebuilt")
+            .join(host_tag)
+            .join("bin");
+        let path = match env::var_os("PATH") {
+            Some(existing) => {
+                let mut dirs = vec![ndk_bin];
+                dirs.extend(env::split_paths(&existing));
+                env::join_paths(dirs).expect("PATH with the NDK toolchain prepended")
+            }
+            None => ndk_bin.into_os_string(),
+        };
         config
             .define("CMAKE_TOOLCHAIN_FILE", toolchain_file.to_str().unwrap())
             .define("ANDROID_NDK", &ndk)
             .define("ANDROID_ABI", abi)
             // The floor quictls's own sub-build hardcodes, and what bionic
             // needs for the glob() in selfsign_openssl.c.
-            .define("ANDROID_PLATFORM", "android-29");
+            .define("ANDROID_PLATFORM", "android-29")
+            .env("PATH", path)
+            // Set from the NDK actually being used, so a machine with a second
+            // one already pointed at by this variable does not end up
+            // compiling with one and configuring with the other.
+            .env("ANDROID_NDK_ROOT", &ndk)
+            .env("ANDROID_NDK_HOME", &ndk);
     }
 
     // macos-latest's cargo automatically specify --target=${ARCH}-apple-macosx14.5
