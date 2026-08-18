@@ -31,6 +31,7 @@ fn cmake_build() {
 
     let target = env::var("TARGET").unwrap().replace("\\", "/");
     let apple_ios = target.contains("-apple-ios");
+    let android = target.contains("-linux-android");
     let out_dir = env::var("OUT_DIR").unwrap();
     // The output directory for the native MsQuic library.
     let quic_output_dir = if cfg!(windows) {
@@ -125,6 +126,56 @@ fn cmake_build() {
             // ios.cmake derived from PLATFORM.
             .define("CMAKE_C_FLAGS", "")
             .define("CMAKE_CXX_FLAGS", "");
+    }
+
+    // Android needs the NDK's own CMake toolchain, and above all `ANDROID_ABI`.
+    //
+    // Without it, cmake-rs sets `CMAKE_SYSTEM_NAME=Android` from the target
+    // triple and nothing else, so CMake takes its *built-in* Android support
+    // (`Modules/Platform/Android-Clang.cmake`) and `ANDROID_ABI` -- a variable
+    // the NDK toolchain file owns -- is never set. `submodules/CMakeLists.txt`
+    // reads it to choose quictls's `Configure` target and stops with "Unknown
+    // android abi type".
+    //
+    // The four defines below are what `scripts/build.ps1 -Platform android`
+    // passes; this is the same recipe reached from cargo instead of PowerShell.
+    // They cannot be supplied from outside: cmake-rs forwards only
+    // CMAKE_TOOLCHAIN_FILE, CMAKE_GENERATOR, CMAKE_PREFIX_PATH, CMAKE, EMCMAKE
+    // and EMMAKE from the environment, so `ANDROID_ABI` has to be passed here.
+    if android {
+        let abi = match target.as_str() {
+            "aarch64-linux-android" => "arm64-v8a",
+            "armv7-linux-androideabi" => "armeabi-v7a",
+            "i686-linux-android" => "x86",
+            "x86_64-linux-android" => "x86_64",
+            _ => panic!("Unsupported Android target: {target}"),
+        };
+        // `ANDROID_NDK_HOME` is what the NDK's own tooling and cargo-ndk set;
+        // `ANDROID_NDK_LATEST_HOME` is what GitHub's runners provide and what
+        // build.ps1 reads. Accept either rather than making the caller know
+        // which convention this build script grew up with.
+        let ndk = env::var("ANDROID_NDK_HOME")
+            .or_else(|_| env::var("ANDROID_NDK_ROOT"))
+            .or_else(|_| env::var("ANDROID_NDK_LATEST_HOME"))
+            .expect(
+                "building for Android needs the NDK: set ANDROID_NDK_HOME \
+                 (or ANDROID_NDK_ROOT / ANDROID_NDK_LATEST_HOME)",
+            );
+        let toolchain_file = Path::new(&ndk)
+            .join("build")
+            .join("cmake")
+            .join("android.toolchain.cmake");
+        assert!(
+            toolchain_file.exists(),
+            "no android.toolchain.cmake under {ndk}; is that an NDK?",
+        );
+        config
+            .define("CMAKE_TOOLCHAIN_FILE", toolchain_file.to_str().unwrap())
+            .define("ANDROID_NDK", &ndk)
+            .define("ANDROID_ABI", abi)
+            // The floor quictls's own sub-build hardcodes, and what bionic
+            // needs for the glob() in selfsign_openssl.c.
+            .define("ANDROID_PLATFORM", "android-29");
     }
 
     // macos-latest's cargo automatically specify --target=${ARCH}-apple-macosx14.5
