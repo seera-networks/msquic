@@ -222,7 +222,6 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_REMOVE_PATH` <br> 32             | QUIC_PATH_PARAM               | Set-only  | Remove a path. Client only. |
 | `QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS` <br> 33   | QUIC_CANDIDATE_ADDRESS        | Set-only  | Add a candidate address. Client only. |
 | `QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS` <br> 34| QUIC_CANDIDATE_ADDRESS        | Set-only  | Remove a candidate address. Client only. |
-
 | `QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` <br> 37 | uint8_t (BOOLEAN) | Both | Set on client only. Must be set before start, and requires `QUIC_PARAM_CONN_SHARE_UDP_BINDING`. See [QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET](#quic_param_conn_unconnected_udp_socket). |
 | `QUIC_PARAM_CONN_PATH_STATISTICS` <br> 38 | QUIC_PATH_STATISTICS[] | Get-only | Network statistics for every path at once, one array entry per path. See [QUIC_PARAM_CONN_PATH_STATISTICS](#quic_param_conn_path_statistics). |
 
@@ -244,6 +243,8 @@ typedef struct QUIC_PATH_STATISTICS {
 ```
 
 `PathId` identifies which path an entry describes. It is needed because array position is not stable: paths are removed and the remaining ones move up, so the entry at a given index is not necessarily the same path it was on the previous call. It matches the `PathId` used by `QUIC_PARAM_CONN_PATH_STATUS`.
+
+It is not guaranteed unique. While a path is being rebound — the peer reappearing on a new port through a NAT, for instance — the new path and the one it replaces briefly share a path ID, and both are reported. The two entries carry that path ID's congestion control, so their `NetworkStatistics` agree; what tells them apart is the per-path `Rtt`, `MinRtt`, `MaxRtt` and `Mtu`.
 
 `MinRtt` and `MaxRtt` are zero until the path has produced an RTT sample. `Rtt` is the smoothed RTT, which starts from the configured `InitialRttMs` and so is non-zero from the outset.
 

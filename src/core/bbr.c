@@ -306,15 +306,11 @@ void
 BbrCongestionControlGetNetworkStatistics(
     _In_ const QUIC_CONNECTION* const Connection,
     _In_ const QUIC_CONGESTION_CONTROL* const Cc,
+    _In_ const QUIC_PATH* const Path,
     _Out_ QUIC_NETWORK_STATISTICS* NetworkStatistics
     )
 {
     const QUIC_CONGESTION_CONTROL_BBR* Bbr = &Cc->Bbr;
-    //
-    // Congestion control is per path ID, so the RTT to report is the one of the
-    // path this instance belongs to, not whichever path happens to be first.
-    //
-    const QUIC_PATH* Path = QuicCongestionControlGetPathID(Cc)->Path;
 
     NetworkStatistics->BytesInFlight = Bbr->BytesInFlight;
     NetworkStatistics->PostedBytes = Connection->SendBuffer.PostedBytes;
@@ -334,7 +330,11 @@ BbrCongestionControlIndicateConnectionEvent(
     QUIC_CONNECTION_EVENT Event;
     Event.Type = QUIC_CONNECTION_EVENT_NETWORK_STATISTICS;
 
-    BbrCongestionControlGetNetworkStatistics(Connection, Cc, &Event.NETWORK_STATISTICS);
+    //
+    // The connection-level event has always reported the active path.
+    //
+    BbrCongestionControlGetNetworkStatistics(
+        Connection, Cc, &Connection->Paths[0], &Event.NETWORK_STATISTICS);
 
     QuicTraceLogConnVerbose(
         IndicateDataAcked,

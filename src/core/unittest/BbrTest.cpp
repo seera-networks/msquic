@@ -1087,7 +1087,8 @@ TEST_F(BbrTest_DeepTest, GetNetworkStatistics)
     CC->QuicCongestionControlOnDataSent(CC, 5000);
 
     QUIC_NETWORK_STATISTICS Stats{};
-    CC->QuicCongestionControlGetNetworkStatistics(&Connection, CC, &Stats);
+    CC->QuicCongestionControlGetNetworkStatistics(
+        &Connection, CC, &Connection.Paths[0], &Stats);
 
     ASSERT_EQ(Stats.BytesInFlight, 5000u);
     ASSERT_EQ(Stats.CongestionWindow, CC->QuicCongestionControlGetCongestionWindow(CC));

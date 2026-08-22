@@ -9315,7 +9315,8 @@ QuicConnGetNetworkStatistics(
     CxPlatZeroMemory(Stats, sizeof(QUIC_NETWORK_STATISTICS));
 
     Connection->Paths[0].PathID->CongestionControl.QuicCongestionControlGetNetworkStatistics(
-        Connection, &Connection->Paths[0].PathID->CongestionControl, Stats);
+        Connection, &Connection->Paths[0].PathID->CongestionControl,
+        &Connection->Paths[0], Stats);
 
     return QUIC_STATUS_SUCCESS;
 }
@@ -9377,7 +9378,8 @@ QuicConnGetPathStatistics(
         PathStats->Mtu = Path->Mtu;
 
         Path->PathID->CongestionControl.QuicCongestionControlGetNetworkStatistics(
-            Connection, &Path->PathID->CongestionControl, &PathStats->NetworkStatistics);
+            Connection, &Path->PathID->CongestionControl, Path,
+            &PathStats->NetworkStatistics);
     }
 
     CXPLAT_DBG_ASSERT(Index == PathCount);
