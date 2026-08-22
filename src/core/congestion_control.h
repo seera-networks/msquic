@@ -155,9 +155,16 @@ typedef struct QUIC_CONGESTION_CONTROL {
         _In_ struct QUIC_CONGESTION_CONTROL* Cc
         );
 
+    //
+    // Path is passed in rather than derived from Cc: without multipath,
+    // QuicPathSetActive swaps the contents of two QUIC_PATH slots and leaves
+    // the owning path ID's back pointer behind, so the caller is the only one
+    // that reliably knows which path it is asking about.
+    //
     void (*QuicCongestionControlGetNetworkStatistics)(
         _In_ const QUIC_CONNECTION* const Connection,
         _In_ const struct QUIC_CONGESTION_CONTROL* const Cc,
+        _In_ const struct QUIC_PATH* const Path,
         _Out_ struct QUIC_NETWORK_STATISTICS* NetworkStatistics
         );
 

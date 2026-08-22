@@ -778,6 +778,19 @@ typedef struct QUIC_PATH_STATUS {
     uint32_t PathId;
     BOOLEAN Active;
 } QUIC_PATH_STATUS;
+
+//
+// Per-path counterpart of QUIC_NETWORK_STATISTICS. Retrieved for every path at
+// once via QUIC_PARAM_CONN_PATH_STATISTICS, which writes an array of these.
+//
+typedef struct QUIC_PATH_STATISTICS {
+    uint32_t PathId;                     // Identifies which path this entry describes
+    uint64_t Rtt;                        // Smoothed RTT for the path, in microseconds
+    uint64_t MinRtt;                     // Minimum RTT observed on the path, in microseconds. Zero until the path has an RTT sample.
+    uint64_t MaxRtt;                     // Maximum RTT observed on the path, in microseconds. Zero until the path has an RTT sample.
+    uint16_t Mtu;                        // Currently calculated path MTU
+    QUIC_NETWORK_STATISTICS NetworkStatistics;
+} QUIC_PATH_STATISTICS;
 #endif
 
 typedef struct QUIC_GLOBAL_SETTINGS {
@@ -1129,6 +1142,7 @@ typedef struct QUIC_SCHANNEL_CREDENTIAL_ATTRIBUTE_W {
 #define QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS        0x05000023  // QUIC_CANDIDATE_ADDRESS
 #define QUIC_PARAM_CONN_PATH_STATUS                     0x05000024  // QUIC_PATH_STATUS
 #define QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET          0x05000025  // uint8_t (BOOLEAN)
+#define QUIC_PARAM_CONN_PATH_STATISTICS                 0x05000026  // QUIC_PATH_STATISTICS[]
 #endif
 
 //

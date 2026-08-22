@@ -1271,7 +1271,8 @@ TEST_F(CubicTest, GetNetworkStatistics_RetrieveStats)
     CxPlatZeroMemory(&NetworkStats, sizeof(NetworkStats));
 
     // Call through function pointer - note it takes Connection as first param
-    CC->QuicCongestionControlGetNetworkStatistics(&Connection,CC,&NetworkStats);
+    CC->QuicCongestionControlGetNetworkStatistics(
+        &Connection, CC, &Connection.Paths[0], &NetworkStats);
 
     // Verify all 6 statistics fields were populated
     ASSERT_EQ(NetworkStats.CongestionWindow, Cubic->CongestionWindow);
@@ -1310,7 +1311,8 @@ TEST_F(CubicTest, GetNetworkStatistics_ZeroSmoothedRtt_BandwidthIsZero)
     CxPlatZeroMemory(&NetworkStats, sizeof(NetworkStats));
 
     // Must not crash with divide-by-zero when SmoothedRtt == 0.
-    CC->QuicCongestionControlGetNetworkStatistics(&Connection, CC, &NetworkStats);
+    CC->QuicCongestionControlGetNetworkStatistics(
+        &Connection, CC, &Connection.Paths[0], &NetworkStats);
 
     ASSERT_EQ(NetworkStats.Bandwidth, 0u);
     ASSERT_EQ(NetworkStats.SmoothedRTT, 0u);

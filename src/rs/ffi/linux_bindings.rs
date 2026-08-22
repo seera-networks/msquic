@@ -222,6 +222,7 @@ pub const QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS: u32 = 83886114;
 pub const QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS: u32 = 83886115;
 pub const QUIC_PARAM_CONN_PATH_STATUS: u32 = 83886116;
 pub const QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET: u32 = 83886117;
+pub const QUIC_PARAM_CONN_PATH_STATISTICS: u32 = 83886118;
 pub const QUIC_PARAM_TLS_HANDSHAKE_INFO: u32 = 100663296;
 pub const QUIC_PARAM_TLS_NEGOTIATED_ALPN: u32 = 100663297;
 pub const QUIC_PARAM_STREAM_ID: u32 = 134217728;
@@ -1829,6 +1830,33 @@ const _: () = {
         [::std::mem::offset_of!(QUIC_PATH_STATUS, PathId) - 0usize];
     ["Offset of field: QUIC_PATH_STATUS::Active"]
         [::std::mem::offset_of!(QUIC_PATH_STATUS, Active) - 4usize];
+};
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct QUIC_PATH_STATISTICS {
+    pub PathId: u32,
+    pub Rtt: u64,
+    pub MinRtt: u64,
+    pub MaxRtt: u64,
+    pub Mtu: u16,
+    pub NetworkStatistics: QUIC_NETWORK_STATISTICS,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of QUIC_PATH_STATISTICS"][::std::mem::size_of::<QUIC_PATH_STATISTICS>() - 88usize];
+    ["Alignment of QUIC_PATH_STATISTICS"][::std::mem::align_of::<QUIC_PATH_STATISTICS>() - 8usize];
+    ["Offset of field: QUIC_PATH_STATISTICS::PathId"]
+        [::std::mem::offset_of!(QUIC_PATH_STATISTICS, PathId) - 0usize];
+    ["Offset of field: QUIC_PATH_STATISTICS::Rtt"]
+        [::std::mem::offset_of!(QUIC_PATH_STATISTICS, Rtt) - 8usize];
+    ["Offset of field: QUIC_PATH_STATISTICS::MinRtt"]
+        [::std::mem::offset_of!(QUIC_PATH_STATISTICS, MinRtt) - 16usize];
+    ["Offset of field: QUIC_PATH_STATISTICS::MaxRtt"]
+        [::std::mem::offset_of!(QUIC_PATH_STATISTICS, MaxRtt) - 24usize];
+    ["Offset of field: QUIC_PATH_STATISTICS::Mtu"]
+        [::std::mem::offset_of!(QUIC_PATH_STATISTICS, Mtu) - 32usize];
+    ["Offset of field: QUIC_PATH_STATISTICS::NetworkStatistics"]
+        [::std::mem::offset_of!(QUIC_PATH_STATISTICS, NetworkStatistics) - 40usize];
 };
 #[repr(C)]
 #[derive(Copy, Clone)]
