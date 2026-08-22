@@ -224,6 +224,32 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS` <br> 34| QUIC_CANDIDATE_ADDRESS        | Set-only  | Remove a candidate address. Client only. |
 
 | `QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` <br> 37 | uint8_t (BOOLEAN) | Both | Set on client only. Must be set before start, and requires `QUIC_PARAM_CONN_SHARE_UDP_BINDING`. See [QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET](#quic_param_conn_unconnected_udp_socket). |
+| `QUIC_PARAM_CONN_PATH_STATISTICS` <br> 38 | QUIC_PATH_STATISTICS[] | Get-only | Network statistics for every path at once, one array entry per path. See [QUIC_PARAM_CONN_PATH_STATISTICS](#quic_param_conn_path_statistics). |
+
+### QUIC_PARAM_CONN_PATH_STATISTICS
+
+Returns an array of `QUIC_PATH_STATISTICS`, one entry per path the connection currently holds. It is the per-path counterpart of `QUIC_PARAM_CONN_NETWORK_STATISTICS`, which only ever reports the first path.
+
+The number of paths is not known in advance and changes over the life of the connection, so call it the usual two-step way: pass a `BufferLength` of `0` to be told the size needed, then call again with a buffer at least that large. A buffer too small for the current number of paths returns `QUIC_STATUS_BUFFER_TOO_SMALL` with `BufferLength` set to the required size. On success `BufferLength` is set to the number of bytes actually written, so the entry count is `BufferLength / sizeof(QUIC_PATH_STATISTICS)`.
+
+```c
+typedef struct QUIC_PATH_STATISTICS {
+    uint32_t PathId;
+    uint64_t Rtt;
+    uint64_t MinRtt;
+    uint64_t MaxRtt;
+    uint16_t Mtu;
+    QUIC_NETWORK_STATISTICS NetworkStatistics;
+} QUIC_PATH_STATISTICS;
+```
+
+`PathId` identifies which path an entry describes. It is needed because array position is not stable: paths are removed and the remaining ones move up, so the entry at a given index is not necessarily the same path it was on the previous call. It matches the `PathId` used by `QUIC_PARAM_CONN_PATH_STATUS`.
+
+`MinRtt` and `MaxRtt` are zero until the path has produced an RTT sample. `Rtt` is the smoothed RTT, which starts from the configured `InitialRttMs` and so is non-zero from the outset.
+
+Paths that exist but have no path ID assigned yet — a path added before the handshake is confirmed — are not reported, since there is nothing to identify them by and no congestion control to read from.
+
+Works whether or not multipath was negotiated; a connection with a single path returns one entry.
 
 ### QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET
 

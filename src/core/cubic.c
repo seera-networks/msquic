@@ -433,7 +433,11 @@ CubicCongestionControlGetNetworkStatistics(
     )
 {
     const QUIC_CONGESTION_CONTROL_CUBIC* Cubic = &Cc->Cubic;
-    const QUIC_PATH* Path = &Connection->Paths[0];
+    //
+    // Congestion control is per path ID, so the RTT to report is the one of the
+    // path this instance belongs to, not whichever path happens to be first.
+    //
+    const QUIC_PATH* Path = QuicCongestionControlGetPathID(Cc)->Path;
 
     NetworkStatistics->BytesInFlight = Cubic->BytesInFlight;
     NetworkStatistics->PostedBytes = Connection->SendBuffer.PostedBytes;

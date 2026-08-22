@@ -1457,4 +1457,132 @@ QuicTestPathKeepAlive(
     TEST_TRUE(SecondPathCounter.Count >= Expected);
 }
 
+void
+QuicTestPathStatistics(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    PathTestContext Context;
+    PathTestClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicConfiguration ServerConfiguration(Registration,
+        "MsQuicTest",
+        MsQuicSettings{}.SetMultipathEnabled(TRUE),
+        ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration,
+        "MsQuicTest",
+        MsQuicSettings{}.SetMultipathEnabled(TRUE),
+        ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathTestClientContext::ClientCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // One path so far, so a buffer sized for one is exactly what is asked for.
+    //
+    uint32_t Size = 0;
+    TEST_EQUAL(
+        QUIC_STATUS_BUFFER_TOO_SMALL,
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, nullptr));
+    TEST_EQUAL(sizeof(QUIC_PATH_STATISTICS), Size);
+
+    QUIC_PATH_STATISTICS OnePath[QUIC_MAX_PATH_COUNT];
+    Size = sizeof(OnePath);
+    TEST_QUIC_SUCCEEDED(
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, OnePath));
+    TEST_EQUAL(sizeof(QUIC_PATH_STATISTICS), Size);
+    TEST_TRUE(OnePath[0].Mtu > 0);
+
+    //
+    // Bring up a second path, then expect the array to grow by exactly one.
+    //
+    QuicAddr FirstLocalAddr, SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(FirstLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+            SecondLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+        }
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    delete ProbeHelper;
+
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+
+    QUIC_PATH_STATISTICS PathStats[QUIC_MAX_PATH_COUNT];
+    Size = sizeof(PathStats);
+    TEST_QUIC_SUCCEEDED(
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, PathStats));
+    TEST_EQUAL(2 * sizeof(QUIC_PATH_STATISTICS), Size);
+
+    //
+    // Every path reports itself, not a copy of the first one: distinct path IDs,
+    // and an MTU that was actually filled in.
+    //
+    TEST_NOT_EQUAL(PathStats[0].PathId, PathStats[1].PathId);
+    for (uint32_t i = 0; i < 2; ++i) {
+        TEST_TRUE(PathStats[i].Mtu > 0);
+        TEST_TRUE(PathStats[i].Rtt > 0);
+        //
+        // Both are zero on a path with no RTT sample yet; the sentinel MinRtt
+        // carries internally must not reach the caller.
+        //
+        TEST_TRUE(PathStats[i].MinRtt <= PathStats[i].MaxRtt);
+        TEST_TRUE(PathStats[i].NetworkStatistics.CongestionWindow > 0);
+        //
+        // The network statistics are read out of the path's own congestion
+        // control, so this has to agree with the path's RTT above rather than
+        // with whichever path came first.
+        //
+        TEST_EQUAL(PathStats[i].Rtt, PathStats[i].NetworkStatistics.SmoothedRTT);
+    }
+
+    //
+    // A buffer one entry short is refused, and says how much is needed.
+    //
+    Size = sizeof(QUIC_PATH_STATISTICS);
+    TEST_EQUAL(
+        QUIC_STATUS_BUFFER_TOO_SMALL,
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, PathStats));
+    TEST_EQUAL(2 * sizeof(QUIC_PATH_STATISTICS), Size);
+}
+
 #endif
