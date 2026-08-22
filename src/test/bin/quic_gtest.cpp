@@ -968,6 +968,15 @@ TEST_P(WithFamilyArgs, PathKeepAlive) {
     }
 }
 
+TEST_P(WithFamilyArgs, PathStatistics) {
+    TestLoggerT<ParamType> Logger("QuicTestPathStatistics", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestPathStatistics), GetParam()));
+    } else {
+        QuicTestPathStatistics(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, QMuxConnect) {
     TestLoggerT<ParamType> Logger("QuicTestQMuxConnect", GetParam());
     if (TestingKernelMode) {

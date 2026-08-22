@@ -9739,7 +9739,76 @@ QuicConnGetNetworkStatistics(
     CxPlatZeroMemory(Stats, sizeof(QUIC_NETWORK_STATISTICS));
 
     Connection->Paths[0].PathID->CongestionControl.QuicCongestionControlGetNetworkStatistics(
-        Connection, &Connection->Paths[0].PathID->CongestionControl, Stats);
+        Connection, &Connection->Paths[0].PathID->CongestionControl,
+        &Connection->Paths[0], Stats);
+
+    return QUIC_STATUS_SUCCESS;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_STATUS
+QuicConnGetPathStatistics(
+    _In_ const QUIC_CONNECTION* Connection,
+    _Inout_ uint32_t* StatsLength,
+    _Out_writes_bytes_opt_(*StatsLength)
+        QUIC_PATH_STATISTICS* Stats
+    )
+{
+    //
+    // Only paths that are in use and have a path ID can be reported on: the
+    // path ID is what identifies the entry to the caller, and it owns the
+    // congestion control the network statistics come from. A path added before
+    // the handshake is confirmed has neither yet.
+    //
+    uint8_t PathCount = 0;
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].InUse && Connection->Paths[i].PathID != NULL) {
+            PathCount++;
+        }
+    }
+
+    const uint32_t RequiredLength = PathCount * sizeof(QUIC_PATH_STATISTICS);
+
+    if (*StatsLength < RequiredLength) {
+        *StatsLength = RequiredLength;
+        return QUIC_STATUS_BUFFER_TOO_SMALL;
+    }
+
+    if (Stats == NULL) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    CxPlatZeroMemory(Stats, RequiredLength);
+
+    uint8_t Index = 0;
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (!Path->InUse || Path->PathID == NULL) {
+            continue;
+        }
+
+        QUIC_PATH_STATISTICS* PathStats = &Stats[Index++];
+        PathStats->PathId = Path->PathID->ID;
+        PathStats->Rtt = Path->SmoothedRtt;
+        //
+        // Until the path has produced an RTT sample, MinRtt still holds the
+        // sentinel it was initialized to and MaxRtt is untouched. Reporting
+        // those as microsecond counts would read as a minimum of over an hour,
+        // so a path with nothing measured reports zero for both.
+        //
+        PathStats->MinRtt = Path->GotFirstRttSample ? Path->MinRtt : 0;
+        PathStats->MaxRtt = Path->GotFirstRttSample ? Path->MaxRtt : 0;
+        PathStats->Mtu = Path->Mtu;
+
+        Path->PathID->CongestionControl.QuicCongestionControlGetNetworkStatistics(
+            Connection, &Path->PathID->CongestionControl, Path,
+            &PathStats->NetworkStatistics);
+    }
+
+    CXPLAT_DBG_ASSERT(Index == PathCount);
+
+    *StatsLength = RequiredLength;
 
     return QUIC_STATUS_SUCCESS;
 }
@@ -10200,6 +10269,11 @@ QuicConnParamGet(
     case QUIC_PARAM_CONN_NETWORK_STATISTICS:
         Status =
             QuicConnGetNetworkStatistics(Connection, BufferLength, (QUIC_NETWORK_STATISTICS *)Buffer);
+        break;
+
+    case QUIC_PARAM_CONN_PATH_STATISTICS:
+        Status =
+            QuicConnGetPathStatistics(Connection, BufferLength, (QUIC_PATH_STATISTICS *)Buffer);
         break;
 
     case QUIC_PARAM_CONN_CLOSE_ASYNC:
