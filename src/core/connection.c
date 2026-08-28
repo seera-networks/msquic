@@ -7633,11 +7633,11 @@ Done:
 // Whether a path already carries the datagram payload length the application
 // requires of paths it sends on.
 //
-// The path's MTU is used as measured -- nothing here raises it. A path short of
-// the requirement stays short of it: msquic does not probe a path it is not
-// sending on, so the requirement is a filter on what may be used, not a target
-// something climbs towards. An application that finds a candidate wanting is
-// expected to drop it.
+// The path's MTU is used as measured -- nothing here raises it, and setting a
+// requirement does not ask for any size to be reached. It does not stop the
+// path being measured either: QuicSendPathMtuProbes probes a validated path
+// that is being held back, so it goes on converging and is admitted once it
+// can carry the length. The requirement is a filter on what may be used.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -8478,7 +8478,14 @@ QuicConnParamSet(
                     // carries less through an older API is still moving onto
                     // it.
                     //
-                    if (!QuicConnPathMeetsRequiredDatagramLength(Connection, Path)) {
+                    // Paths[0] is exempt, as it is in QuicConnActivatePath: it
+                    // is what QuicConnChoosePath falls back to whether or not
+                    // anything is active, so refusing it achieves nothing. It
+                    // reaches here not being active because a received
+                    // PATH_BACKUP clears IsActive on it like any other path.
+                    //
+                    if (Path != &Connection->Paths[0] &&
+                        !QuicConnPathMeetsRequiredDatagramLength(Connection, Path)) {
                         Status = QUIC_STATUS_INVALID_STATE;
                         break;
                     }

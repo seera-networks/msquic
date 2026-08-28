@@ -1542,8 +1542,20 @@ QuicSendPathMtuProbes(
     for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
 
         QUIC_PATH* Path = &Connection->Paths[i];
-        if (!Path->SendMtuProbe ||
-            Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+        if (!Path->SendMtuProbe) {
+            continue;
+        }
+
+        //
+        // Amplification limited. The flag goes back up rather than the path
+        // being dropped: SendMtuProbe stays set either way, and nothing else
+        // re-arms it -- no packet was sent, so loss detection has nothing to
+        // discard, and the search-complete timeout only looks at paths whose
+        // search has finished. Without this the probe waits for some unrelated
+        // path to raise the flag again.
+        //
+        if (Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
             continue;
         }
 
@@ -1573,6 +1585,19 @@ QuicSendPathMtuProbes(
         }
         _Analysis_assume_(Builder.Metadata != NULL);
 
+        //
+        // A probe is a full-size ack-eliciting packet and RFC 8899 has it
+        // congestion controlled like any other. It used to be, for free: the
+        // flag is not in QUIC_CONN_SEND_FLAGS_BYPASS_CC, so the send loop this
+        // was lifted out of dropped it while cwnd was full and picked it up on
+        // the next flush. Sending per path means checking that here instead.
+        // The flag goes back up so that next flush still happens.
+        //
+        if (!QuicPacketBuilderHasAllowance(&Builder)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            continue;
+        }
+
         if (!QuicPacketBuilderPrepareForPathMtuDiscovery(&Builder)) {
             continue;
         }
@@ -1597,6 +1622,7 @@ QuicSendPathMtuProbes(
                 Intended,
                 (uint16_t)Builder.Datagram->Length);
             Path->SendMtuProbe = FALSE;
+            QuicPacketBuilderFinalize(&Builder, TRUE);
             QuicPacketBuilderCleanup(&Builder);
             continue;
         }
@@ -1637,6 +1663,7 @@ QuicSendPathMtuProbes(
                     // written, so this is not expected to be reachable.
                     //
                     Path->SendMtuProbe = FALSE;
+                    QuicPacketBuilderFinalize(&Builder, TRUE);
                     QuicPacketBuilderCleanup(&Builder);
                     continue;
                 }

@@ -981,7 +981,13 @@ QuicLossDetectionRetransmitFrames(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             if (PathID != NULL) {
-                if (!PathID->Path->IsActive &&
+                //
+                // The path can be gone while a frame describing it is still in
+                // flight -- a QUIC_PATHID outlives its QUIC_PATH -- so this is
+                // guarded the way connection.c guards its own uses.
+                //
+                if (PathID->Path != NULL &&
+                    !PathID->Path->IsActive &&
                     Packet->Frames[i].PATH_BACKUP.Sequence + 1 == PathID->StatusSendSeq) {
                     //
                     // The flag on its own is not enough. QuicSendWriteFrames
@@ -1007,7 +1013,13 @@ QuicLossDetectionRetransmitFrames(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             if (PathID != NULL) {
-                if (PathID->Path->IsActive &&
+                //
+                // The path can be gone while a frame describing it is still in
+                // flight -- a QUIC_PATHID outlives its QUIC_PATH -- so this is
+                // guarded the way connection.c guards its own uses.
+                //
+                if (PathID->Path != NULL &&
+                    PathID->Path->IsActive &&
                     Packet->Frames[i].PATH_AVAILABLE.Sequence + 1 == PathID->StatusSendSeq) {
                     //
                     // The flag on its own is not enough. QuicSendWriteFrames
