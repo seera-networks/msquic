@@ -230,6 +230,8 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 
 Marks one path as active or as backup, and announces the change to the peer. Set-only; there is no way to read the current status back through this parameter.
 
+The parameter and its struct are behind `QUIC_API_ENABLE_PREVIEW_FEATURES`, which the application must define to use either.
+
 ```c
 typedef struct QUIC_PATH_STATUS {
     uint32_t PathId;
@@ -243,11 +245,15 @@ The parameter requires multipath to have been negotiated and fails with `QUIC_ST
 
 Setting it has two effects.
 
-Locally, only paths marked active are candidates for sending: when multipath is negotiated and the handshake is confirmed, each packet goes out on a path chosen at random from those that are active and not closing. Marking a path backup therefore takes it out of the rotation while leaving it validated and available.
+Locally, the status steers path selection. Once multipath is negotiated and the handshake is confirmed, each send flush picks one path at random from those that are active and not closing, and builds that flush's packets on it — the choice is per flush, not per packet, and a flush triggered by pacing reuses the path the pacing was set up for rather than choosing again. Marking a path backup therefore takes it out of that rotation while leaving it validated and usable.
+
+Two caveats on that. **If no path is active at all**, selection falls back to the first path and keeps sending on it, so marking every path backup does not stop sending. And the status is **not durable against internal changes**: several paths through the stack promote a path to active on their own — the fallback when the active path is removed, and a new path completing validation — and those do not send a PATH_AVAILABLE frame or raise an event. A path the application marked backup can therefore end up active again, with the peer still believing it is backup.
 
 On the wire, the change is announced with a PATH_AVAILABLE or PATH_BACKUP frame — the PATH_STATUS frames of draft-ietf-quic-multipath — carrying the path ID and a sequence number kept per path ID. Setting the status to the value it already has changes nothing and sends nothing.
 
-The peer can do the same to us. An incoming PATH_AVAILABLE or PATH_BACKUP flips the path's status locally and raises `QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED` with the new `IsActive`; frames whose sequence number is older than the last one accepted for that path ID are ignored, so reordered announcements cannot undo a newer one. An application that wants to know the current status of a path should follow that event rather than track only what it set itself.
+The peer can do the same to us. An incoming PATH_AVAILABLE or PATH_BACKUP flips the path's status locally and raises `QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED` with the new `IsActive`. A frame whose sequence number is not greater than the last one accepted for that path ID is ignored, so a reordered announcement cannot undo a newer one.
+
+That event fires only for changes the peer initiated; setting this parameter raises nothing. An application tracking the current status of a path needs both — what it set itself, and what arrives on the event — and, given the promotion caveat above, neither is a complete record.
 
 ### QUIC_PARAM_CONN_PATH_STATISTICS
 
