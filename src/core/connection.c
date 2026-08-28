@@ -5134,6 +5134,31 @@ QuicConnRecvFrames(
                                 TempPath->ID,
                                 TempPath->Mtu,
                                 Connection->PathRequiredMtu);
+                            //
+                            // Not activating it locally is not enough. A path
+                            // the peer has just validated is one it will treat
+                            // as available and send on, so it has to be told,
+                            // with the same PATH_BACKUP the application would
+                            // get from QUIC_PARAM_CONN_PATH_STATUS.
+                            //
+                            TempPath->SendStatus = TRUE;
+                            QuicSendSetSendFlag(
+                                &Connection->Send, QUIC_CONN_SEND_FLAG_PATH_BACKUP);
+                            //
+                            // QuicPathSetActive would also have reported the
+                            // address observed on this path. That is a fact
+                            // about the path, not about whether we send on it,
+                            // and it is only ever reported once, so skipping it
+                            // here would lose it for the connection's lifetime.
+                            //
+                            if (TempPath->SendObservedAddress) {
+                                Connection->ObservedAddressSequenceNumber++;
+                                if (Connection->State.ObservedAddressNegotiated) {
+                                    QuicSendSetSendFlag(
+                                        &Connection->Send,
+                                        QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS);
+                                }
+                            }
                         } else {
                             QuicPathSetActive(Connection, TempPath);
                         }
@@ -7667,6 +7692,26 @@ QuicConnActivatePath(
         return QUIC_STATUS_NOT_FOUND;
     }
 
+    //
+    // This branch creates the path and migrates onto it in one step, with no
+    // validation in between, so there is no later point at which a size
+    // requirement could be applied. Refuse it outright: migrating here is
+    // exactly the case the requirement exists to prevent, a new path silently
+    // becoming the one everything is sent on.
+    //
+    // Reaching the requirement on a new local address means adding the path
+    // with QUIC_PARAM_CONN_ADD_PATH, which validates it at the required size
+    // first, and activating it once that succeeds.
+    //
+    if (Connection->PathRequiredMtu != 0) {
+        QuicTraceLogConnInfo(
+            PathRequiredMtuBlocksMigration,
+            Connection,
+            "Migration to a new path refused while an MTU of %hu is required",
+            Connection->PathRequiredMtu);
+        return QUIC_STATUS_INVALID_STATE;
+    }
+
     // If the path doesn't exist, we try to create and activate it.
     QUIC_BINDING* OldBinding = Connection->Paths[0].Binding;
 
@@ -9052,6 +9097,22 @@ QuicConnParamSet(
                 break;
             }
             Connection->PathRequiredMtu = RequiredMtu;
+
+            //
+            // A path still being validated has not been sent anything but its
+            // challenge, so raising its MTU now still gets the requirement
+            // proven by the response. Paths already validated are left alone:
+            // their MTU is a measured fact, and a path already in use is not
+            // taken out of use by a requirement arriving later.
+            //
+            for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+                QUIC_PATH* UpdatePath = &Connection->Paths[i];
+                if (UpdatePath->InUse &&
+                    !UpdatePath->IsPeerValidated &&
+                    UpdatePath->Mtu < RequiredMtu) {
+                    UpdatePath->Mtu = RequiredMtu;
+                }
+            }
         }
 
         Status = QUIC_STATUS_SUCCESS;

@@ -1598,14 +1598,17 @@ QuicTestPathRequiredMtu(
     TEST_TRUE(Registration.IsValid());
 
     //
-    // The MTU is pinned so every path settles on exactly this value, which
-    // makes "one above it" a requirement no path can ever meet and "the value
-    // itself" one they all meet as soon as they are up.
+    // The requirement has to sit above MinimumMtu for any of this to mean
+    // anything: at MinimumMtu every path already qualifies the moment it is
+    // created, and nothing has to be proven. MaximumMtu caps where paths can
+    // get to, so "one above it" is a requirement none can ever meet.
     //
-    const uint16_t FixedMtu = 1280;
+    const uint16_t FixedMtu = 1400;
 
     MsQuicSettings Settings;
-    Settings.SetMultipathEnabled(TRUE).SetMinimumMtu(FixedMtu).SetMaximumMtu(FixedMtu);
+    Settings.SetMultipathEnabled(TRUE)
+        .SetMinimumMtu(QUIC_DPLPMTUD_MIN_MTU)
+        .SetMaximumMtu(FixedMtu);
 
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1663,13 +1666,14 @@ QuicTestPathRequiredMtu(
     SecondLocalAddr.SetEphemeralPort();
 
     //
-    // Raise the requirement one byte above anything a path can reach. The
-    // second path still validates -- the probe goes out at the path's own MTU
-    // and is answered -- but must not join the send rotation.
+    // A requirement the path can carry is proven during validation: the
+    // challenge goes out padded to it, so the path comes up already qualified
+    // and joins the rotation. This is the case that would deadlock if the
+    // requirement were only ever checked against an MTU nothing raises.
     //
-    uint16_t Unreachable = (uint16_t)(FixedMtu + 1);
+    uint16_t Reachable = FixedMtu;
     TEST_QUIC_SUCCEEDED(
-        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, sizeof(Unreachable), &Unreachable));
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, sizeof(Reachable), &Reachable));
 
     PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
     TEST_NOT_EQUAL(nullptr, ProbeHelper);
@@ -1690,38 +1694,71 @@ QuicTestPathRequiredMtu(
     TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
     TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
     delete ProbeHelper;
-
-    //
-    // It validated: the connection knows about it and reports it.
-    //
     TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+
     QUIC_PATH_STATISTICS PathStats[QUIC_MAX_PATH_COUNT];
     Size = sizeof(PathStats);
     TEST_QUIC_SUCCEEDED(
         Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, PathStats));
     TEST_EQUAL(2 * sizeof(QUIC_PATH_STATISTICS), Size);
+    //
+    // The path that was just brought up proved the requirement during its
+    // validation. The connection's original path is not held to it: it was
+    // already validated when the requirement was set, and its MTU is a
+    // measured fact rather than something to re-prove.
+    //
+    BOOLEAN FoundNewPath = FALSE;
+    for (uint32_t i = 0; i < 2; ++i) {
+        if (PathStats[i].PathId != 0) {
+            TEST_TRUE(PathStats[i].Mtu >= Reachable);
+            FoundNewPath = TRUE;
+        }
+    }
+    TEST_TRUE(FoundNewPath);
 
     //
-    // Asking for it explicitly is refused while the requirement stands.
-    //
-    TEST_EQUAL(
-        QUIC_STATUS_INVALID_STATE,
-        Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam));
-
-    //
-    // And it is carrying nothing, which is the part that matters: a backup path
-    // is not drawn from by QuicConnChoosePath.
+    // Qualified, so it is in the rotation and carrying traffic.
     //
     {
-        PathSendCounter Backup(SecondLocalAddr.GetPort());
+        PathSendCounter Qualified(SecondLocalAddr.GetPort());
         Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
-        CxPlatSleep(300);
+        CxPlatSleep(500);
         Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
-        TEST_EQUAL(0, Backup.Count);
+        TEST_TRUE(Qualified.Count > 0);
     }
 
     //
-    // Clearing the requirement lets it in.
+    // Raising the requirement above what the paths measured does not evict a
+    // path already in use: its MTU is measured, and it stays in the rotation.
+    //
+    uint16_t Unreachable = (uint16_t)(FixedMtu + 1);
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, sizeof(Unreachable), &Unreachable));
+
+    {
+        PathSendCounter StillUp(SecondLocalAddr.GetPort());
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
+        CxPlatSleep(500);
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
+        TEST_TRUE(StillUp.Count > 0);
+    }
+
+    //
+    // Activating an address with no path is refused, though on a multipath
+    // connection that is NOT_FOUND rather than the requirement talking: the
+    // create-and-migrate branch the requirement guards is only reachable
+    // without multipath.
+    //
+    QuicAddr ThirdLocalAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ThirdLocalAddr));
+    ThirdLocalAddr.SetEphemeralPort();
+    QUIC_PATH_PARAM MigrateParam = { &ThirdLocalAddr.SockAddr, &PairAddr.SockAddr };
+    TEST_EQUAL(
+        QUIC_STATUS_NOT_FOUND,
+        Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(MigrateParam), &MigrateParam));
+
+    //
+    // Clearing it puts everything back.
     //
     uint16_t None = 0;
     TEST_QUIC_SUCCEEDED(
@@ -1730,17 +1767,6 @@ QuicTestPathRequiredMtu(
     TEST_QUIC_SUCCEEDED(
         Connection.GetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, &Size, &ReadBack));
     TEST_EQUAL(0, ReadBack);
-
-    TEST_QUIC_SUCCEEDED(
-        Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam));
-
-    {
-        PathSendCounter Active(SecondLocalAddr.GetPort());
-        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
-        CxPlatSleep(500);
-        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
-        TEST_TRUE(Active.Count > 0);
-    }
 }
 
 #endif

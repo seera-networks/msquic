@@ -34,7 +34,22 @@ QuicPathInitialize(
     Path->PunchMeNowRound = QUIC_VAR_INT_MAX;
     Path->SendObservedAddress = TRUE;
     Path->MinRtt = UINT32_MAX;
+    //
+    // A path the application will not send on below a given size has to prove
+    // that size, and the only packet it is ever sent before it is put to use is
+    // the validation challenge. Starting its MTU at the requirement makes that
+    // challenge go out padded to it, so the response settles both questions at
+    // once: the path works, and it carries what was asked for.
+    //
+    // Without this a held-back path is never probed at all -- MTU discovery
+    // raises the MTU only of the path QuicConnChoosePath returns, and that is
+    // only ever an active one -- so it could never reach the requirement and
+    // could never be activated.
+    //
     Path->Mtu = Connection->Settings.MinimumMtu;
+    if (Connection->PathRequiredMtu > Path->Mtu) {
+        Path->Mtu = Connection->PathRequiredMtu;
+    }
     Path->SmoothedRtt = MS_TO_US(Connection->Settings.InitialRttMs);
     Path->RttVariance = Path->SmoothedRtt / 2;
     Path->EcnValidationState =

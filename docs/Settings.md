@@ -235,13 +235,23 @@ The value is an IP-level MTU, the same units as `MinimumMtu` and `MaximumMtu`, a
 
 It is bounded only by the range an MTU can take at all, not by this connection's `MaximumMtu`. The parameter is settable before the connection has its configuration, at which point `MaximumMtu` is not yet known, so checking against it would accept or reject the same number depending on when the call was made. A requirement above `MaximumMtu` can never be satisfied and will hold every path out of use; the path statistics are where that becomes visible.
 
-What happens to a path that has not reached the requirement depends on whether multipath was negotiated, because the two have different notions of a path being put to use.
+A new path proves the requirement during validation. Its MTU starts at the requirement rather than at `MinimumMtu`, so the `PATH_CHALLENGE` goes out padded to that size and the response settles both questions at once: the path works, and it carries what was asked for. This is why the requirement can be met at all — path MTU discovery only ever probes the path `QuicConnChoosePath` returns, which is an active one, so a path being held back would otherwise never be measured and could never qualify.
 
-**Without multipath**, `QUIC_PARAM_CONN_ACTIVATE_PATH` on such a path fails with `QUIC_STATUS_INVALID_STATE`. The path stays a validated candidate, so the caller can try again once path MTU discovery has raised it.
+A path that cannot carry the requirement does not answer, and validation times out and removes it, the same as any path that fails to validate. The two cases are not distinguished.
 
-**With multipath**, a path is put into the send rotation the moment it completes validation — there is no separate activation step to refuse. The path is instead left in the backup state, which is the same state `QUIC_PARAM_CONN_PATH_STATUS` sets, so the peer is told about it. `QUIC_CONNECTION_EVENT_PATH_ADDED` is still indicated: the path exists and is usable, it is only that the application asked not to send on paths this narrow. Activating it explicitly is refused the same way as above.
+Raising the requirement afterwards applies to paths still being validated, whose MTU is raised to match, and leaves paths already validated alone: their MTU is measured, and a path already in use is not taken out of use by a requirement arriving later.
 
-Note the caveat recorded under [QUIC_PARAM_CONN_PATH_STATUS](#quic_param_conn_path_status): a path left backup can still be promoted internally, by the fallback when the active path is removed or when another path finishes validating. This parameter gates the paths msquic activates on the application's behalf; it is not a guarantee that a path below the requirement will never become active.
+What happens to a path that is validated but below the requirement — which happens when the requirement is raised while it is already up — depends on whether multipath was negotiated.
+
+**Without multipath**, `QUIC_PARAM_CONN_ACTIVATE_PATH` on such a path fails with `QUIC_STATUS_INVALID_STATE`. Migrating to an address with no path at all is refused for the whole time a requirement is in force: that branch creates the path and migrates onto it in one step with no validation in between, which is the case this parameter exists to prevent. Reaching a new address means adding it with `QUIC_PARAM_CONN_ADD_PATH`, which validates at the required size, and activating it once that succeeds.
+
+**With multipath**, a path is put into the send rotation the moment it completes validation — there is no separate activation step to refuse. The path is left in the backup state instead, and `PATH_BACKUP` is sent so the peer stops treating it as available. `QUIC_CONNECTION_EVENT_PATH_ADDED` is still indicated: the path exists and is usable, it is only that the application asked not to send on paths this narrow.
+
+Two things this does not do.
+
+`QUIC_PARAM_CONN_PATH_STATUS` is **not** gated. Setting a path active through it works regardless of the requirement, and is the deliberate escape hatch for an application that wants a below-requirement path in the rotation anyway.
+
+And a path left backup can still be promoted internally, by the fallback when the active path is removed or when another path finishes validating — see the caveat under [QUIC_PARAM_CONN_PATH_STATUS](#quic_param_conn_path_status). This parameter gates the paths msquic activates on the application's behalf; it is not a guarantee that a path below the requirement never becomes active.
 
 ### QUIC_PARAM_CONN_PATH_STATUS
 

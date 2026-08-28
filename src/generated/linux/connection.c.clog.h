@@ -847,6 +847,26 @@ tracepoint(CLOG_CONNECTION_C, PathRequiredMtuNotMet , arg1, arg3, arg4, arg5);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathRequiredMtuBlocksMigration
+// [conn][%p] Migration to a new path refused while an MTU of %hu is required
+// QuicTraceLogConnInfo(
+            PathRequiredMtuBlocksMigration,
+            Connection,
+            "Migration to a new path refused while an MTU of %hu is required",
+            Connection->PathRequiredMtu);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->PathRequiredMtu = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PathRequiredMtuBlocksMigration
+#define _clog_4_ARGS_TRACE_PathRequiredMtuBlocksMigration(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PathRequiredMtuBlocksMigration , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdateShareBinding
 // [conn][%p] Updated ShareBinding = %hhu
 // QuicTraceLogConnInfo(

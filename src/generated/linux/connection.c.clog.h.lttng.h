@@ -917,6 +917,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathRequiredMtuNotMet,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathRequiredMtuBlocksMigration
+// [conn][%p] Migration to a new path refused while an MTU of %hu is required
+// QuicTraceLogConnInfo(
+            PathRequiredMtuBlocksMigration,
+            Connection,
+            "Migration to a new path refused while an MTU of %hu is required",
+            Connection->PathRequiredMtu);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->PathRequiredMtu = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathRequiredMtuBlocksMigration,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned short, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned short, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdateShareBinding
 // [conn][%p] Updated ShareBinding = %hhu
 // QuicTraceLogConnInfo(

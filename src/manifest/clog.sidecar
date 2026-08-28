@@ -9838,6 +9838,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "PathRequiredMtuBlocksMigration": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Migration to a new path refused while an MTU of %hu is required",
+      "UniqueId": "PathRequiredMtuBlocksMigration",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "PathRequiredMtuNotMet": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] not activated: MTU %hu below required %hu",
@@ -17796,6 +17812,11 @@
         "UniquenessHash": "2e3024b8-4329-c124-05b3-9801c51b9346",
         "TraceID": "PathRemoved",
         "EncodingString": "[conn][%p] Path[%hhu] Removed"
+      },
+      {
+        "UniquenessHash": "a4794c34-ef2d-4e3e-73bd-02327183037b",
+        "TraceID": "PathRequiredMtuBlocksMigration",
+        "EncodingString": "[conn][%p] Migration to a new path refused while an MTU of %hu is required"
       },
       {
         "UniquenessHash": "a969f910-0e84-56a3-a902-b7964fb7cbbf",
