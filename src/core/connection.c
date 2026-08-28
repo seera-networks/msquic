@@ -51,6 +51,14 @@ QuicConnApplyNewSettings(
     _In_ const QUIC_SETTINGS_INTERNAL* NewSettings
     );
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnPathMeetsRequiredDatagramLength(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path
+    );
+
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _Must_inspect_result_
 _Success_(return == QUIC_STATUS_SUCCESS)
@@ -5112,7 +5120,48 @@ QuicConnRecvFrames(
                         Connection->Partition, QUIC_PERF_COUNTER_PATH_VALIDATED);
                     QuicPathSetValid(Connection, TempPath, QUIC_PATH_VALID_PATH_RESPONSE);
                     if (Connection->State.MultipathNegotiated) {
-                        QuicPathSetActive(Connection, TempPath);
+                        //
+                        // With multipath a validated path joins the send
+                        // rotation here, so this is where a size requirement
+                        // has to be applied: there is no activation step for
+                        // the application to be refused at.
+                        //
+                        if (QuicConnPathMeetsRequiredDatagramLength(
+                                Connection, TempPath)) {
+                            QuicPathSetActive(Connection, TempPath);
+                        } else {
+                            QuicTraceLogConnInfo(
+                                PathValidatedBelowRequiredDatagramLength,
+                                Connection,
+                                "Path[%hhu] validated but left backup: below the required datagram length %hu",
+                                TempPath->ID,
+                                Connection->PathRequiredDatagramLength);
+                            //
+                            // Not activating it locally is not enough. The peer
+                            // has just validated this path and will treat it as
+                            // available, so it is told with the same
+                            // PATH_BACKUP that QUIC_PARAM_CONN_PATH_STATUS
+                            // produces.
+                            //
+                            TempPath->SendStatus = TRUE;
+                            QuicSendSetSendFlag(
+                                &Connection->Send, QUIC_CONN_SEND_FLAG_PATH_BACKUP);
+                            //
+                            // QuicPathSetActive would also have reported the
+                            // address observed on this path. That is a fact
+                            // about the path rather than about whether we send
+                            // on it, and it is only ever reported once, so
+                            // skipping it here would lose it for good.
+                            //
+                            if (TempPath->SendObservedAddress) {
+                                Connection->ObservedAddressSequenceNumber++;
+                                if (Connection->State.ObservedAddressNegotiated) {
+                                    QuicSendSetSendFlag(
+                                        &Connection->Send,
+                                        QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS);
+                                }
+                            }
+                        }
 
                         QUIC_CONNECTION_EVENT Event;
                         Event.Type = QUIC_CONNECTION_EVENT_PATH_ADDED;
@@ -7584,6 +7633,42 @@ Done:
     return Status;
 }
 
+//
+// Whether a path already carries the datagram payload length the application
+// requires of paths it sends on.
+//
+// The path's MTU is used as measured -- nothing here raises it. A path short of
+// the requirement stays short of it: msquic does not probe a path it is not
+// sending on, so the requirement is a filter on what may be used, not a target
+// something climbs towards. An application that finds a candidate wanting is
+// expected to drop it.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnPathMeetsRequiredDatagramLength(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path
+    )
+{
+    if (Connection->PathRequiredDatagramLength == 0) {
+        return TRUE;
+    }
+
+    if (Path->DestCid == NULL) {
+        //
+        // Nothing to send with yet, so nothing can be promised about size.
+        //
+        return FALSE;
+    }
+
+    return
+        QuicCalculateDatagramLength(
+            QuicAddrGetFamily(&Path->Route.RemoteAddress),
+            Path->Mtu,
+            Path->DestCid->CID.Length) >= Connection->PathRequiredDatagramLength;
+}
+
 // Activates a new path for the connection.
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -7608,6 +7693,15 @@ QuicConnActivatePath(
         Param->LocalAddress,
         Param->RemoteAddress);
     if (Path != NULL) {
+        if (!QuicConnPathMeetsRequiredDatagramLength(Connection, Path)) {
+            QuicTraceLogConnInfo(
+                PathBelowRequiredDatagramLength,
+                Connection,
+                "Path[%hhu] not activated: below the required datagram length %hu",
+                Path->ID,
+                Connection->PathRequiredDatagramLength);
+            return QUIC_STATUS_INVALID_STATE;
+        }
         if (!Connection->State.MultipathNegotiated) {
             // If the path already exists, activate it.
             QuicPathSetActive(Connection, Path);
@@ -7625,6 +7719,25 @@ QuicConnActivatePath(
     if (Connection->State.MultipathNegotiated) {
         // If the path doesn't exist and multipath is negotiated, we can't activate it.
         return QUIC_STATUS_NOT_FOUND;
+    }
+
+    //
+    // This branch creates the path and migrates onto it in one step, with no
+    // validation in between and therefore no point at which the new path's size
+    // could be judged. Refuse it while a requirement stands: migrating onto an
+    // unmeasured path is the thing the requirement exists to prevent.
+    //
+    // Reaching a new address under a requirement means adding it with
+    // QUIC_PARAM_CONN_ADD_PATH and activating it once it has been validated and
+    // measured.
+    //
+    if (Connection->PathRequiredDatagramLength != 0) {
+        QuicTraceLogConnInfo(
+            MigrationBlockedByRequiredDatagramLength,
+            Connection,
+            "Migration to an unmeasured path refused: datagram length %hu required",
+            Connection->PathRequiredDatagramLength);
+        return QUIC_STATUS_INVALID_STATE;
     }
 
     // If the path doesn't exist, we try to create and activate it.
@@ -8983,6 +9096,26 @@ QuicConnParamSet(
         break;
     }
 
+    case QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH:
+
+        if (BufferLength != sizeof(uint16_t) || Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        //
+        // Any length is accepted, including one no path on this connection can
+        // reach. There is no bound worth checking against: the largest datagram
+        // a path can carry depends on its address family and connection ID
+        // length as well as its MTU, none of which are settled when the
+        // parameter is typically set. A requirement nothing meets holds every
+        // path out of use, which QUIC_PARAM_CONN_PATH_STATISTICS makes visible.
+        //
+        Connection->PathRequiredDatagramLength = *(uint16_t*)Buffer;
+
+        Status = QUIC_STATUS_SUCCESS;
+        break;
+
     case QUIC_PARAM_CONN_PATH_STATUS:
         if (BufferLength != sizeof(QUIC_PATH_STATUS)) {
             Status = QUIC_STATUS_INVALID_PARAMETER;
@@ -9836,6 +9969,25 @@ QuicConnParamGet(
     case QUIC_PARAM_CONN_PATH_STATISTICS:
         Status =
             QuicConnGetPathStatistics(Connection, BufferLength, (QUIC_PATH_STATISTICS *)Buffer);
+        break;
+
+    case QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH:
+
+        if (*BufferLength < sizeof(uint16_t)) {
+            *BufferLength = sizeof(uint16_t);
+            Status = QUIC_STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        if (Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        *BufferLength = sizeof(uint16_t);
+        *(uint16_t*)Buffer = Connection->PathRequiredDatagramLength;
+
+        Status = QUIC_STATUS_SUCCESS;
         break;
 
     case QUIC_PARAM_CONN_CLOSE_ASYNC:

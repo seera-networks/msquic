@@ -605,6 +605,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestMultipath);
     RegisterTestFunction(QuicTestPathKeepAlive);
     RegisterTestFunction(QuicTestPathStatistics);
+    RegisterTestFunction(QuicTestPathRequiredDatagramLength);
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 #endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
     RegisterTestFunction(QuicTestChangeMaxStreamID);

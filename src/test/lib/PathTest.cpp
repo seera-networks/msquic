@@ -1585,4 +1585,136 @@ QuicTestPathStatistics(
     TEST_EQUAL(2 * sizeof(QUIC_PATH_STATISTICS), Size);
 }
 
+void
+QuicTestPathRequiredDatagramLength(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    PathTestContext Context;
+    PathTestClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    const uint16_t FixedMtu = 1280;
+
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE).SetMinimumMtu(FixedMtu).SetMaximumMtu(FixedMtu);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathTestClientContext::ClientCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    Connection.SetShareUdpBinding();
+
+    uint16_t Required = 0;
+    uint32_t Size = sizeof(Required);
+    TEST_QUIC_SUCCEEDED(
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH, &Size, &Required));
+    TEST_EQUAL(0, Required);
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // Two requirements that hold whatever the address family, without the test
+    // having to reproduce the arithmetic msquic does: a datagram payload always
+    // costs headers and encryption overhead off the MTU, so the MTU itself can
+    // never be carried, and a value well under it always can.
+    //
+    const uint16_t Unmeetable = FixedMtu;
+    const uint16_t Meetable = 1000;
+
+    QuicAddr FirstLocalAddr, SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(FirstLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    //
+    // Requiring the MTU itself is unmeetable by construction, and nothing will
+    // raise a held-back path to meet it either.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH, sizeof(Unmeetable), &Unmeetable));
+    Size = sizeof(Required);
+    TEST_QUIC_SUCCEEDED(
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH, &Size, &Required));
+    TEST_EQUAL(Unmeetable, Required);
+
+    PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+            SecondLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+        }
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    delete ProbeHelper;
+
+    //
+    // It validated -- the connection knows about it and reports it -- but is
+    // held out of the send rotation, which is what is actually being tested.
+    //
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    QUIC_PATH_STATISTICS PathStats[QUIC_MAX_PATH_COUNT];
+    Size = sizeof(PathStats);
+    TEST_QUIC_SUCCEEDED(
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, PathStats));
+    TEST_EQUAL(2 * sizeof(QUIC_PATH_STATISTICS), Size);
+
+    TEST_EQUAL(
+        QUIC_STATUS_INVALID_STATE,
+        Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam));
+
+    {
+        PathSendCounter HeldBack(SecondLocalAddr.GetPort());
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
+        CxPlatSleep(400);
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
+        TEST_EQUAL(0, HeldBack.Count);
+    }
+
+    //
+    // A requirement the path does meet lets the same path in.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH, sizeof(Meetable), &Meetable));
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam));
+
+    {
+        PathSendCounter Admitted(SecondLocalAddr.GetPort());
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
+        CxPlatSleep(500);
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
+        TEST_TRUE(Admitted.Count > 0);
+    }
+}
+
 #endif

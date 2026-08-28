@@ -717,6 +717,18 @@ typedef struct QUIC_CONNECTION {
     uint16_t KeepAlivePadding;
 
     //
+    // The datagram payload length a path must already be able to carry before
+    // it is used for sending. Zero means no requirement, which is the default
+    // and what every caller had before the parameter existed.
+    //
+    // A length rather than an MTU because the two are not the same question:
+    // the same MTU carries twenty fewer bytes over IPv6 than over IPv4, so a
+    // path that changes address family lowers the size the application sees
+    // without its MTU moving at all.
+    //
+    uint16_t PathRequiredDatagramLength;
+
+    //
     // Connection blocked timings.
     //
     struct {

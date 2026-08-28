@@ -645,6 +645,28 @@ tracepoint(CLOG_CONNECTION_C, RecvStatelessReset , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathValidatedBelowRequiredDatagramLength
+// [conn][%p] Path[%hhu] validated but left backup: below the required datagram length %hu
+// QuicTraceLogConnInfo(
+                                PathValidatedBelowRequiredDatagramLength,
+                                Connection,
+                                "Path[%hhu] validated but left backup: below the required datagram length %hu",
+                                TempPath->ID,
+                                Connection->PathRequiredDatagramLength);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TempPath->ID = arg3
+// arg4 = arg4 = Connection->PathRequiredDatagramLength = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_PathValidatedBelowRequiredDatagramLength
+#define _clog_5_ARGS_TRACE_PathValidatedBelowRequiredDatagramLength(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_CONNECTION_C, PathValidatedBelowRequiredDatagramLength , arg1, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for HandshakeConfirmedFrame
 // [conn][%p] Handshake confirmed (frame)
 // QuicTraceLogConnInfo(
@@ -777,6 +799,9 @@ tracepoint(CLOG_CONNECTION_C, UpdatePeerPacketTolerance , arg1, arg3);\
 
 #endif
 
+
+
+
 /*----------------------------------------------------------
 // Decoder Ring for BoundAddressWildcardForQtip
 // [conn][%p] Binding a bound address on the wildcard, as QTIP requires
@@ -794,6 +819,45 @@ tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
 
 
 
+
+/*----------------------------------------------------------
+// Decoder Ring for PathBelowRequiredDatagramLength
+// [conn][%p] Path[%hhu] not activated: below the required datagram length %hu
+// QuicTraceLogConnInfo(
+                PathBelowRequiredDatagramLength,
+                Connection,
+                "Path[%hhu] not activated: below the required datagram length %hu",
+                Path->ID,
+                Connection->PathRequiredDatagramLength);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+// arg4 = arg4 = Connection->PathRequiredDatagramLength = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_PathBelowRequiredDatagramLength
+#define _clog_5_ARGS_TRACE_PathBelowRequiredDatagramLength(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_CONNECTION_C, PathBelowRequiredDatagramLength , arg1, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for MigrationBlockedByRequiredDatagramLength
+// [conn][%p] Migration to an unmeasured path refused: datagram length %hu required
+// QuicTraceLogConnInfo(
+            MigrationBlockedByRequiredDatagramLength,
+            Connection,
+            "Migration to an unmeasured path refused: datagram length %hu required",
+            Connection->PathRequiredDatagramLength);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->PathRequiredDatagramLength = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_MigrationBlockedByRequiredDatagramLength
+#define _clog_4_ARGS_TRACE_MigrationBlockedByRequiredDatagramLength(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, MigrationBlockedByRequiredDatagramLength , arg1, arg3);\
+
+#endif
 
 
 

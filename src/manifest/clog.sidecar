@@ -439,6 +439,18 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "BoundAddressWildcardForQtip": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Binding a bound address on the wildcard, as QTIP requires",
+      "UniqueId": "BoundAddressWildcardForQtip",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "CertCapiFormattedChain": {
       "ModuleProperites": {},
       "TraceString": "[cert] Successfully formatted chain of %u certificate(s)",
@@ -8408,6 +8420,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "MigrationBlockedByRequiredDatagramLength": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Migration to an unmeasured path refused: datagram length %hu required",
+      "UniqueId": "MigrationBlockedByRequiredDatagramLength",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "MtuDiscarded": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] Mtu Discovery Packet Discarded: size=%u, probe_count=%u",
@@ -9494,6 +9522,26 @@
       ],
       "macroName": "QuicTraceEvent"
     },
+    "PathBelowRequiredDatagramLength": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] not activated: below the required datagram length %hu",
+      "UniqueId": "PathBelowRequiredDatagramLength",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "PathChosen": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu][PathID][%u] Chosen",
@@ -9905,6 +9953,26 @@
         },
         {
           "DefinationEncoding": "s",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "PathValidatedBelowRequiredDatagramLength": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] validated but left backup: below the required datagram length %hu",
+      "UniqueId": "PathValidatedBelowRequiredDatagramLength",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "hu",
           "MacroVariableName": "arg4"
         }
       ],
@@ -13697,6 +13765,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "UpdateUnconnectedSocket": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Updated UnconnectedSocket = %hhu",
+      "UniqueId": "UpdateUnconnectedSocket",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "VersionInfoChosenVersionZero": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Version Info Chosen Version is zero!",
@@ -15035,6 +15119,11 @@
         "UniquenessHash": "8419ad0b-e226-53e3-837c-4eebd4cc6619",
         "TraceID": "BindingSendTestDrop",
         "EncodingString": "[bind][%p] Test dropped packet"
+      },
+      {
+        "UniquenessHash": "6c1e8d47-86a1-ba49-405a-000c6a3f1bff",
+        "TraceID": "BoundAddressWildcardForQtip",
+        "EncodingString": "[conn][%p] Binding a bound address on the wildcard, as QTIP requires"
       },
       {
         "UniquenessHash": "bc118133-e7f5-68c2-fd22-5dba9202e2eb",
@@ -17302,6 +17391,11 @@
         "EncodingString": "[conn][%p] App configured max stream count of %hu (type=%hhu)."
       },
       {
+        "UniquenessHash": "15e0d850-1749-e166-97b7-dbcd4903d960",
+        "TraceID": "MigrationBlockedByRequiredDatagramLength",
+        "EncodingString": "[conn][%p] Migration to an unmeasured path refused: datagram length %hu required"
+      },
+      {
         "UniquenessHash": "1aa1d324-af31-356c-0738-863e209f6f21",
         "TraceID": "MtuDiscarded",
         "EncodingString": "[conn][%p] Path[%hhu] Mtu Discovery Packet Discarded: size=%u, probe_count=%u"
@@ -17637,6 +17731,11 @@
         "EncodingString": "[conn][%p][pathid][%hhu] BBR: State=%u RState=%u CongestionWindow=%u BytesInFlight=%u BytesInFlightMax=%u MinRttEst=%lu EstBw=%lu AppLimited=%u"
       },
       {
+        "UniquenessHash": "d6335a41-258d-afb6-ebe8-8c57fbb88014",
+        "TraceID": "PathBelowRequiredDatagramLength",
+        "EncodingString": "[conn][%p] Path[%hhu] not activated: below the required datagram length %hu"
+      },
+      {
         "UniquenessHash": "774db9aa-c37a-ad1e-6fae-d6b5d61f82f8",
         "TraceID": "PathChosen",
         "EncodingString": "[conn][%p] Path[%hhu][PathID][%u] Chosen"
@@ -17730,6 +17829,11 @@
         "UniquenessHash": "4ce67714-4e7b-0004-8559-eee9a101fe4b",
         "TraceID": "PathValidated",
         "EncodingString": "[conn][%p] Path[%hhu] Validated (%s)"
+      },
+      {
+        "UniquenessHash": "31cefb7b-96ea-50ce-15cd-80eae24d631d",
+        "TraceID": "PathValidatedBelowRequiredDatagramLength",
+        "EncodingString": "[conn][%p] Path[%hhu] validated but left backup: below the required datagram length %hu"
       },
       {
         "UniquenessHash": "0f6374a8-53c2-8e51-2920-00c6a333d228",
@@ -19030,6 +19134,11 @@
         "UniquenessHash": "f433b4bc-afec-9da4-79cb-eb11596d42e4",
         "TraceID": "UpdateStreamSchedulingScheme",
         "EncodingString": "[conn][%p] Updated Stream Scheduling Scheme = %u"
+      },
+      {
+        "UniquenessHash": "89710b0d-5e79-3c73-e0f2-0fe63b6936c0",
+        "TraceID": "UpdateUnconnectedSocket",
+        "EncodingString": "[conn][%p] Updated UnconnectedSocket = %hhu"
       },
       {
         "UniquenessHash": "0c7aa55b-0fac-8bf3-13f4-2a80e4a8b2ba",
