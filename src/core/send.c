@@ -543,6 +543,30 @@ QuicSendClearStreamSendFlag(
     }
 }
 
+//
+// Whether any path is still waiting to have its status announced. The writers
+// below send one path per packet and leave the flag up so a later packet can
+// carry the next one, so the flag has to be cleared as soon as none is left --
+// otherwise the next flush builds a packet for a flag it then finds nothing to
+// write for, and QuicSendWriteFrames trips its "framed nothing" assert.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicSendPathStatusPending(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ BOOLEAN Active
+    )
+{
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path->SendStatus && (Path->IsActive != FALSE) == (Active != FALSE)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicSendWriteFrames(
@@ -713,8 +737,7 @@ QuicSendWriteFrames(
 
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_BACKUP) {
 
-        uint8_t i;
-        for (i = 0; i < Connection->PathsCount; ++i) {
+        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
             QUIC_PATH* TempPath = &Connection->Paths[i];
             if (!TempPath->SendStatus) {
                 continue;
@@ -745,7 +768,7 @@ QuicSendWriteFrames(
             }
         }
 
-        if (i == Connection->PathsCount) {
+        if (!QuicSendPathStatusPending(Connection, FALSE)) {
             Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_BACKUP;
         }
 
@@ -756,8 +779,7 @@ QuicSendWriteFrames(
 
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_AVAILABLE) {
 
-        uint8_t i;
-        for (i = 0; i < Connection->PathsCount; ++i) {
+        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
             QUIC_PATH* TempPath = &Connection->Paths[i];
             if (!TempPath->SendStatus) {
                 continue;
@@ -788,7 +810,7 @@ QuicSendWriteFrames(
             }
         }
 
-        if (i == Connection->PathsCount) {
+        if (!QuicSendPathStatusPending(Connection, TRUE)) {
             Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_AVAILABLE;
         }
 

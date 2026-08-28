@@ -983,6 +983,13 @@ QuicLossDetectionRetransmitFrames(
             if (PathID != NULL) {
                 if (!PathID->Path->IsActive &&
                     Packet->Frames[i].PATH_BACKUP.Sequence + 1 == PathID->StatusSendSeq) {
+                    //
+                    // The flag on its own is not enough. QuicSendWriteFrames
+                    // picks the path to write from SendStatus, so raising the
+                    // flag without it builds a packet the writer then has
+                    // nothing to put in, and it asserts having framed nothing.
+                    //
+                    PathID->Path->SendStatus = TRUE;
                     QuicSendSetSendFlag(
                         &Connection->Send,
                         QUIC_CONN_SEND_FLAG_PATH_BACKUP);
@@ -1002,6 +1009,13 @@ QuicLossDetectionRetransmitFrames(
             if (PathID != NULL) {
                 if (PathID->Path->IsActive &&
                     Packet->Frames[i].PATH_AVAILABLE.Sequence + 1 == PathID->StatusSendSeq) {
+                    //
+                    // The flag on its own is not enough. QuicSendWriteFrames
+                    // picks the path to write from SendStatus, so raising the
+                    // flag without it builds a packet the writer then has
+                    // nothing to put in, and it asserts having framed nothing.
+                    //
+                    PathID->Path->SendStatus = TRUE;
                     QuicSendSetSendFlag(
                         &Connection->Send,
                         QUIC_CONN_SEND_FLAG_PATH_AVAILABLE);
