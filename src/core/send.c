@@ -1547,6 +1547,18 @@ QuicSendPathMtuProbes(
         }
 
         //
+        // A path in the middle of validation is not measured. Ordering alone
+        // does not settle this: the challenge or response may be queued for a
+        // later flush, and a full-size probe sent meanwhile spends allowance
+        // it needs. There is nothing to lose by waiting -- an unvalidated path
+        // carries no traffic yet.
+        //
+        if (Path->SendChallenge || Path->SendResponse) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            continue;
+        }
+
+        //
         // Amplification limited. The flag goes back up rather than the path
         // being dropped: SendMtuProbe stays set either way, and nothing else
         // re-arms it -- no packet was sent, so loss detection has nothing to
@@ -1579,24 +1591,29 @@ QuicSendPathMtuProbes(
             continue;
         }
 
-        QUIC_PACKET_BUILDER Builder = { 0 };
-        if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
-            continue;
-        }
-        _Analysis_assume_(Builder.Metadata != NULL);
-
         //
         // A probe is a full-size ack-eliciting packet and RFC 8899 has it
         // congestion controlled like any other. It used to be, for free: the
         // flag is not in QUIC_CONN_SEND_FLAGS_BYPASS_CC, so the send loop this
         // was lifted out of dropped it while cwnd was full and picked it up on
         // the next flush. Sending per path means checking that here instead.
-        // The flag goes back up so that next flush still happens.
         //
-        if (!QuicPacketBuilderHasAllowance(&Builder)) {
+        // This has to be asked before the builder is initialized, not after.
+        // QuicPacketBuilderInitialize stamps Send->LastFlushTime, which is what
+        // the idle DestCid update measures its idle period against -- so a
+        // probe that initializes a builder only to give up keeps resetting that
+        // clock, and the update never fires.
+        //
+        if (!QuicCongestionControlCanSend(&Path->PathID->CongestionControl)) {
             Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
             continue;
         }
+
+        QUIC_PACKET_BUILDER Builder = { 0 };
+        if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
+            continue;
+        }
+        _Analysis_assume_(Builder.Metadata != NULL);
 
         if (!QuicPacketBuilderPrepareForPathMtuDiscovery(&Builder)) {
             continue;
@@ -1957,17 +1974,6 @@ QuicSendFlush(
     }
 
     //
-    // Send MTU probes.
-    // Each has to leave on the path it measures, so like path challenges it
-    // cannot ride the packet built for whichever path this flush chose.
-    // `QuicSendPathMtuProbes` might re-queue if a route isn't ready.
-    //
-    if (Send->SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD) {
-        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_DPLPMTUD;
-        QuicSendPathMtuProbes(Send);
-    }
-
-    //
     // Send path challenges.
     // `QuicSendPathChallenges` might re-queue a path challenge immediately.
     //
@@ -1985,6 +1991,24 @@ QuicSendFlush(
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_RESPONSE) {
         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_RESPONSE;
         QuicSendPathResponses(Send);
+    }
+
+    //
+    // Send MTU probes.
+    // Each has to leave on the path it measures, so like path challenges it
+    // cannot ride the packet built for whichever path this flush chose.
+    // `QuicSendPathMtuProbes` might re-queue if a route isn't ready.
+    //
+    // These come after challenges and responses, and that order matters. A
+    // probe is a full-size datagram; sending one first can spend the
+    // amplification allowance a challenge then needs, leaving too little room
+    // for the frame -- which QuicSendPathChallenges asserts cannot happen.
+    // Validating a path also matters more than measuring one: a challenge that
+    // goes unsent long enough removes the path outright.
+    //
+    if (Send->SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD) {
+        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_DPLPMTUD;
+        QuicSendPathMtuProbes(Send);
     }
 
     //
