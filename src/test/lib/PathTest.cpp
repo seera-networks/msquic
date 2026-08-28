@@ -1701,10 +1701,25 @@ QuicTestPathRequiredDatagramLength(
 
     {
         PathSendCounter HeldBack(SecondLocalAddr.GetPort());
+        //
+        // Let the path go quiet first. A newly validated path gets its minimum
+        // MTU probed once -- as a padded PATH_CHALLENGE, since it is not active
+        // -- and that lands inside a fixed observation window often enough to
+        // make the assertion flaky. Waiting for two consecutive idle intervals
+        // separates "measuring the path" from "sending on it", which is the
+        // distinction being tested.
+        //
+        long Previous = -1;
+        for (uint32_t i = 0; i < 30 && HeldBack.Count != Previous; ++i) {
+            Previous = HeldBack.Count;
+            CxPlatSleep(100);
+        }
+
+        const long Settled = HeldBack.Count;
         Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
         CxPlatSleep(400);
         Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
-        TEST_EQUAL(0, HeldBack.Count);
+        TEST_EQUAL(Settled, HeldBack.Count);
     }
 
     //
@@ -1722,6 +1737,114 @@ QuicTestPathRequiredDatagramLength(
         Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
         TEST_TRUE(Admitted.Count > 0);
     }
+}
+
+void
+QuicTestHeldBackPathIsMeasured(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    PathTestContext Context;
+    PathTestClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    //
+    // Room to grow: paths start at MinimumMtu and can be measured up to
+    // MaximumMtu, which on loopback they will reach.
+    //
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE)
+        .SetMinimumMtu(QUIC_DPLPMTUD_MIN_MTU)
+        .SetMaximumMtu(1400)
+        .SetMtuDiscoverySearchCompleteTimeoutUs(100000);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathTestClientContext::ClientCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // A requirement no path meets at MinimumMtu, so the path that comes up is
+    // held out of the rotation and has to be measured to ever get in.
+    //
+    uint16_t Required = 1300;
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH, sizeof(Required), &Required));
+
+    QuicAddr FirstLocalAddr, SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(FirstLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+            SecondLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+        }
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    delete ProbeHelper;
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+
+    //
+    // Give discovery time to climb the held-back path. Without a probe that a
+    // non-active path can carry, this never moves off MinimumMtu.
+    //
+    //
+    // The statistics do not name a path by address, so the assertion is that
+    // *every* path grew. Paths[0] grows on its own, being active; the second
+    // one can only grow if something probes a path that is not active, which
+    // is the whole point of the change under test.
+    //
+    uint32_t GrownCount = 0, PathCount = 0;
+    for (uint32_t i = 0; i < 100 && GrownCount < 2; ++i) {
+        CxPlatSleep(100);
+        QUIC_PATH_STATISTICS PathStats[QUIC_MAX_PATH_COUNT];
+        uint32_t Size = sizeof(PathStats);
+        TEST_QUIC_SUCCEEDED(
+            Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, PathStats));
+        PathCount = Size / sizeof(QUIC_PATH_STATISTICS);
+        GrownCount = 0;
+        for (uint32_t j = 0; j < PathCount; ++j) {
+            if (PathStats[j].Mtu > QUIC_DPLPMTUD_MIN_MTU) {
+                GrownCount++;
+            }
+        }
+    }
+
+    TEST_EQUAL(2u, PathCount);
+    TEST_EQUAL(2u, GrownCount);
 }
 
 #endif

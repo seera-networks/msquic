@@ -985,6 +985,15 @@ TEST_P(WithFamilyArgs, PathRequiredDatagramLength) {
         QuicTestPathRequiredDatagramLength(GetParam());
     }
 }
+
+TEST_P(WithFamilyArgs, HeldBackPathIsMeasured) {
+    TestLoggerT<ParamType> Logger("QuicTestHeldBackPathIsMeasured", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestHeldBackPathIsMeasured), GetParam()));
+    } else {
+        QuicTestHeldBackPathIsMeasured(GetParam());
+    }
+}
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Mtu, Settings) {

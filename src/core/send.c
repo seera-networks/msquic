@@ -1526,14 +1526,16 @@ QuicSendPathMtuProbes(
         }
 
         //
-        // Active paths only. The probe carries a PING, which is not a probing
-        // frame, so from an address the peer does not believe is in use it
-        // reads as the endpoint having migrated there -- and the peer follows.
-        // A path deliberately kept out of use has to be measured with a padded
-        // PATH_CHALLENGE instead, which is a probing frame and carries no such
-        // meaning.
+        // A path the peer does not believe is in use cannot be probed with a
+        // PING: PING is not a probing frame, so arriving from such an address
+        // it reads as the endpoint having migrated there, and the peer follows.
+        // Those paths get a padded PATH_CHALLENGE instead, which is a probing
+        // frame and carries no such meaning. Only a validated path is probed
+        // this way -- an unvalidated one is still being challenged by path
+        // validation itself, and a second challenge would race it.
         //
-        if (!Path->IsActive) {
+        const BOOLEAN ProbeWithChallenge = !Path->IsActive;
+        if (ProbeWithChallenge && !Path->IsPeerValidated) {
             Path->SendMtuProbe = FALSE;
             continue;
         }
@@ -1579,16 +1581,56 @@ QuicSendPathMtuProbes(
 
         Builder.MinimumDatagramLength = (uint16_t)Builder.Datagram->Length;
 
-        if (Builder.DatagramLength <
-                Builder.Datagram->Length - Builder.EncryptionOverhead) {
+        const uint16_t AvailableBufferLength =
+            (uint16_t)Builder.Datagram->Length - Builder.EncryptionOverhead;
+
+        if (Builder.DatagramLength < AvailableBufferLength) {
             //
-            // A PING so the probe is acknowledged, which is the whole point of
-            // sending it.
+            // Something ack-eliciting, since the acknowledgement is what makes
+            // the probe mean anything.
             //
-            Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
-            Builder.Metadata->Frames[Builder.Metadata->FrameCount].Type = QUIC_FRAME_PING;
-            (void)QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PING, TRUE);
-            Path->SendMtuProbe = FALSE;
+            if (ProbeWithChallenge) {
+                QUIC_PATH_CHALLENGE_EX Frame;
+                CxPlatRandom(sizeof(Frame.Data), Frame.Data);
+
+                if (QuicPathChallengeFrameEncode(
+                        QUIC_FRAME_PATH_CHALLENGE,
+                        &Frame,
+                        &Builder.DatagramLength,
+                        AvailableBufferLength,
+                        Builder.Datagram->Buffer)) {
+                    CxPlatCopyMemory(
+                        Builder.Metadata->Frames[Builder.Metadata->FrameCount].PATH_CHALLENGE.Data,
+                        Frame.Data,
+                        sizeof(Frame.Data));
+                    (void)QuicPacketBuilderAddFrame(
+                        &Builder, QUIC_FRAME_PATH_CHALLENGE, TRUE);
+                    Path->SendMtuProbe = FALSE;
+                } else {
+                    //
+                    // No room for the frame, so nothing in this packet is
+                    // ack-eliciting and it could never be read as a
+                    // measurement. Drop it rather than send it. The datagram is
+                    // allocated from the probe size and only a header has been
+                    // written, so this is not expected to be reachable.
+                    //
+                    Path->SendMtuProbe = FALSE;
+                    QuicPacketBuilderCleanup(&Builder);
+                    continue;
+                }
+                //
+                // The response is not waited on and not matched: the path is
+                // already validated, so a response finds no challenge to
+                // satisfy and is dropped. What is being measured is whether the
+                // packet carrying it was acknowledged at this size, which is
+                // what QuicMtuDiscoveryOnAckedPacket looks at.
+                //
+            } else {
+                Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
+                Builder.Metadata->Frames[Builder.Metadata->FrameCount].Type = QUIC_FRAME_PING;
+                (void)QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PING, TRUE);
+                Path->SendMtuProbe = FALSE;
+            }
         }
 
         QuicPacketBuilderFinalize(&Builder, TRUE);
