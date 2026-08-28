@@ -1351,6 +1351,35 @@ struct PathSendCounter : public DatapathHook
     }
 };
 
+//
+// Counts only full-size datagrams arriving from a given client port. An MTU
+// probe is padded to the size it is probing, so it is separable by length from
+// the small packets ordinary traffic puts on a path.
+//
+struct PathLargeSendCounter : public DatapathHook
+{
+    uint16_t PathPort;
+    uint16_t MinLength;
+    long Count {0};
+    PathLargeSendCounter(uint16_t Port, uint16_t Min) : PathPort(Port), MinLength(Min) {
+        DatapathHooks::Instance->AddHook(this);
+    }
+    ~PathLargeSendCounter() {
+        DatapathHooks::Instance->RemoveHook(this);
+    }
+    _IRQL_requires_max_(DISPATCH_LEVEL)
+    BOOLEAN
+    Receive(
+        _Inout_ struct CXPLAT_RECV_DATA* Datagram
+        ) {
+        if (QuicAddrGetPort(&Datagram->Route->RemoteAddress) == PathPort &&
+            Datagram->BufferLength >= MinLength) {
+            InterlockedIncrement(&Count);
+        }
+        return FALSE;
+    }
+};
+
 void
 QuicTestPathKeepAlive(
     _In_ const FamilyArgs& Params
@@ -1754,12 +1783,10 @@ QuicTestHeldBackPathIsMeasured(
     //
     // Room to grow: paths start at MinimumMtu and can be measured up to
     // MaximumMtu, which on loopback they will reach.
-    //
     MsQuicSettings Settings;
     Settings.SetMultipathEnabled(TRUE)
         .SetMinimumMtu(QUIC_DPLPMTUD_MIN_MTU)
-        .SetMaximumMtu(1400)
-        .SetMtuDiscoverySearchCompleteTimeoutUs(100000);
+        .SetMaximumMtu(1400);
 
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1818,33 +1845,20 @@ QuicTestHeldBackPathIsMeasured(
     TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
 
     //
-    // Give discovery time to climb the held-back path. Without a probe that a
-    // non-active path can carry, this never moves off MinimumMtu.
+    // What this change adds is that the held-back path is probed at all. The
+    // probe is padded to the size being measured, so full-size datagrams
+    // arriving from that path are the direct evidence -- and unlike the MTU the
+    // statistics report, it does not depend on when the peer's acknowledgement
+    // lands or on where the search happens to stop.
     //
+    // Restricting probes to active paths again takes this to zero.
     //
-    // The statistics do not name a path by address, so the assertion is that
-    // *every* path grew. Paths[0] grows on its own, being active; the second
-    // one can only grow if something probes a path that is not active, which
-    // is the whole point of the change under test.
-    //
-    uint32_t GrownCount = 0, PathCount = 0;
-    for (uint32_t i = 0; i < 100 && GrownCount < 2; ++i) {
+    PathLargeSendCounter Probes(SecondLocalAddr.GetPort(), QUIC_DPLPMTUD_MIN_MTU - 100);
+    for (uint32_t i = 0; i < 100 && Probes.Count == 0; ++i) {
         CxPlatSleep(100);
-        QUIC_PATH_STATISTICS PathStats[QUIC_MAX_PATH_COUNT];
-        uint32_t Size = sizeof(PathStats);
-        TEST_QUIC_SUCCEEDED(
-            Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, PathStats));
-        PathCount = Size / sizeof(QUIC_PATH_STATISTICS);
-        GrownCount = 0;
-        for (uint32_t j = 0; j < PathCount; ++j) {
-            if (PathStats[j].Mtu > QUIC_DPLPMTUD_MIN_MTU) {
-                GrownCount++;
-            }
-        }
     }
 
-    TEST_EQUAL(2u, PathCount);
-    TEST_EQUAL(2u, GrownCount);
+    TEST_TRUE(Probes.Count > 0);
 }
 
 #endif

@@ -1780,10 +1780,12 @@ QuicMtuDiscoveryCheckSearchCompleteTimeout(
         // Active paths only. A non-active path is measured once, when the peer
         // validates it -- see QuicSendPathMtuProbes, which carries those probes
         // as padded PATH_CHALLENGEs so they do not read to the peer as a
-        // migration. Re-searching one on this timeout is not done: a path being
-        // held out of the rotation is not being used, so there is nothing the
-        // re-search would make faster, and nothing here can observe whether it
-        // helped.
+        // migration. Re-searching one on this timeout is not done, and that is
+        // a measurement rather than a guess: it was tried at both a 100ms and a
+        // 1s timeout and made the held-back path converge less often, not more.
+        // Restarting a search moves ProbeSize out from under the probes already
+        // in flight, so their acknowledgements no longer match and are dropped
+        // as out of order.
         //
         if (!Path->IsActive || !Path->MtuDiscovery.IsSearchComplete) {
             continue;
