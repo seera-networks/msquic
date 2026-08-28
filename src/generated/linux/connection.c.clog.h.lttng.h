@@ -683,6 +683,37 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, RecvStatelessReset,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathRequiredMtuNotMetOnValidation
+// [conn][%p] Path[%hhu] validated but left backup: MTU %hu below required %hu
+// QuicTraceLogConnInfo(
+                                PathRequiredMtuNotMetOnValidation,
+                                Connection,
+                                "Path[%hhu] validated but left backup: MTU %hu below required %hu",
+                                TempPath->ID,
+                                TempPath->Mtu,
+                                Connection->PathRequiredMtu);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TempPath->ID = arg3
+// arg4 = arg4 = TempPath->Mtu = arg4
+// arg5 = arg5 = Connection->PathRequiredMtu = arg5
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathRequiredMtuNotMetOnValidation,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3,
+        unsigned short, arg4,
+        unsigned short, arg5), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned short, arg4, arg4)
+        ctf_integer(unsigned short, arg5, arg5)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for HandshakeConfirmedFrame
 // [conn][%p] Handshake confirmed (frame)
 // QuicTraceLogConnInfo(
@@ -834,6 +865,7 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, UpdatePeerPacketTolerance,
 )
 
 
+
 /*----------------------------------------------------------
 // Decoder Ring for BoundAddressWildcardForQtip
 // [conn][%p] Binding a bound address on the wildcard, as QTIP requires
@@ -852,6 +884,35 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, BoundAddressWildcardForQtip,
 )
 
 
+
+/*----------------------------------------------------------
+// Decoder Ring for PathRequiredMtuNotMet
+// [conn][%p] Path[%hhu] not activated: MTU %hu below required %hu
+// QuicTraceLogConnInfo(
+                PathRequiredMtuNotMet,
+                Connection,
+                "Path[%hhu] not activated: MTU %hu below required %hu",
+                Path->ID,
+                Path->Mtu,
+                Connection->PathRequiredMtu);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+// arg4 = arg4 = Path->Mtu = arg4
+// arg5 = arg5 = Connection->PathRequiredMtu = arg5
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathRequiredMtuNotMet,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3,
+        unsigned short, arg4,
+        unsigned short, arg5), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned short, arg4, arg4)
+        ctf_integer(unsigned short, arg5, arg5)
+    )
+)
 
 
 

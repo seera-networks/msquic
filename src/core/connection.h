@@ -717,6 +717,18 @@ typedef struct QUIC_CONNECTION {
     uint16_t KeepAlivePadding;
 
     //
+    // The MTU a path must be known to carry before it may be used for sending.
+    // Zero means no requirement, which is the default and the behaviour every
+    // caller had before the parameter existed.
+    //
+    // A path that has not reached this is kept as a validated candidate rather
+    // than being dropped: without multipath ActivatePath refuses it, and with
+    // multipath it is not activated when validation completes, leaving it in
+    // the backup state the peer is told about.
+    //
+    uint16_t PathRequiredMtu;
+
+    //
     // Connection blocked timings.
     //
     struct {

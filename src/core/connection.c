@@ -5112,7 +5112,31 @@ QuicConnRecvFrames(
                         Connection->Partition, QUIC_PERF_COUNTER_PATH_VALIDATED);
                     QuicPathSetValid(Connection, TempPath, QUIC_PATH_VALID_PATH_RESPONSE);
                     if (Connection->State.MultipathNegotiated) {
-                        QuicPathSetActive(Connection, TempPath);
+                        //
+                        // With multipath a validated path is put straight into
+                        // the send rotation, so this is where a size
+                        // requirement has to be applied -- there is no separate
+                        // activation step for the application to be refused at.
+                        //
+                        // A path that has not reached the required MTU is left
+                        // in the backup state instead of being dropped: it is a
+                        // usable path, it is just not one the application is
+                        // willing to send on yet. PATH_ADDED is still indicated
+                        // so the application learns it exists and can watch its
+                        // MTU through QUIC_PARAM_CONN_PATH_STATISTICS.
+                        //
+                        if (Connection->PathRequiredMtu != 0 &&
+                            TempPath->Mtu < Connection->PathRequiredMtu) {
+                            QuicTraceLogConnInfo(
+                                PathRequiredMtuNotMetOnValidation,
+                                Connection,
+                                "Path[%hhu] validated but left backup: MTU %hu below required %hu",
+                                TempPath->ID,
+                                TempPath->Mtu,
+                                Connection->PathRequiredMtu);
+                        } else {
+                            QuicPathSetActive(Connection, TempPath);
+                        }
 
                         QUIC_CONNECTION_EVENT Event;
                         Event.Type = QUIC_CONNECTION_EVENT_PATH_ADDED;
@@ -7608,6 +7632,22 @@ QuicConnActivatePath(
         Param->LocalAddress,
         Param->RemoteAddress);
     if (Path != NULL) {
+        //
+        // A path the application is not allowed to send on yet must not be
+        // made active. It stays a validated candidate, so the caller can try
+        // again once path MTU discovery has raised it.
+        //
+        if (Connection->PathRequiredMtu != 0 &&
+            Path->Mtu < Connection->PathRequiredMtu) {
+            QuicTraceLogConnInfo(
+                PathRequiredMtuNotMet,
+                Connection,
+                "Path[%hhu] not activated: MTU %hu below required %hu",
+                Path->ID,
+                Path->Mtu,
+                Connection->PathRequiredMtu);
+            return QUIC_STATUS_INVALID_STATE;
+        }
         if (!Connection->State.MultipathNegotiated) {
             // If the path already exists, activate it.
             QuicPathSetActive(Connection, Path);
@@ -8983,6 +9023,40 @@ QuicConnParamSet(
         break;
     }
 
+    case QUIC_PARAM_CONN_PATH_REQUIRED_MTU:
+
+        if (BufferLength != sizeof(uint16_t) || Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        //
+        // Zero clears the requirement. Anything else is bounded by the range an
+        // MTU can take at all, the same bounds settings clamp MinimumMtu and
+        // MaximumMtu to.
+        //
+        // It is deliberately not checked against this connection's MaximumMtu.
+        // The parameter is settable before the connection starts, and until it
+        // does Connection->Settings still holds library defaults rather than
+        // the configuration's values, so that check would accept or reject the
+        // same number depending on when it was called. A requirement above
+        // MaximumMtu can never be met and will keep every path out of the send
+        // rotation; QUIC_PARAM_CONN_PATH_STATISTICS is where that shows up.
+        //
+        {
+            const uint16_t RequiredMtu = *(uint16_t*)Buffer;
+            if (RequiredMtu != 0 &&
+                (RequiredMtu < QUIC_DPLPMTUD_MIN_MTU ||
+                 RequiredMtu > CXPLAT_MAX_MTU)) {
+                Status = QUIC_STATUS_INVALID_PARAMETER;
+                break;
+            }
+            Connection->PathRequiredMtu = RequiredMtu;
+        }
+
+        Status = QUIC_STATUS_SUCCESS;
+        break;
+
     case QUIC_PARAM_CONN_PATH_STATUS:
         if (BufferLength != sizeof(QUIC_PATH_STATUS)) {
             Status = QUIC_STATUS_INVALID_PARAMETER;
@@ -9836,6 +9910,25 @@ QuicConnParamGet(
     case QUIC_PARAM_CONN_PATH_STATISTICS:
         Status =
             QuicConnGetPathStatistics(Connection, BufferLength, (QUIC_PATH_STATISTICS *)Buffer);
+        break;
+
+    case QUIC_PARAM_CONN_PATH_REQUIRED_MTU:
+
+        if (*BufferLength < sizeof(uint16_t)) {
+            *BufferLength = sizeof(uint16_t);
+            Status = QUIC_STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        if (Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        *BufferLength = sizeof(uint16_t);
+        *(uint16_t*)Buffer = Connection->PathRequiredMtu;
+
+        Status = QUIC_STATUS_SUCCESS;
         break;
 
     case QUIC_PARAM_CONN_CLOSE_ASYNC:

@@ -645,6 +645,30 @@ tracepoint(CLOG_CONNECTION_C, RecvStatelessReset , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathRequiredMtuNotMetOnValidation
+// [conn][%p] Path[%hhu] validated but left backup: MTU %hu below required %hu
+// QuicTraceLogConnInfo(
+                                PathRequiredMtuNotMetOnValidation,
+                                Connection,
+                                "Path[%hhu] validated but left backup: MTU %hu below required %hu",
+                                TempPath->ID,
+                                TempPath->Mtu,
+                                Connection->PathRequiredMtu);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TempPath->ID = arg3
+// arg4 = arg4 = TempPath->Mtu = arg4
+// arg5 = arg5 = Connection->PathRequiredMtu = arg5
+----------------------------------------------------------*/
+#ifndef _clog_6_ARGS_TRACE_PathRequiredMtuNotMetOnValidation
+#define _clog_6_ARGS_TRACE_PathRequiredMtuNotMetOnValidation(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_CONNECTION_C, PathRequiredMtuNotMetOnValidation , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for HandshakeConfirmedFrame
 // [conn][%p] Handshake confirmed (frame)
 // QuicTraceLogConnInfo(
@@ -777,6 +801,9 @@ tracepoint(CLOG_CONNECTION_C, UpdatePeerPacketTolerance , arg1, arg3);\
 
 #endif
 
+
+
+
 /*----------------------------------------------------------
 // Decoder Ring for BoundAddressWildcardForQtip
 // [conn][%p] Binding a bound address on the wildcard, as QTIP requires
@@ -794,6 +821,27 @@ tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
 
 
 
+
+/*----------------------------------------------------------
+// Decoder Ring for PathRequiredMtuNotMet
+// [conn][%p] Path[%hhu] not activated: MTU %hu below required %hu
+// QuicTraceLogConnInfo(
+                PathRequiredMtuNotMet,
+                Connection,
+                "Path[%hhu] not activated: MTU %hu below required %hu",
+                Path->ID,
+                Path->Mtu,
+                Connection->PathRequiredMtu);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+// arg4 = arg4 = Path->Mtu = arg4
+// arg5 = arg5 = Connection->PathRequiredMtu = arg5
+----------------------------------------------------------*/
+#ifndef _clog_6_ARGS_TRACE_PathRequiredMtuNotMet
+#define _clog_6_ARGS_TRACE_PathRequiredMtuNotMet(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_CONNECTION_C, PathRequiredMtuNotMet , arg1, arg3, arg4, arg5);\
+
+#endif
 
 
 

@@ -693,6 +693,11 @@ QuicTestPathStatistics(
     );
 
 void
+QuicTestPathRequiredMtu(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestNatPortRebind(
     _In_ int Family,
     _In_ uint16_t KeepAlivePaddingSize

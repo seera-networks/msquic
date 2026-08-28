@@ -1585,4 +1585,162 @@ QuicTestPathStatistics(
     TEST_EQUAL(2 * sizeof(QUIC_PATH_STATISTICS), Size);
 }
 
+void
+QuicTestPathRequiredMtu(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    PathTestContext Context;
+    PathTestClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    //
+    // The MTU is pinned so every path settles on exactly this value, which
+    // makes "one above it" a requirement no path can ever meet and "the value
+    // itself" one they all meet as soon as they are up.
+    //
+    const uint16_t FixedMtu = 1280;
+
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE).SetMinimumMtu(FixedMtu).SetMaximumMtu(FixedMtu);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathTestClientContext::ClientCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    Connection.SetShareUdpBinding();
+
+    //
+    // Round-trips, and rejects a requirement the connection could never reach.
+    //
+    uint16_t Required = FixedMtu;
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, sizeof(Required), &Required));
+    uint16_t ReadBack = 0;
+    uint32_t Size = sizeof(ReadBack);
+    TEST_QUIC_SUCCEEDED(
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, &Size, &ReadBack));
+    TEST_EQUAL(FixedMtu, ReadBack);
+
+    //
+    // Bounded by the range an MTU can take, not by this connection's
+    // MaximumMtu -- see the comment on the parameter.
+    //
+    uint16_t TooBig = (uint16_t)(CXPLAT_MAX_MTU + 1);
+    TEST_EQUAL(
+        QUIC_STATUS_INVALID_PARAMETER,
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, sizeof(TooBig), &TooBig));
+
+    uint16_t TooSmall = 1;
+    TEST_EQUAL(
+        QUIC_STATUS_INVALID_PARAMETER,
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, sizeof(TooSmall), &TooSmall));
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    QuicAddr FirstLocalAddr, SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(FirstLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    //
+    // Raise the requirement one byte above anything a path can reach. The
+    // second path still validates -- the probe goes out at the path's own MTU
+    // and is answered -- but must not join the send rotation.
+    //
+    uint16_t Unreachable = (uint16_t)(FixedMtu + 1);
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, sizeof(Unreachable), &Unreachable));
+
+    PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+            SecondLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+        }
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    delete ProbeHelper;
+
+    //
+    // It validated: the connection knows about it and reports it.
+    //
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    QUIC_PATH_STATISTICS PathStats[QUIC_MAX_PATH_COUNT];
+    Size = sizeof(PathStats);
+    TEST_QUIC_SUCCEEDED(
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_STATISTICS, &Size, PathStats));
+    TEST_EQUAL(2 * sizeof(QUIC_PATH_STATISTICS), Size);
+
+    //
+    // Asking for it explicitly is refused while the requirement stands.
+    //
+    TEST_EQUAL(
+        QUIC_STATUS_INVALID_STATE,
+        Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam));
+
+    //
+    // And it is carrying nothing, which is the part that matters: a backup path
+    // is not drawn from by QuicConnChoosePath.
+    //
+    {
+        PathSendCounter Backup(SecondLocalAddr.GetPort());
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
+        CxPlatSleep(300);
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
+        TEST_EQUAL(0, Backup.Count);
+    }
+
+    //
+    // Clearing the requirement lets it in.
+    //
+    uint16_t None = 0;
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, sizeof(None), &None));
+    Size = sizeof(ReadBack);
+    TEST_QUIC_SUCCEEDED(
+        Connection.GetParam(QUIC_PARAM_CONN_PATH_REQUIRED_MTU, &Size, &ReadBack));
+    TEST_EQUAL(0, ReadBack);
+
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam));
+
+    {
+        PathSendCounter Active(SecondLocalAddr.GetPort());
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
+        CxPlatSleep(500);
+        Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
+        TEST_TRUE(Active.Count > 0);
+    }
+}
+
 #endif

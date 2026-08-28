@@ -439,6 +439,18 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "BoundAddressWildcardForQtip": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Binding a bound address on the wildcard, as QTIP requires",
+      "UniqueId": "BoundAddressWildcardForQtip",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "CertCapiFormattedChain": {
       "ModuleProperites": {},
       "TraceString": "[cert] Successfully formatted chain of %u certificate(s)",
@@ -9826,6 +9838,54 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "PathRequiredMtuNotMet": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] not activated: MTU %hu below required %hu",
+      "UniqueId": "PathRequiredMtuNotMet",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "PathRequiredMtuNotMetOnValidation": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] validated but left backup: MTU %hu below required %hu",
+      "UniqueId": "PathRequiredMtuNotMetOnValidation",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "PathSpuriousCongestion": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p][pathid][%u] Spurious congestion event",
@@ -13697,6 +13757,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "UpdateUnconnectedSocket": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Updated UnconnectedSocket = %hhu",
+      "UniqueId": "UpdateUnconnectedSocket",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "VersionInfoChosenVersionZero": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Version Info Chosen Version is zero!",
@@ -15035,6 +15111,11 @@
         "UniquenessHash": "8419ad0b-e226-53e3-837c-4eebd4cc6619",
         "TraceID": "BindingSendTestDrop",
         "EncodingString": "[bind][%p] Test dropped packet"
+      },
+      {
+        "UniquenessHash": "6c1e8d47-86a1-ba49-405a-000c6a3f1bff",
+        "TraceID": "BoundAddressWildcardForQtip",
+        "EncodingString": "[conn][%p] Binding a bound address on the wildcard, as QTIP requires"
       },
       {
         "UniquenessHash": "bc118133-e7f5-68c2-fd22-5dba9202e2eb",
@@ -17717,6 +17798,16 @@
         "EncodingString": "[conn][%p] Path[%hhu] Removed"
       },
       {
+        "UniquenessHash": "a969f910-0e84-56a3-a902-b7964fb7cbbf",
+        "TraceID": "PathRequiredMtuNotMet",
+        "EncodingString": "[conn][%p] Path[%hhu] not activated: MTU %hu below required %hu"
+      },
+      {
+        "UniquenessHash": "92c42416-6b32-4140-eb45-4e44a82fb6c8",
+        "TraceID": "PathRequiredMtuNotMetOnValidation",
+        "EncodingString": "[conn][%p] Path[%hhu] validated but left backup: MTU %hu below required %hu"
+      },
+      {
         "UniquenessHash": "ca15f2c4-b255-2e1f-6987-380babed5b44",
         "TraceID": "PathSpuriousCongestion",
         "EncodingString": "[conn][%p][pathid][%u] Spurious congestion event"
@@ -19030,6 +19121,11 @@
         "UniquenessHash": "f433b4bc-afec-9da4-79cb-eb11596d42e4",
         "TraceID": "UpdateStreamSchedulingScheme",
         "EncodingString": "[conn][%p] Updated Stream Scheduling Scheme = %u"
+      },
+      {
+        "UniquenessHash": "89710b0d-5e79-3c73-e0f2-0fe63b6936c0",
+        "TraceID": "UpdateUnconnectedSocket",
+        "EncodingString": "[conn][%p] Updated UnconnectedSocket = %hhu"
       },
       {
         "UniquenessHash": "0c7aa55b-0fac-8bf3-13f4-2a80e4a8b2ba",

@@ -976,6 +976,15 @@ TEST_P(WithFamilyArgs, PathStatistics) {
         QuicTestPathStatistics(GetParam());
     }
 }
+
+TEST_P(WithFamilyArgs, PathRequiredMtu) {
+    TestLoggerT<ParamType> Logger("QuicTestPathRequiredMtu", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestPathRequiredMtu), GetParam()));
+    } else {
+        QuicTestPathRequiredMtu(GetParam());
+    }
+}
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Mtu, Settings) {

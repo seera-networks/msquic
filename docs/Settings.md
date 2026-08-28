@@ -225,6 +225,23 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_PATH_STATUS` <br> 36 | QUIC_PATH_STATUS | Set-only | Mark a path active or backup, and tell the peer. Multipath only. See [QUIC_PARAM_CONN_PATH_STATUS](#quic_param_conn_path_status). |
 | `QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` <br> 37 | uint8_t (BOOLEAN) | Both | Set on client only. Must be set before start, and requires `QUIC_PARAM_CONN_SHARE_UDP_BINDING`. See [QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET](#quic_param_conn_unconnected_udp_socket). |
 | `QUIC_PARAM_CONN_PATH_STATISTICS` <br> 38 | QUIC_PATH_STATISTICS[] | Get-only | Network statistics for every path at once, one array entry per path. See [QUIC_PARAM_CONN_PATH_STATISTICS](#quic_param_conn_path_statistics). |
+| `QUIC_PARAM_CONN_PATH_REQUIRED_MTU` <br> 39 | uint16_t | Both | The MTU a path must be known to carry before it is used for sending. Zero, the default, means no requirement. See [QUIC_PARAM_CONN_PATH_REQUIRED_MTU](#quic_param_conn_path_required_mtu). |
+
+### QUIC_PARAM_CONN_PATH_REQUIRED_MTU
+
+The MTU a path must be known to carry before the connection will send on it. Zero, the default, means no requirement and is how the connection behaved before this parameter existed.
+
+The value is an IP-level MTU, the same units as `MinimumMtu` and `MaximumMtu`, and is compared against the path's current MTU — the `Mtu` reported by [QUIC_PARAM_CONN_PATH_STATISTICS](#quic_param_conn_path_statistics). It can be set before the connection starts and changed afterwards; it applies from the moment it is set, and does not retroactively remove a path already in use.
+
+It is bounded only by the range an MTU can take at all, not by this connection's `MaximumMtu`. The parameter is settable before the connection has its configuration, at which point `MaximumMtu` is not yet known, so checking against it would accept or reject the same number depending on when the call was made. A requirement above `MaximumMtu` can never be satisfied and will hold every path out of use; the path statistics are where that becomes visible.
+
+What happens to a path that has not reached the requirement depends on whether multipath was negotiated, because the two have different notions of a path being put to use.
+
+**Without multipath**, `QUIC_PARAM_CONN_ACTIVATE_PATH` on such a path fails with `QUIC_STATUS_INVALID_STATE`. The path stays a validated candidate, so the caller can try again once path MTU discovery has raised it.
+
+**With multipath**, a path is put into the send rotation the moment it completes validation — there is no separate activation step to refuse. The path is instead left in the backup state, which is the same state `QUIC_PARAM_CONN_PATH_STATUS` sets, so the peer is told about it. `QUIC_CONNECTION_EVENT_PATH_ADDED` is still indicated: the path exists and is usable, it is only that the application asked not to send on paths this narrow. Activating it explicitly is refused the same way as above.
+
+Note the caveat recorded under [QUIC_PARAM_CONN_PATH_STATUS](#quic_param_conn_path_status): a path left backup can still be promoted internally, by the fallback when the active path is removed or when another path finishes validating. This parameter gates the paths msquic activates on the application's behalf; it is not a guarantee that a path below the requirement will never become active.
 
 ### QUIC_PARAM_CONN_PATH_STATUS
 
