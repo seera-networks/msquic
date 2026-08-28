@@ -219,11 +219,41 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_REMOVE_BOUND_ADDRESS` <br> 29    | QUIC_ADDR                     | Set-only  | Remove a bound address. Server only. |
 | `QUIC_PARAM_CONN_ADD_PATH` <br> 30                | QUIC_PATH_PARAM               | Set-only  | Add a path. Client only. |
 | `QUIC_PARAM_CONN_ACTIVATE_PATH` <br> 31           | QUIC_PATH_PARAM               | Set-only  | Activate a path. Client only. |
-| `QUIC_PARAM_CONN_REMOVE_PATH` <br> 32             | QUIC_PATH_PARAM               | Set-only  | Remove a path. Client only. |
-| `QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS` <br> 33   | QUIC_CANDIDATE_ADDRESS        | Set-only  | Add a candidate address. Client only. |
-| `QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS` <br> 34| QUIC_CANDIDATE_ADDRESS        | Set-only  | Remove a candidate address. Client only. |
+| `QUIC_PARAM_CONN_REMOVE_PATH` <br> 33             | QUIC_PATH_PARAM               | Set-only  | Remove a path. Client only. |
+| `QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS` <br> 34   | QUIC_CANDIDATE_ADDRESS        | Set-only  | Add a candidate address. Client only. |
+| `QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS` <br> 35| QUIC_CANDIDATE_ADDRESS        | Set-only  | Remove a candidate address. Client only. |
+| `QUIC_PARAM_CONN_PATH_STATUS` <br> 36 | QUIC_PATH_STATUS | Set-only | Mark a path active or backup, and tell the peer. Multipath only. See [QUIC_PARAM_CONN_PATH_STATUS](#quic_param_conn_path_status). |
 | `QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` <br> 37 | uint8_t (BOOLEAN) | Both | Set on client only. Must be set before start, and requires `QUIC_PARAM_CONN_SHARE_UDP_BINDING`. See [QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET](#quic_param_conn_unconnected_udp_socket). |
 | `QUIC_PARAM_CONN_PATH_STATISTICS` <br> 38 | QUIC_PATH_STATISTICS[] | Get-only | Network statistics for every path at once, one array entry per path. See [QUIC_PARAM_CONN_PATH_STATISTICS](#quic_param_conn_path_statistics). |
+
+### QUIC_PARAM_CONN_PATH_STATUS
+
+Marks one path as active or as backup, and announces the change to the peer. Set-only; there is no way to read the current status back through this parameter.
+
+The parameter and its struct are behind `QUIC_API_ENABLE_PREVIEW_FEATURES`, which the application must define to use either.
+
+```c
+typedef struct QUIC_PATH_STATUS {
+    uint32_t PathId;
+    BOOLEAN Active;
+} QUIC_PATH_STATUS;
+```
+
+`PathId` selects the path, matching the identifier reported by `QUIC_PARAM_CONN_PATH_STATISTICS` and by the `QUIC_CONNECTION_EVENT_PATH_ADDED` / `PATH_REMOVED` / `PATH_STATUS_CHANGED` events. A path that exists but has not been assigned a path ID yet — one added before the handshake is confirmed — cannot be addressed, and neither can an unknown id; both fail with `QUIC_STATUS_INVALID_PARAMETER`.
+
+The parameter requires multipath to have been negotiated and fails with `QUIC_STATUS_INVALID_STATE` otherwise. `BufferLength` must be exactly `sizeof(QUIC_PATH_STATUS)`.
+
+Setting it has two effects.
+
+Locally, the status steers path selection. Once multipath is negotiated and the handshake is confirmed, each send flush picks one path at random from those that are active and not closing, and builds that flush's packets on it — the choice is per flush, not per packet, and a flush triggered by pacing reuses the path the pacing was set up for rather than choosing again. Marking a path backup therefore takes it out of that rotation while leaving it validated and usable.
+
+Two caveats on that. **If no path is active at all**, selection falls back to the first path and keeps sending on it, so marking every path backup does not stop sending. And the status is **not durable against internal changes**: several paths through the stack promote a path to active on their own — the fallback when the active path is removed, and a new path completing validation — and those do not send a PATH_AVAILABLE frame or raise an event. A path the application marked backup can therefore end up active again, with the peer still believing it is backup.
+
+On the wire, the change is announced with a PATH_AVAILABLE or PATH_BACKUP frame — the PATH_STATUS frames of draft-ietf-quic-multipath — carrying the path ID and a sequence number kept per path ID. Setting the status to the value it already has changes nothing and sends nothing.
+
+The peer can do the same to us. An incoming PATH_AVAILABLE or PATH_BACKUP flips the path's status locally and raises `QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED` with the new `IsActive`. A frame whose sequence number is not greater than the last one accepted for that path ID is ignored, so a reordered announcement cannot undo a newer one.
+
+That event fires only for changes the peer initiated; setting this parameter raises nothing. An application tracking the current status of a path needs both — what it set itself, and what arrives on the event — and, given the promotion caveat above, neither is a complete record.
 
 ### QUIC_PARAM_CONN_PATH_STATISTICS
 
