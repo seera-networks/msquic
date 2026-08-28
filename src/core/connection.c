@@ -5147,20 +5147,16 @@ QuicConnRecvFrames(
                             QuicSendSetSendFlag(
                                 &Connection->Send, QUIC_CONN_SEND_FLAG_PATH_BACKUP);
                             //
-                            // QuicPathSetActive would also have reported the
-                            // address observed on this path. That is a fact
-                            // about the path rather than about whether we send
-                            // on it, and it is only ever reported once, so
-                            // skipping it here would lose it for good.
+                            // No observed-address report is made here, despite
+                            // QuicPathSetActive making one. That report only
+                            // ever describes Paths[0]: the frame is written
+                            // from Connection->Paths[0].Route.RemoteAddress and
+                            // clears only Paths[0]'s flag. Bumping the sequence
+                            // number for a path that is not Paths[0] produces
+                            // no frame and invalidates any report already in
+                            // flight, which loss detection then declines to
+                            // retransmit.
                             //
-                            if (TempPath->SendObservedAddress) {
-                                Connection->ObservedAddressSequenceNumber++;
-                                if (Connection->State.ObservedAddressNegotiated) {
-                                    QuicSendSetSendFlag(
-                                        &Connection->Send,
-                                        QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS);
-                                }
-                            }
                         }
 
                         QUIC_CONNECTION_EVENT Event;
@@ -7693,7 +7689,15 @@ QuicConnActivatePath(
         Param->LocalAddress,
         Param->RemoteAddress);
     if (Path != NULL) {
-        if (!QuicConnPathMeetsRequiredDatagramLength(Connection, Path)) {
+        //
+        // A path already being sent on is not being newly put to use, so the
+        // requirement has nothing to say about it. That covers restoring a path
+        // the peer marked backup, and Paths[0], which QuicConnChoosePath falls
+        // back to whether or not anything is active.
+        //
+        if (!Path->IsActive &&
+            Path != &Connection->Paths[0] &&
+            !QuicConnPathMeetsRequiredDatagramLength(Connection, Path)) {
             QuicTraceLogConnInfo(
                 PathBelowRequiredDatagramLength,
                 Connection,
@@ -8467,9 +8471,31 @@ QuicConnParamSet(
             QUIC_PATH* Path = QuicConnGetPathByAddress(Connection, LocalAddress, &Connection->Paths[0].Route.RemoteAddress);
             if (Path != NULL) {
                 if (!Path->IsActive) {
+                    //
+                    // This is a third way to put a path to use, alongside
+                    // ACTIVATE_PATH and multipath validation, and it has to be
+                    // held to the same requirement. Moving onto a path that
+                    // carries less through an older API is still moving onto
+                    // it.
+                    //
+                    if (!QuicConnPathMeetsRequiredDatagramLength(Connection, Path)) {
+                        Status = QUIC_STATUS_INVALID_STATE;
+                        break;
+                    }
                     QuicPathSetActive(Connection, Path);
                 }
                 Status = QUIC_STATUS_SUCCESS;
+                break;
+            }
+
+            //
+            // Below here the path is created and migrated onto in one step,
+            // with no validation in between at which its capacity could be
+            // judged, so it is refused for the same reason the equivalent
+            // branch of QuicConnActivatePath is.
+            //
+            if (Connection->PathRequiredDatagramLength != 0) {
+                Status = QUIC_STATUS_INVALID_STATE;
                 break;
             }
 

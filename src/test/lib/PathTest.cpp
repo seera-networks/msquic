@@ -1681,7 +1681,14 @@ QuicTestPathRequiredDatagramLength(
     // It validated -- the connection knows about it and reports it -- but is
     // held out of the send rotation, which is what is actually being tested.
     //
+    //
+    // Both sides, not just the client: the server issues its own challenge on
+    // the new path and the client's response goes out on that path regardless
+    // of whether it is active. Counting before that exchange finishes would see
+    // it and call it traffic.
+    //
     TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
     QUIC_PATH_STATISTICS PathStats[QUIC_MAX_PATH_COUNT];
     Size = sizeof(PathStats);
     TEST_QUIC_SUCCEEDED(
