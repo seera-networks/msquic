@@ -52,6 +52,37 @@ TRACEPOINT_EVENT(CLOG_SEND_C, ClearSendFlags,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for MtuProbeTruncated
+// [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
+// QuicTraceLogConnInfo(
+                MtuProbeTruncated,
+                Connection,
+                "Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+                Path->ID,
+                Intended,
+                (uint16_t)Builder.Datagram->Length);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+// arg4 = arg4 = Intended = arg4
+// arg5 = arg5 = (uint16_t)Builder.Datagram->Length = arg5
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SEND_C, MtuProbeTruncated,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3,
+        unsigned short, arg4,
+        unsigned short, arg5), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned short, arg4, arg4)
+        ctf_integer(unsigned short, arg5, arg5)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for EcnValidationUnknown
 // [conn][%p] ECN unknown.
 // QuicTraceLogConnInfo(

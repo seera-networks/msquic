@@ -1776,6 +1776,12 @@ QuicMtuDiscoveryCheckSearchCompleteTimeout(
         // passed.
         //
         QUIC_PATH* Path = &Connection->Paths[i];
+        //
+        // Active paths only. An MTU probe carries a PING, which is not a
+        // probing frame, so on a path the peer does not believe is in use it
+        // reads as the endpoint having migrated there. Measuring a path that is
+        // deliberately not in use needs a padded PATH_CHALLENGE instead.
+        //
         if (!Path->IsActive || !Path->MtuDiscovery.IsSearchComplete) {
             continue;
         }

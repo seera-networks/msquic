@@ -8508,6 +8508,30 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "MtuProbeTruncated": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+      "UniqueId": "MtuProbeTruncated",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "MtuSearchComplete": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] Mtu Discovery Entering Search Complete at MTU %hu",
@@ -17409,6 +17433,11 @@
         "UniquenessHash": "3f758826-f3d7-22eb-b7df-0453cdad3bc8",
         "TraceID": "MtuPathInitialized",
         "EncodingString": "[conn][%p] Path[%hhu] Mtu Discovery Initialized: max_mtu=%u, cur/min_mtu=%u"
+      },
+      {
+        "UniquenessHash": "9e4e7454-ea15-1ec6-3fb1-13a2b761f340",
+        "TraceID": "MtuProbeTruncated",
+        "EncodingString": "[conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu"
       },
       {
         "UniquenessHash": "92ab8084-33fb-0565-da7b-d2278d05c642",

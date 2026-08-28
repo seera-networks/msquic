@@ -1497,6 +1497,105 @@ QuicSendPathKeepAlives(
 // This function sends a path challenge frame out on all paths that currently
 // need one sent.
 //
+//
+// Sends an MTU probe out on every path that has one waiting.
+//
+// The probe has to leave on the path it is measuring. Acknowledgements are
+// matched against the sending path's own ProbeSize, so a probe emitted on a
+// different path is discarded as out of order and the path that asked for it is
+// never measured -- which, for a path being kept out of the send rotation until
+// it proves a size, means it can never qualify. Like path challenges, these
+// cannot ride the packet built for whichever path was chosen for this flush.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicSendPathMtuProbes(
+    _In_ QUIC_SEND* Send
+    )
+{
+    QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
+
+    CXPLAT_DBG_ASSERT(Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_1_RTT] != NULL);
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+
+        QUIC_PATH* Path = &Connection->Paths[i];
+        if (!Path->SendMtuProbe ||
+            Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            continue;
+        }
+
+        //
+        // Active paths only. The probe carries a PING, which is not a probing
+        // frame, so from an address the peer does not believe is in use it
+        // reads as the endpoint having migrated there -- and the peer follows.
+        // A path deliberately kept out of use has to be measured with a padded
+        // PATH_CHALLENGE instead, which is a probing frame and carries no such
+        // meaning.
+        //
+        if (!Path->IsActive) {
+            Path->SendMtuProbe = FALSE;
+            continue;
+        }
+
+        if (!CxPlatIsRouteReady(Connection, Path)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            continue;
+        }
+
+        QUIC_PACKET_BUILDER Builder = { 0 };
+        if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
+            continue;
+        }
+        _Analysis_assume_(Builder.Metadata != NULL);
+
+        if (!QuicPacketBuilderPrepareForPathMtuDiscovery(&Builder)) {
+            continue;
+        }
+
+        //
+        // The datagram is allocated from the probe size, but that allocation is
+        // capped by what the peer said it can receive. A probe that came back
+        // smaller than intended would be acknowledged and read as proof of a
+        // size that was never sent, so leave the flag up and give up on this
+        // size rather than measure something false.
+        //
+        const uint16_t Intended =
+            MaxUdpPayloadSizeForFamily(
+                QuicAddrGetFamily(&Path->Route.RemoteAddress),
+                Path->MtuDiscovery.ProbeSize);
+        if ((uint16_t)Builder.Datagram->Length < Intended) {
+            QuicTraceLogConnInfo(
+                MtuProbeTruncated,
+                Connection,
+                "Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+                Path->ID,
+                Intended,
+                (uint16_t)Builder.Datagram->Length);
+            Path->SendMtuProbe = FALSE;
+            QuicPacketBuilderCleanup(&Builder);
+            continue;
+        }
+
+        Builder.MinimumDatagramLength = (uint16_t)Builder.Datagram->Length;
+
+        if (Builder.DatagramLength <
+                Builder.Datagram->Length - Builder.EncryptionOverhead) {
+            //
+            // A PING so the probe is acknowledged, which is the whole point of
+            // sending it.
+            //
+            Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
+            Builder.Metadata->Frames[Builder.Metadata->FrameCount].Type = QUIC_FRAME_PING;
+            (void)QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PING, TRUE);
+            Path->SendMtuProbe = FALSE;
+        }
+
+        QuicPacketBuilderFinalize(&Builder, TRUE);
+        QuicPacketBuilderCleanup(&Builder);
+    }
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicSendPathChallenges(
@@ -1767,6 +1866,17 @@ QuicSendFlush(
     }
 
     //
+    // Send MTU probes.
+    // Each has to leave on the path it measures, so like path challenges it
+    // cannot ride the packet built for whichever path this flush chose.
+    // `QuicSendPathMtuProbes` might re-queue if a route isn't ready.
+    //
+    if (Send->SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD) {
+        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_DPLPMTUD;
+        QuicSendPathMtuProbes(Send);
+    }
+
+    //
     // Send path challenges.
     // `QuicSendPathChallenges` might re-queue a path challenge immediately.
     //
@@ -1928,24 +2038,6 @@ QuicSendFlush(
                 break;
             }
             WrotePacketFrames = QuicSendWriteFrames(Send, &Builder);
-        } else if ((SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD) != 0) {
-            if (!QuicPacketBuilderPrepareForPathMtuDiscovery(&Builder)) {
-                break;
-            }
-            FlushBatchedDatagrams = TRUE;
-            Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_DPLPMTUD;
-            if (Builder.Metadata->FrameCount < QUIC_MAX_FRAMES_PER_PACKET &&
-                Builder.DatagramLength < Builder.Datagram->Length - Builder.EncryptionOverhead) {
-                //
-                // We are doing DPLPMTUD, so make sure there is a PING frame in there, if
-                // we have room, just to make sure we get an ACK.
-                //
-                Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
-                Builder.Metadata->Frames[Builder.Metadata->FrameCount++].Type = QUIC_FRAME_PING;
-                WrotePacketFrames = TRUE;
-            } else {
-                WrotePacketFrames = FALSE;
-            }
         } else if (Stream != NULL ||
             (Stream = QuicSendGetNextStream(Send, &StreamPacketCount)) != NULL) {
             if (!QuicPacketBuilderPrepareForStreamFrames(

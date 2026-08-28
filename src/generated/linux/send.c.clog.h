@@ -76,6 +76,30 @@ tracepoint(CLOG_SEND_C, ClearSendFlags , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for MtuProbeTruncated
+// [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
+// QuicTraceLogConnInfo(
+                MtuProbeTruncated,
+                Connection,
+                "Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+                Path->ID,
+                Intended,
+                (uint16_t)Builder.Datagram->Length);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+// arg4 = arg4 = Intended = arg4
+// arg5 = arg5 = (uint16_t)Builder.Datagram->Length = arg5
+----------------------------------------------------------*/
+#ifndef _clog_6_ARGS_TRACE_MtuProbeTruncated
+#define _clog_6_ARGS_TRACE_MtuProbeTruncated(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_SEND_C, MtuProbeTruncated , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for EcnValidationUnknown
 // [conn][%p] ECN unknown.
 // QuicTraceLogConnInfo(
