@@ -1966,8 +1966,25 @@ QuicSendFlush(
     //
     if (Connection->Settings.DestCidUpdateIdleTimeoutMs != 0 &&
         Send->LastFlushTimeValid &&
-        CxPlatTimeDiff64(Send->LastFlushTime, TimeNow) >= MS_TO_US(Connection->Settings.DestCidUpdateIdleTimeoutMs) &&
-        !Path->InitiatedCidUpdate) {
+        CxPlatTimeDiff64(Send->LastFlushTime, TimeNow) >= MS_TO_US(Connection->Settings.DestCidUpdateIdleTimeoutMs)) {
+        //
+        // InitiatedCidUpdate is not consulted here, and is cleared instead.
+        //
+        // It exists to stop a change of ours and the peer's answer to it from
+        // ping-ponging: while it is set, a peer CID change clears it rather
+        // than provoking another change from us. That only needs to hold for
+        // as long as an answer might still be coming, and nothing has been
+        // sent or received on this path for the whole idle interval, so
+        // anything still pending is long over.
+        //
+        // Leaving it set here is what broke Misc.IdleDestCidChange. It is also
+        // raised by QuicPathIDReplaceRetiredCids, for a replacement the peer
+        // forced on us with retire_prior_to -- and that one is only ever
+        // cleared by a peer CID change, which need never come. A connection
+        // that took a forced replacement and then went quiet could not do an
+        // idle update again for the rest of its life.
+        //
+        Path->InitiatedCidUpdate = FALSE;
         if (QuicConnRetireCurrentDestCid(Connection, Path)) {
             Path->InitiatedCidUpdate = TRUE;
         }
