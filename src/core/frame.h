@@ -117,73 +117,82 @@ QuicErrorIsProtocolError(
 //
 // Different types of QUIC frames
 //
-typedef enum QUIC_FRAME_TYPE {
-    QUIC_FRAME_PADDING              = 0x0ULL,
-    QUIC_FRAME_PING                 = 0x1ULL,
-    QUIC_FRAME_ACK                  = 0x2ULL, // to 0x3
-    QUIC_FRAME_ACK_1                = 0x3ULL,
-    QUIC_FRAME_RESET_STREAM         = 0x4ULL,
-    QUIC_FRAME_STOP_SENDING         = 0x5ULL,
-    QUIC_FRAME_CRYPTO               = 0x6ULL,
-    QUIC_FRAME_NEW_TOKEN            = 0x7ULL,
-    QUIC_FRAME_STREAM               = 0x8ULL, // to 0xf
-    QUIC_FRAME_STREAM_1             = 0x9ULL,
-    QUIC_FRAME_STREAM_2             = 0xaULL,
-    QUIC_FRAME_STREAM_3             = 0xbULL,
-    QUIC_FRAME_STREAM_4             = 0xcULL,
-    QUIC_FRAME_STREAM_5             = 0xdULL,
-    QUIC_FRAME_STREAM_6             = 0xeULL,
-    QUIC_FRAME_STREAM_7             = 0xfULL,
-    QUIC_FRAME_MAX_DATA             = 0x10ULL,
-    QUIC_FRAME_MAX_STREAM_DATA      = 0x11ULL,
-    QUIC_FRAME_MAX_STREAMS          = 0x12ULL, // to 0x13
-    QUIC_FRAME_MAX_STREAMS_1        = 0x13ULL,
-    QUIC_FRAME_DATA_BLOCKED         = 0x14ULL,
-    QUIC_FRAME_STREAM_DATA_BLOCKED  = 0x15ULL,
-    QUIC_FRAME_STREAMS_BLOCKED      = 0x16ULL, // to 0x17
-    QUIC_FRAME_STREAMS_BLOCKED_1    = 0x17ULL,
-    QUIC_FRAME_NEW_CONNECTION_ID    = 0x18ULL,
-    QUIC_FRAME_RETIRE_CONNECTION_ID = 0x19ULL,
-    QUIC_FRAME_PATH_CHALLENGE       = 0x1aULL,
-    QUIC_FRAME_PATH_RESPONSE        = 0x1bULL,
-    QUIC_FRAME_CONNECTION_CLOSE     = 0x1cULL, // to 0x1d
-    QUIC_FRAME_CONNECTION_CLOSE_1   = 0x1dULL,
-    QUIC_FRAME_HANDSHAKE_DONE       = 0x1eULL,
-    /* 0x1f to 0x20 are unused currently */
-    QUIC_FRAME_RELIABLE_RESET_STREAM = 0x21ULL, // intentionally ignore type 0x20 of QUIC_RESET_STREAM cause it's likely to be removed from RFC.
-    /* 0x22 to 0x2f are unused currently */
-    QUIC_FRAME_DATAGRAM             = 0x30ULL, // to 0x31
-    QUIC_FRAME_DATAGRAM_1           = 0x31ULL,
-    /* 0x32 to 0xad are unused currently */
-    QUIC_FRAME_ACK_FREQUENCY        = 0xafULL,
-    QUIC_FRAME_IMMEDIATE_ACK        = 0x1fULL,
+typedef QUIC_VAR_INT QUIC_FRAME_TYPE;
+#define QUIC_FRAME_PADDING              ((QUIC_FRAME_TYPE)0x0ULL)
+#define QUIC_FRAME_PING                 ((QUIC_FRAME_TYPE)0x1ULL)
+#define QUIC_FRAME_ACK                  ((QUIC_FRAME_TYPE)0x2ULL) // to 0x3
+#define QUIC_FRAME_ACK_1                ((QUIC_FRAME_TYPE)0x3ULL)
+#define QUIC_FRAME_RESET_STREAM         ((QUIC_FRAME_TYPE)0x4ULL)
+#define QUIC_FRAME_STOP_SENDING         ((QUIC_FRAME_TYPE)0x5ULL)
+#define QUIC_FRAME_CRYPTO               ((QUIC_FRAME_TYPE)0x6ULL)
+#define QUIC_FRAME_NEW_TOKEN            ((QUIC_FRAME_TYPE)0x7ULL)
+#define QUIC_FRAME_STREAM               ((QUIC_FRAME_TYPE)0x8ULL) // to 0xf
+#define QUIC_FRAME_STREAM_1             ((QUIC_FRAME_TYPE)0x9ULL)
+#define QUIC_FRAME_STREAM_2             ((QUIC_FRAME_TYPE)0xaULL)
+#define QUIC_FRAME_STREAM_3             ((QUIC_FRAME_TYPE)0xbULL)
+#define QUIC_FRAME_STREAM_4             ((QUIC_FRAME_TYPE)0xcULL)
+#define QUIC_FRAME_STREAM_5             ((QUIC_FRAME_TYPE)0xdULL)
+#define QUIC_FRAME_STREAM_6             ((QUIC_FRAME_TYPE)0xeULL)
+#define QUIC_FRAME_STREAM_7             ((QUIC_FRAME_TYPE)0xfULL)
+#define QUIC_FRAME_MAX_DATA             ((QUIC_FRAME_TYPE)0x10ULL)
+#define QUIC_FRAME_MAX_STREAM_DATA      ((QUIC_FRAME_TYPE)0x11ULL)
+#define QUIC_FRAME_MAX_STREAMS          ((QUIC_FRAME_TYPE)0x12ULL) // to 0x13
+#define QUIC_FRAME_MAX_STREAMS_1        ((QUIC_FRAME_TYPE)0x13ULL)
+#define QUIC_FRAME_DATA_BLOCKED         ((QUIC_FRAME_TYPE)0x14ULL)
+#define QUIC_FRAME_STREAM_DATA_BLOCKED  ((QUIC_FRAME_TYPE)0x15ULL)
+#define QUIC_FRAME_STREAMS_BLOCKED      ((QUIC_FRAME_TYPE)0x16ULL) // to 0x17
+#define QUIC_FRAME_STREAMS_BLOCKED_1    ((QUIC_FRAME_TYPE)0x17ULL)
+#define QUIC_FRAME_NEW_CONNECTION_ID    ((QUIC_FRAME_TYPE)0x18ULL)
+#define QUIC_FRAME_RETIRE_CONNECTION_ID ((QUIC_FRAME_TYPE)0x19ULL)
+#define QUIC_FRAME_PATH_CHALLENGE       ((QUIC_FRAME_TYPE)0x1aULL)
+#define QUIC_FRAME_PATH_RESPONSE        ((QUIC_FRAME_TYPE)0x1bULL)
+#define QUIC_FRAME_CONNECTION_CLOSE     ((QUIC_FRAME_TYPE)0x1cULL) // to 0x1d
+#define QUIC_FRAME_CONNECTION_CLOSE_1   ((QUIC_FRAME_TYPE)0x1dULL)
+#define QUIC_FRAME_HANDSHAKE_DONE       ((QUIC_FRAME_TYPE)0x1eULL)
+/* 0x1f to 0x20 are unused currently */
+#define QUIC_FRAME_RELIABLE_RESET_STREAM ((QUIC_FRAME_TYPE)0x21ULL) // intentionally ignore type 0x20 of QUIC_RESET_STREAM cause it's likely to be removed from RFC.
+/* 0x22 to 0x2f are unused currently */
+#define QUIC_FRAME_DATAGRAM             ((QUIC_FRAME_TYPE)0x30ULL) // to 0x31
+#define QUIC_FRAME_DATAGRAM_1           ((QUIC_FRAME_TYPE)0x31ULL)
+/* 0x32 to 0xad are unused currently */
+#define QUIC_FRAME_ACK_FREQUENCY        ((QUIC_FRAME_TYPE)0xafULL)
+#define QUIC_FRAME_IMMEDIATE_ACK        ((QUIC_FRAME_TYPE)0x1fULL)
     /* 0xaf to 0x2f4 are unused currently */
-    QUIC_FRAME_TIMESTAMP            = 0x2f5ULL,
+#define QUIC_FRAME_TIMESTAMP            ((QUIC_FRAME_TYPE)0x2f5ULL)
     /* 0x2f6 to 0x9f81a5 are unused currently */
-    QUIC_FRAME_OBSERVED_ADDRESS_V4  = 0x9f81a6ULL,
-    QUIC_FRAME_OBSERVED_ADDRESS_V6  = 0x9f81a7ULL,
+#define QUIC_FRAME_OBSERVED_ADDRESS_V4  ((QUIC_FRAME_TYPE)0x9f81a6ULL)
+#define QUIC_FRAME_OBSERVED_ADDRESS_V6  ((QUIC_FRAME_TYPE)0x9f81a7ULL)
+#define QUIC_FRAME_ADD_ADDRESS_V4       ((QUIC_FRAME_TYPE)0x3d7e90LL)
+#define QUIC_FRAME_ADD_ADDRESS_V6       ((QUIC_FRAME_TYPE)0x3d7e91LL)
+#define QUIC_FRAME_PUNCH_ME_NOW_V4      ((QUIC_FRAME_TYPE)0x3d7e92LL)
+#define QUIC_FRAME_PUNCH_ME_NOW_V6      ((QUIC_FRAME_TYPE)0x3d7e93LL)
+#define QUIC_FRAME_REMOVE_ADDRESS       ((QUIC_FRAME_TYPE)0x3d7e94LL)
 
-    QUIC_FRAME_ADD_ADDRESS_V4       = 0x3d7e90LL,
-    QUIC_FRAME_ADD_ADDRESS_V6       = 0x3d7e91LL,
-    QUIC_FRAME_PUNCH_ME_NOW_V4      = 0x3d7e92LL,
-    QUIC_FRAME_PUNCH_ME_NOW_V6      = 0x3d7e93LL,
-    QUIC_FRAME_REMOVE_ADDRESS       = 0x3d7e94LL,
+//
+// Multipath frame types, per draft-ietf-quic-multipath-21 (suggested codepoints).
+// Kept as #defines (rather than seera-main's enum) because QUIC_FRAME_TYPE must
+// remain a 64-bit QUIC_VAR_INT to hold the QMux (QX) magic frame types below.
+//
+#define QUIC_FRAME_PATH_ACK             ((QUIC_FRAME_TYPE)0x3eULL) // to 0x3f
+#define QUIC_FRAME_PATH_ACK_1           ((QUIC_FRAME_TYPE)0x3fULL)
+#define QUIC_FRAME_PATH_ABANDON         ((QUIC_FRAME_TYPE)0x3e75ULL)
+#define QUIC_FRAME_PATH_BACKUP          ((QUIC_FRAME_TYPE)0x3e76ULL) // draft: PATH_STATUS_BACKUP
+#define QUIC_FRAME_PATH_AVAILABLE       ((QUIC_FRAME_TYPE)0x3e77ULL) // draft: PATH_STATUS_AVAILABLE
+#define QUIC_FRAME_PATH_NEW_CONNECTION_ID    ((QUIC_FRAME_TYPE)0x3e78ULL)
+#define QUIC_FRAME_PATH_RETIRE_CONNECTION_ID ((QUIC_FRAME_TYPE)0x3e79ULL)
+#define QUIC_FRAME_MAX_PATH_ID          ((QUIC_FRAME_TYPE)0x3e7aULL)
+#define QUIC_FRAME_PATHS_BLOCKED        ((QUIC_FRAME_TYPE)0x3e7bULL)
+#define QUIC_FRAME_PATH_CIDS_BLOCKED    ((QUIC_FRAME_TYPE)0x3e7cULL)
+#define QUIC_FRAME_MAX_SUPPORTED        ((QUIC_FRAME_TYPE)0x3e7dULL)
 
-    // Multipath frame types, per draft-ietf-quic-multipath-21 (suggested codepoints).
-    QUIC_FRAME_PATH_ACK             = 0x3eULL, // to 0x3f
-    QUIC_FRAME_PATH_ACK_1           = 0x3fULL,
-    QUIC_FRAME_PATH_ABANDON         = 0x3e75ULL,
-    QUIC_FRAME_PATH_BACKUP          = 0x3e76ULL, // draft: PATH_STATUS_BACKUP
-    QUIC_FRAME_PATH_AVAILABLE       = 0x3e77ULL, // draft: PATH_STATUS_AVAILABLE
-    QUIC_FRAME_PATH_NEW_CONNECTION_ID = 0x3e78ULL,
-    QUIC_FRAME_PATH_RETIRE_CONNECTION_ID = 0x3e79ULL,
-    QUIC_FRAME_MAX_PATH_ID          = 0x3e7aULL,
-    QUIC_FRAME_PATHS_BLOCKED        = 0x3e7bULL,
-    QUIC_FRAME_PATH_CIDS_BLOCKED    = 0x3e7cULL,
-
-    QUIC_FRAME_MAX_SUPPORTED
-
-} QUIC_FRAME_TYPE;
+//
+// QMux (QX) frame types. These are 64-bit magic values outside the standard
+// frame-type space; they are carried over the QMux channel and never recorded
+// in QUIC sent-packet metadata, so they are excluded from QUIC_FRAME_MAX_SUPPORTED.
+//
+#define QX_FRAME_TRANSPORT_PARAMETERS   ((QUIC_FRAME_TYPE)0x3f5153300d0a0d0aULL)
+#define QX_FRAME_PING                   ((QUIC_FRAME_TYPE)0x348c67529ef8c7bdULL)
+#define QX_FRAME_PING_1                 ((QUIC_FRAME_TYPE)0x348c67529ef8c7beULL)
 
 CXPLAT_STATIC_ASSERT(
     QUIC_FRAME_MAX_SUPPORTED <= (uint64_t)UINT32_MAX,
@@ -204,7 +213,8 @@ CXPLAT_STATIC_ASSERT(
      (X >= QUIC_FRAME_PATH_ACK && X <= QUIC_FRAME_PATH_ACK_1) || \
       X == QUIC_FRAME_PATH_ABANDON || \
      (X >= QUIC_FRAME_PATH_BACKUP && X <= QUIC_FRAME_PATH_RETIRE_CONNECTION_ID) || \
-     (X >= QUIC_FRAME_MAX_PATH_ID && X <= QUIC_FRAME_PATH_CIDS_BLOCKED) \
+     (X >= QUIC_FRAME_MAX_PATH_ID && X <= QUIC_FRAME_PATH_CIDS_BLOCKED) || \
+      X == QX_FRAME_TRANSPORT_PARAMETERS || X == QX_FRAME_PING || X == QX_FRAME_PING_1 \
     )
 
 //
@@ -1250,6 +1260,60 @@ QuicRemoveAddressFrameDecode(
         const uint8_t * const Buffer,
     _Inout_ uint16_t* Offset,
     _Out_ QUIC_REMOVE_ADDRESS_EX* Frame
+    );
+
+typedef struct QX_TRANSPORT_PARAMETERS_EX {
+
+    QUIC_VAR_INT Length;
+    _Field_size_bytes_(Length)
+    const uint8_t * TP;
+
+} QX_TRANSPORT_PARAMETERS_EX;
+
+_Success_(return != FALSE)
+BOOLEAN
+QxTransportParametersFrameEncode(
+    _In_ const QX_TRANSPORT_PARAMETERS_EX * const Frame,
+    _Inout_ uint16_t* Offset,
+    _In_ uint16_t BufferLength,
+    _Out_writes_to_(BufferLength, *Offset) uint8_t* Buffer
+    );
+
+_Success_(return != FALSE)
+BOOLEAN
+QxTransportParametersFrameDecode(
+    _In_ uint16_t BufferLength,
+    _In_reads_bytes_(BufferLength)
+        const uint8_t * const Buffer,
+    _Inout_ uint16_t* Offset,
+    _Out_ QX_TRANSPORT_PARAMETERS_EX* Frame
+    );
+
+typedef struct QX_PING_EX {
+
+    QUIC_VAR_INT SequenceNumber;
+    BOOLEAN IsResponse;
+
+} QX_PING_EX;
+
+_Success_(return != FALSE)
+BOOLEAN
+QxPingFrameEncode(
+    _In_ const QX_PING_EX * const Frame,
+    _Inout_ uint16_t* Offset,
+    _In_ uint16_t BufferLength,
+    _Out_writes_to_(BufferLength, *Offset) uint8_t* Buffer
+    );
+
+_Success_(return != FALSE)
+BOOLEAN
+QxPingFrameDecode(
+    _In_ QUIC_FRAME_TYPE FrameType,
+    _In_ uint16_t BufferLength,
+    _In_reads_bytes_(BufferLength)
+        const uint8_t * const Buffer,
+    _Inout_ uint16_t* Offset,
+    _Out_ QX_PING_EX* Frame
     );
 
 //

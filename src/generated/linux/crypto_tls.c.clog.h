@@ -716,6 +716,26 @@ tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPInitMaxPathId , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for EncodeTPMaxRecordSize
+// [conn][%p] TP: Max Record Size (%llu)
+// QuicTraceLogConnVerbose(
+            EncodeTPMaxRecordSize,
+            Connection,
+            "TP: Max Record Size (%llu)",
+            TransportParams->MaxRecordSize);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TransportParams->MaxRecordSize = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_EncodeTPMaxRecordSize
+#define _clog_4_ARGS_TRACE_EncodeTPMaxRecordSize(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPMaxRecordSize , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for EncodeTPTest
 // [conn][%p] TP: TEST TP (Type %hu, Length %hu)
 // QuicTraceLogConnVerbose(
@@ -1357,6 +1377,26 @@ tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseServer , arg1);\
 #ifndef _clog_4_ARGS_TRACE_DecodeTPNatTraverseClient
 #define _clog_4_ARGS_TRACE_DecodeTPNatTraverseClient(uniqueId, arg1, encoded_arg_string, arg3)\
 tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseClient , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for DecodeTPMaxRecordSize
+// [conn][%p] TP: Max Record Size (%llu)
+// QuicTraceLogConnVerbose(
+                DecodeTPMaxRecordSize,
+                Connection,
+                "TP: Max Record Size (%llu)",
+                TransportParams->MaxRecordSize);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = TransportParams->MaxRecordSize = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_DecodeTPMaxRecordSize
+#define _clog_4_ARGS_TRACE_DecodeTPMaxRecordSize(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPMaxRecordSize , arg1, arg3);\
 
 #endif
 

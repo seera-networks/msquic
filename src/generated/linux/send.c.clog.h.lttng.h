@@ -55,9 +55,9 @@ TRACEPOINT_EVENT(CLOG_SEND_C, ClearSendFlags,
 // Decoder Ring for EcnValidationUnknown
 // [conn][%p] ECN unknown.
 // QuicTraceLogConnInfo(
-                    EcnValidationUnknown,
-                    Connection,
-                    "ECN unknown.");
+                        EcnValidationUnknown,
+                        Connection,
+                        "ECN unknown.");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_SEND_C, EcnValidationUnknown,
@@ -72,11 +72,11 @@ TRACEPOINT_EVENT(CLOG_SEND_C, EcnValidationUnknown,
 
 /*----------------------------------------------------------
 // Decoder Ring for ScheduleSendFlags
-// [conn][%p] Adding send flags 0x%x (prev: 0x%x, new: 0x%x)
+// [conn][%p] Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)
 // QuicTraceLogConnVerbose(
             ScheduleSendFlags,
             Connection,
-            "Adding send flags 0x%x (prev: 0x%x, new: 0x%x)",
+            "Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
             SendFlags,
             Send->SendFlags,
             Send->SendFlags | SendFlags);
@@ -88,14 +88,14 @@ TRACEPOINT_EVENT(CLOG_SEND_C, EcnValidationUnknown,
 TRACEPOINT_EVENT(CLOG_SEND_C, ScheduleSendFlags,
     TP_ARGS(
         const void *, arg1,
-        unsigned int, arg3,
-        unsigned int, arg4,
-        unsigned int, arg5), 
+        unsigned long long, arg3,
+        unsigned long long, arg4,
+        unsigned long long, arg5), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned int, arg3, arg3)
-        ctf_integer(unsigned int, arg4, arg4)
-        ctf_integer(unsigned int, arg5, arg5)
+        ctf_integer(uint64_t, arg3, arg3)
+        ctf_integer(uint64_t, arg4, arg4)
+        ctf_integer(uint64_t, arg5, arg5)
     )
 )
 
@@ -103,11 +103,11 @@ TRACEPOINT_EVENT(CLOG_SEND_C, ScheduleSendFlags,
 
 /*----------------------------------------------------------
 // Decoder Ring for RemoveSendFlagsMsg
-// [conn][%p] Removing flags %x
+// [conn][%p] Removing flags %llx
 // QuicTraceLogConnVerbose(
             RemoveSendFlagsMsg,
             QuicSendGetConnection(Send),
-            "Removing flags %x",
+            "Removing flags %llx",
             (SendFlags & Send->SendFlags));
 // arg1 = arg1 = QuicSendGetConnection(Send) = arg1
 // arg3 = arg3 = (SendFlags & Send->SendFlags) = arg3
@@ -115,10 +115,10 @@ TRACEPOINT_EVENT(CLOG_SEND_C, ScheduleSendFlags,
 TRACEPOINT_EVENT(CLOG_SEND_C, RemoveSendFlagsMsg,
     TP_ARGS(
         const void *, arg1,
-        unsigned int, arg3), 
+        unsigned long long, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 
@@ -145,11 +145,11 @@ TRACEPOINT_EVENT(CLOG_SEND_C, AmplificationProtectionBlocked,
 
 /*----------------------------------------------------------
 // Decoder Ring for SendFlushComplete
-// [conn][%p] Flush complete flags=0x%x
+// [conn][%p] Flush complete flags=0x%llx
 // QuicTraceLogConnVerbose(
         SendFlushComplete,
         Connection,
-        "Flush complete flags=0x%x",
+        "Flush complete flags=0x%llx",
         Send->SendFlags);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Send->SendFlags = arg3
@@ -157,10 +157,10 @@ TRACEPOINT_EVENT(CLOG_SEND_C, AmplificationProtectionBlocked,
 TRACEPOINT_EVENT(CLOG_SEND_C, SendFlushComplete,
     TP_ARGS(
         const void *, arg1,
-        unsigned int, arg3), 
+        unsigned long long, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 

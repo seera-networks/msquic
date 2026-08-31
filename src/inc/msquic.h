@@ -2049,6 +2049,11 @@ typedef struct QUIC_API_TABLE {
 
     QUIC_CONNECTION_EXPORT_KEYING_MATERIAL_FN
                                         ConnectionExportKeyingMaterial; // Available from v2.6
+
+    QUIC_CONNECTION_OPEN_FN             ConnectionQmuxOpen;
+    QUIC_CONNECTION_OPEN_IN_PARTITION_FN
+                                        ConnectionQmuxOpenInPartition;
+    QUIC_LISTENER_OPEN_FN               ListenerQmuxOpen;
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 } QUIC_API_TABLE;

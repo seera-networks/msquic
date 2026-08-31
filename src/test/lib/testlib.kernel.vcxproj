@@ -29,6 +29,7 @@
     <ClCompile Include="MtuTest.cpp" />
     <ClCompile Include="OwnershipTest.cpp" />
     <ClCompile Include="PathTest.cpp" />
+    <ClCompile Include="QMuxTest.cpp" />
     <ClCompile Include="QuicDrill.cpp" />
     <ClCompile Include="TestConnection.cpp" />
     <ClCompile Include="TestListener.cpp" />

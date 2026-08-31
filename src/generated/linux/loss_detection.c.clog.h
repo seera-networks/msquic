@@ -252,11 +252,11 @@ tracepoint(CLOG_LOSS_DETECTION_C, PacketTxProbeRetransmit , arg2, arg3);\
                 AttackDetected,
                 Connection,
                 "Attack detected: Skipped packet number %llu ACKed in range [%llu, %llu]",
-                Connection->Send.SkippedPacketNumber,
+                PathID->SkippedPacketNumber,
                 AckBlock->Low,
                 QuicRangeGetHigh(AckBlock));
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Send.SkippedPacketNumber = arg3
+// arg3 = arg3 = PathID->SkippedPacketNumber = arg3
 // arg4 = arg4 = AckBlock->Low = arg4
 // arg5 = arg5 = QuicRangeGetHigh(AckBlock) = arg5
 ----------------------------------------------------------*/

@@ -976,6 +976,33 @@ TEST_P(WithFamilyArgs, PathStatistics) {
         QuicTestPathStatistics(GetParam());
     }
 }
+
+TEST_P(WithFamilyArgs, QMuxConnect) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxConnect", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxConnect), GetParam()));
+    } else {
+        QuicTestQMuxConnect(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, QMuxStreamData) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxStreamData", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxStreamData), GetParam()));
+    } else {
+        QuicTestQMuxStreamData(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, QMuxKeepAlive) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxKeepAlive", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxKeepAlive), GetParam()));
+    } else {
+        QuicTestQMuxKeepAlive(GetParam());
+    }
+}
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Mtu, Settings) {

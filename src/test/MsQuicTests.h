@@ -682,6 +682,29 @@ QuicTestMultipath(
     _In_ const FamilyArgs& Params
     );
 
+//
+// QMux (QX) Tests
+//
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+
+void
+QuicTestQMuxConnect(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestQMuxStreamData(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestQMuxKeepAlive(
+    _In_ const FamilyArgs& Params
+    );
+
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES
+
 void
 QuicTestPathKeepAlive(
     _In_ const FamilyArgs& Params

@@ -1046,6 +1046,42 @@ struct MsQuicListener {
         }
     }
 
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    MsQuicListener(
+        _In_ const MsQuicRegistration& Registration,
+        _In_ bool IsQmux,
+        _In_ MsQuicCleanUpMode CleanUpMode,
+        _In_ MsQuicListenerCallback* Callback,
+        _In_ void* Context = nullptr
+        ) noexcept : CleanUpMode(CleanUpMode), Callback(Callback), Context(Context) {
+        if (!Registration.IsValid()) {
+            InitStatus = Registration.GetInitStatus();
+            return;
+        }
+        if (!IsQmux) {
+            if (QUIC_FAILED(
+                InitStatus =
+                    MsQuic->ListenerOpen(
+                        Registration,
+                        (QUIC_LISTENER_CALLBACK_HANDLER)MsQuicCallback,
+                        this,
+                        &Handle))) {
+                Handle = nullptr;
+            }
+        } else {
+            if (QUIC_FAILED(
+                InitStatus =
+                    MsQuic->ListenerQmuxOpen(
+                        Registration,
+                        (QUIC_LISTENER_CALLBACK_HANDLER)MsQuicCallback,
+                        this,
+                        &Handle))) {
+                Handle = nullptr;
+            }
+        }
+    }
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES
+
     ~MsQuicListener() noexcept {
         Close();
     }
@@ -1238,6 +1274,42 @@ struct MsQuicConnection {
             Handle = nullptr;
         }
     }
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    MsQuicConnection(
+        _In_ const MsQuicRegistration& Registration,
+        _In_ bool IsQmux,
+        _In_ MsQuicCleanUpMode CleanUpMode = CleanUpManual,
+        _In_ MsQuicConnectionCallback* Callback = NoOpCallback,
+        _In_ void* Context = nullptr
+        ) noexcept : CleanUpMode(CleanUpMode), Callback(Callback), Context(Context) {
+        if (!Registration.IsValid()) {
+            InitStatus = Registration.GetInitStatus();
+            return;
+        }
+        if (!IsQmux) {
+            if (QUIC_FAILED(
+                InitStatus =
+                    MsQuic->ConnectionOpen(
+                        Registration,
+                        (QUIC_CONNECTION_CALLBACK_HANDLER)MsQuicCallback,
+                        this,
+                        &Handle))) {
+                Handle = nullptr;
+            }
+        } else {
+            if (QUIC_FAILED(
+                InitStatus =
+                    MsQuic->ConnectionQmuxOpen(
+                        Registration,
+                        (QUIC_CONNECTION_CALLBACK_HANDLER)MsQuicCallback,
+                        this,
+                        &Handle))) {
+                Handle = nullptr;
+            }
+        }
+    }
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
     MsQuicConnection(
         _In_ HQUIC ConnectionHandle,
@@ -1631,6 +1703,21 @@ struct MsQuicAutoAcceptListener : public MsQuicListener {
         ConnectionHandler(_ConnectionHandler),
         ConnectionContext(_ConnectionContext)
     { }
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    MsQuicAutoAcceptListener(
+        _In_ const MsQuicRegistration& Registration,
+        _In_ bool IsQmux,
+        _In_ const MsQuicConfiguration& Config,
+        _In_ MsQuicConnectionCallback* _ConnectionHandler,
+        _In_ void* _ConnectionContext = nullptr
+        ) noexcept :
+        MsQuicListener(Registration, IsQmux, CleanUpManual, ListenerCallback, this),
+        Configuration(&Config),
+        ConnectionHandler(_ConnectionHandler),
+        ConnectionContext(_ConnectionContext)
+    { }
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 private:
 

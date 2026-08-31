@@ -5,9 +5,9 @@
 // Decoder Ring for NoSrcCidAvailable
 // [conn][%p] No src CID to send with
 // QuicTraceLogConnWarning(
-            NoSrcCidAvailable,
-            Connection,
-            "No src CID to send with");
+                NoSrcCidAvailable,
+                Connection,
+                "No src CID to send with");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, NoSrcCidAvailable,
@@ -27,9 +27,9 @@ TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, NoSrcCidAvailable,
                 SkipPacketNumber,
                 Connection,
                 "Skipped packet number %llu",
-                Connection->Send.SkippedPacketNumber);
+                PathID->SkippedPacketNumber);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Send.SkippedPacketNumber = arg3
+// arg3 = arg3 = PathID->SkippedPacketNumber = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, SkipPacketNumber,
     TP_ARGS(
@@ -45,11 +45,11 @@ TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, SkipPacketNumber,
 
 /*----------------------------------------------------------
 // Decoder Ring for GetPacketTypeFailure
-// [conn][%p] Failed to get packet type for control frames, 0x%x
+// [conn][%p] Failed to get packet type for control frames, 0x%llx
 // QuicTraceLogConnWarning(
         GetPacketTypeFailure,
         Builder->Connection,
-        "Failed to get packet type for control frames, 0x%x",
+        "Failed to get packet type for control frames, 0x%llx",
         SendFlags);
 // arg1 = arg1 = Builder->Connection = arg1
 // arg3 = arg3 = SendFlags = arg3
@@ -57,10 +57,10 @@ TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, SkipPacketNumber,
 TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, GetPacketTypeFailure,
     TP_ARGS(
         const void *, arg1,
-        unsigned int, arg3), 
+        unsigned long long, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 
@@ -84,6 +84,33 @@ TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, PacketBuilderSendBatch,
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
         ctf_integer(unsigned short, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PacketBuilderQMuxSendBatch
+// [conn][%p] Sending batch. %hu datagrams %u bytes
+// QuicTraceLogConnVerbose(
+        PacketBuilderQMuxSendBatch,
+        Builder->Connection,
+        "Sending batch. %hu datagrams %u bytes",
+        (uint16_t)Builder->TotalCountDatagrams,
+        Builder->TotalDatagramsLength);
+// arg1 = arg1 = Builder->Connection = arg1
+// arg3 = arg3 = (uint16_t)Builder->TotalCountDatagrams = arg3
+// arg4 = arg4 = Builder->TotalDatagramsLength = arg4
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, PacketBuilderQMuxSendBatch,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned short, arg3,
+        unsigned int, arg4), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned short, arg3, arg3)
+        ctf_integer(unsigned int, arg4, arg4)
     )
 )
 
@@ -268,6 +295,25 @@ TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, ConnPacketSent,
 // arg2 = arg2 = Builder->BatchId = arg2
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, PacketBatchSent,
+    TP_ARGS(
+        unsigned long long, arg2), 
+    TP_FIELDS(
+        ctf_integer(uint64_t, arg2, arg2)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PacketEncryptQMux
+// [pack][%llu] Encrypting
+// QuicTraceEvent(
+            PacketEncryptQMux,
+            "[pack][%llu] Encrypting",
+            Builder->Metadata->PacketId);
+// arg2 = arg2 = Builder->Metadata->PacketId = arg2
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, PacketEncryptQMux,
     TP_ARGS(
         unsigned long long, arg2), 
     TP_FIELDS(
