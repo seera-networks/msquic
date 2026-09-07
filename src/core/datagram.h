@@ -124,3 +124,16 @@ void
 QuicDatagramCancelBlocked(
     _In_ QUIC_CONNECTION* Connection
     );
+
+//
+// The largest datagram payload a path of this shape can carry. Exposed so that
+// a path can be judged against the size the application asked for without
+// anyone re-deriving the arithmetic: the address family selects the IP header
+// size, and the connection ID length and encryption overhead come off the top.
+//
+uint16_t
+QuicCalculateDatagramLength(
+    _In_ QUIC_ADDRESS_FAMILY Family,
+    _In_ uint16_t Mtu,
+    _In_ uint8_t CidLength
+    );
