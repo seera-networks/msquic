@@ -1559,7 +1559,7 @@ QuicLossDetectionOnZeroRttRejected(
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
-void
+BOOLEAN
 QuicLossDetectionProcessAckBlocks(
     _In_ QUIC_LOSS_DETECTION* LossDetection,
     _In_ QUIC_PATH* Path,
@@ -1567,10 +1567,10 @@ QuicLossDetectionProcessAckBlocks(
     _In_ QUIC_ENCRYPT_LEVEL EncryptLevel,
     _In_ uint64_t AckDelay,
     _In_ QUIC_RANGE* AckBlocks,
-    _Out_ BOOLEAN* InvalidAckBlock,
     _In_opt_ QUIC_ACK_ECN_EX* Ecn
     )
 {
+    BOOLEAN Result = TRUE;
     QUIC_SENT_PACKET_METADATA* AckedPackets = NULL;
     QUIC_SENT_PACKET_METADATA** AckedPacketsTail = &AckedPackets;
 
@@ -1583,8 +1583,6 @@ QuicLossDetectionProcessAckBlocks(
     BOOLEAN NewLargestAckRetransmittable = FALSE;
     BOOLEAN NewLargestAckDifferentPath = FALSE;
     uint64_t NewLargestAckTimestamp = 0;
-
-    *InvalidAckBlock = FALSE;
 
     QUIC_SENT_PACKET_METADATA** LostPacketsStart = &LossDetection->LostPackets;
     QUIC_SENT_PACKET_METADATA** SentPacketsStart = &LossDetection->SentPackets;
@@ -1606,8 +1604,8 @@ QuicLossDetectionProcessAckBlocks(
                 PathID->SkippedPacketNumber,
                 AckBlock->Low,
                 QuicRangeGetHigh(AckBlock));
-            QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
-            return;
+            Result = FALSE;
+            goto Exit;
         }
 
         //
@@ -1725,7 +1723,7 @@ CheckSentPackets:
         //
         // Nothing was acknowledged, so we can exit now.
         //
-        return;
+        goto Exit;
     }
 
     uint64_t LargestAckedPacketNum = 0;
@@ -1747,8 +1745,8 @@ CheckSentPackets:
                 "[conn][%p] ERROR, %s.",
                 Connection,
                 "Incorrect ACK encryption level");
-            *InvalidAckBlock = TRUE;
-            return;
+            Result = FALSE;
+            goto Exit;
         }
 
         uint64_t PacketRtt = CxPlatTimeDiff64(PacketMeta->SentTime, TimeNow);
@@ -1906,18 +1904,28 @@ CheckSentPackets:
 
     LossDetection->ProbeCount = 0;
 
+Exit:
+
+    if (!Result) {
+        //
+        // A protocol violation was detected; fail the connection.
+        //
+        QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+    }
+
     AckedPacketsIterator = AckedPackets;
     while (AckedPacketsIterator != NULL) {
         QUIC_SENT_PACKET_METADATA* PacketMeta = AckedPacketsIterator;
         AckedPacketsIterator = AckedPacketsIterator->Next;
         QuicSentPacketPoolReturnPacketMetadata(PacketMeta, Connection);
     }
-
     //
     // At least one packet was ACKed. If all packets were ACKed then we'll
     // cancel the timer; otherwise we'll reset the timer.
     //
     QuicLossDetectionUpdateTimer(LossDetection, FALSE);
+
+    return Result;
 }
 
 //

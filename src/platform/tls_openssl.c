@@ -25,6 +25,7 @@ Abstract:
 #include "openssl/rsa.h"
 #include "openssl/ssl.h"
 #include "openssl/x509.h"
+#include "openssl/x509v3.h"
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
@@ -119,9 +120,9 @@ typedef struct CXPLAT_TLS {
     const uint8_t* AlpnBuffer;
 
     //
-    // Pointer to the Server Name Indication (SNI) string.
+    // Server name used for SNI and certificate validation.
     //
-    const char* SNI;
+    const char* ServerName;
 
     //
     // OpenSSL SSL object used for the TLS handshake and encryption.
@@ -329,9 +330,11 @@ static int QuicTlsSend(SSL *s, const unsigned char *Buf,
         (uint32_t)AData->Level);
 
     //
-    // Make sure that we don't violate handshake data lengths
+    // Cap the buffer at 0x8000, the largest power of two that fits a uint16_t,
+    // so the doubling growth below cannot overflow.
     //
-    if (BufLen + TlsState->BufferLength > 0xF000) {
+    size_t RequiredBufferLength = BufLen + TlsState->BufferLength;
+    if (RequiredBufferLength > 0x8000) {
         QuicTraceEvent(
             TlsError,
             "[ tls][%p] ERROR, %s.",
@@ -341,13 +344,13 @@ static int QuicTlsSend(SSL *s, const unsigned char *Buf,
         return -1;
     }
 
-    if (BufLen + TlsState->BufferLength > (size_t)TlsState->BufferAllocLength) {
+    if (RequiredBufferLength > (size_t)TlsState->BufferAllocLength) {
         //
-        // Double the allocated Buffer length until there's enough room for the
+        // Double the allocated buffer length until there's enough room for the
         // new data.
-        // 
+        //
         uint16_t NewBufferAllocLength = TlsState->BufferAllocLength;
-        while (BufLen + TlsState->BufferLength > (size_t)NewBufferAllocLength) {
+        while (RequiredBufferLength > (size_t)NewBufferAllocLength) {
             NewBufferAllocLength <<= 1;
         }
 
@@ -744,6 +747,15 @@ static int QuicTlsGotTp(SSL *S, const unsigned char *Params,
 
     UNREFERENCED_PARAMETER(Arg);
 
+    if (ParamsLen == 0 || Params == NULL) {
+        return 0;
+    }
+
+    if (AData->PeerTp != NULL) {
+        return AData->PeerTpLen == ParamsLen &&
+            memcmp(AData->PeerTp, Params, ParamsLen) == 0;
+    }
+
     AData->PeerTp = CXPLAT_ALLOC_NONPAGED(ParamsLen,
                                            QUIC_POOL_TLS_TRANSPARAMS);
     if (AData->PeerTp == NULL) {
@@ -1018,7 +1030,7 @@ CxPlatTlsCertificateVerifyCallback(
                     CxPlatCertVerifyRawCertificate(
                         OpenSSLCertBuffer,
                         OpenSSLCertLength,
-                        TlsContext->SNI,
+                        TlsContext->ServerName,
                         TlsContext->SecConfig->Flags,
                         IsDeferredValidationOrClientAuth?
                             (uint32_t*)&ValidationResult :
@@ -2476,6 +2488,7 @@ CxPlatTlsInitialize(
     BIO *ossl_bio = NULL;
 
     CXPLAT_DBG_ASSERT(Config->HkdfLabels);
+    CXPLAT_DBG_ASSERT(Config->IsServer || Config->ServerName != NULL);
     if (Config->SecConfig == NULL) {
         Status = QUIC_STATUS_INVALID_PARAMETER;
         goto Exit;
@@ -2509,35 +2522,30 @@ CxPlatTlsInitialize(
         "TLS context Created");
 
     if (!Config->IsServer) {
-
-        if (Config->ServerName != NULL) {
-
-            ServerNameLength = (uint16_t)strnlen(Config->ServerName, QUIC_MAX_SNI_LENGTH);
-            if (ServerNameLength == QUIC_MAX_SNI_LENGTH) {
-                QuicTraceEvent(
-                    TlsError,
-                    "[ tls][%p] ERROR, %s.",
-                    TlsContext->Connection,
-                    "SNI Too Long");
-                Status = QUIC_STATUS_INVALID_PARAMETER;
-                goto Exit;
-            }
-
-            if (!CxPlatIsIpLiteral(Config->ServerName)) {
-                TlsContext->SNI = CXPLAT_ALLOC_NONPAGED(ServerNameLength + 1, QUIC_POOL_TLS_SNI);
-                if (TlsContext->SNI == NULL) {
-                    QuicTraceEvent(
-                        AllocFailure,
-                        "Allocation of '%s' failed. (%llu bytes)",
-                        "SNI",
-                        ServerNameLength + 1);
-                    Status = QUIC_STATUS_OUT_OF_MEMORY;
-                    goto Exit;
-                }
-
-                memcpy((char*)TlsContext->SNI, Config->ServerName, ServerNameLength + 1);
-            }
+        ServerNameLength = (uint16_t)strnlen(Config->ServerName, QUIC_MAX_SNI_LENGTH);
+        if (ServerNameLength == QUIC_MAX_SNI_LENGTH) {
+            QuicTraceEvent(
+                TlsError,
+                "[ tls][%p] ERROR, %s.",
+                TlsContext->Connection,
+                "Server name too long");
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            goto Exit;
         }
+
+        TlsContext->ServerName =
+            CXPLAT_ALLOC_NONPAGED(ServerNameLength + 1, QUIC_POOL_TLS_SNI);
+        if (TlsContext->ServerName == NULL) {
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "Server name",
+                ServerNameLength + 1);
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            goto Exit;
+        }
+
+        memcpy((char*)TlsContext->ServerName, Config->ServerName, ServerNameLength + 1);
     }
 
     //
@@ -2612,7 +2620,34 @@ CxPlatTlsInitialize(
         SSL_set_accept_state(TlsContext->Ssl);
     } else {
         SSL_set_connect_state(TlsContext->Ssl);
-        SSL_set_tlsext_host_name(TlsContext->Ssl, TlsContext->SNI);
+        X509_VERIFY_PARAM* VerifyParam = SSL_get0_param(TlsContext->Ssl);
+        X509_VERIFY_PARAM_set_hostflags(
+            VerifyParam,
+            X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+
+        BOOLEAN IsIpLiteral =
+            X509_VERIFY_PARAM_set1_ip_asc(VerifyParam, TlsContext->ServerName) == 1;
+        if (!IsIpLiteral &&
+            X509_VERIFY_PARAM_set1_host(VerifyParam, TlsContext->ServerName, 0) != 1) {
+            QuicTraceEvent(
+                TlsError,
+                "[ tls][%p] ERROR, %s.",
+                TlsContext->Connection,
+                "Setting certificate reference identity failed");
+            Status = QUIC_STATUS_TLS_ERROR;
+            goto Exit;
+        }
+
+        if (!IsIpLiteral &&
+            SSL_set_tlsext_host_name(TlsContext->Ssl, TlsContext->ServerName) != 1) {
+            QuicTraceEvent(
+                TlsError,
+                "[ tls][%p] ERROR, %s.",
+                TlsContext->Connection,
+                "Setting SNI failed");
+            Status = QUIC_STATUS_TLS_ERROR;
+            goto Exit;
+        }
         SSL_set_alpn_protos(TlsContext->Ssl, TlsContext->AlpnBuffer, TlsContext->AlpnBufferLength);
     }
 
@@ -2725,9 +2760,9 @@ CxPlatTlsUninitialize(
             TlsContext->Connection,
             "Cleaning up");
 
-        if (TlsContext->SNI != NULL) {
-            CXPLAT_FREE(TlsContext->SNI, QUIC_POOL_TLS_SNI);
-            TlsContext->SNI = NULL;
+        if (TlsContext->ServerName != NULL) {
+            CXPLAT_FREE(TlsContext->ServerName, QUIC_POOL_TLS_SNI);
+            TlsContext->ServerName = NULL;
         }
 
         if (TlsContext->Ssl != NULL) {
@@ -2846,100 +2881,107 @@ static int SplitAddRecord(RECORD_ENTRY *Entry, size_t *Consumed)
     const uint8_t *idx;
     uint8_t message_type;
     size_t total_message_size = 0;
-    uint32_t message_size;
+    uint32_t message_size = 0;
     struct AUX_DATA *AData;
     uint8_t Incomplete = 0;
     uint8_t force_split = 0;
 
     AData = GetSslAuxData(Entry->Ssl);
     CXPLAT_DBG_ASSERT(AData != NULL);
-    //
-    // set our cursor to the start of the message
-    //
-    idx = Entry->Record;
 
-    while (total_message_size < Entry->RecLen) {
-        message_type = *idx;
-        memcpy(&message_size, idx, sizeof(message_size));
+    do {
+        leftover = NULL;
+        total_message_size = 0;
+        Incomplete = 0;
+        force_split = 0;
 
         //
-        //message size is just the lower 3 bytes of the TLS record
+        // set our cursor to the start of the message
         //
-        message_size = htonl(message_size) & 0x00ffffff;
+        idx = Entry->Record;
 
-        //
-        // Stop processing if this is a handshake finished record
-        //
-        if (message_type == SSL3_MT_FINISHED) {
-            //
-            // Trim the buffer so we end on a record boundary
-            // Everything after the HandShakeFinished record
-            // Is just padding
-            //
-            Entry->RecLen = total_message_size + message_size + 4;
-            goto insert_now;
-        }
-
-        //
-        // If this message is larger then the total record length
-        // then we need to create an Incomplete record as its remainder
-        // is in the next datagram
-        // also, if this is an epoch key change message (8 is EncryptedExtensions)
-        // then we need to split it as rcv_rec expects that
-        // Note we only need to force the split if the epoch change
-        // isn't the first message in this record
-        //
-        if (total_message_size + message_size + 4 > Entry->RecLen) {
-            Incomplete = 1;
-        }
-
-        if ((message_type == 8) && (total_message_size != 0)) {
-            force_split = 1;
-        }
-
-        if (Incomplete == 1 || force_split == 1) {
-            if (total_message_size == 0) {
+        while (total_message_size < Entry->RecLen) {
+            if (Entry->RecLen - total_message_size < sizeof(message_size)) {
                 //
-                // If this is the first record, just mark this one
-                // as being incomplete
+                // The TLS handshake header is split across datagrams.
+                // Wait for the remaining header bytes before reading it.
                 //
-                Entry->Incomplete = 1;
+                Incomplete = 1;
             } else {
-                //
-                //create the incomplete trailing record
-                //
-                 leftover = MakeNewRecord(idx, Entry->RecLen - total_message_size,
-                                                                        Entry->Ssl);
-                 //
-                 //reduce the size of this Entry to drop whats contained
-                 //in the leftover
-                 //
-                 if (leftover != NULL) {
-                     Entry->RecLen -= leftover->RecLen;
-                     leftover->Incomplete = Incomplete;
-                 }
-            }
-            break;
-        }
-        total_message_size += message_size + 4;
-        idx += message_size + 4;
-    }
+                message_type = *idx;
+                memcpy(&message_size, idx, sizeof(message_size));
 
-    //
-    //Add the Entry, and potentially the leftover record
-    //
+                //
+                //message size is just the lower 3 bytes of the TLS record
+                //
+                message_size = htonl(message_size) & 0x00ffffff;
+
+                //
+                // If this message extends past the end of the record, its remainder
+                // is in a later datagram, so it is incomplete.
+                //
+                if (total_message_size + message_size + 4 > Entry->RecLen) {
+                    Incomplete = 1;
+                }
+
+                //
+                // A complete handshake FINISHED ends the flight, so trim the record
+                // to its end and ignore any padding that follows. An incomplete one
+                // is handled like any other incomplete message below.
+                //
+                if (message_type == SSL3_MT_FINISHED && Incomplete == 0) {
+                    Entry->RecLen = total_message_size + message_size + 4;
+                    goto insert_now;
+                }
+
+                //
+                // An epoch key change message (8 is EncryptedExtensions) must be
+                // split as rcv_rec expects it isolated, but only if it isn't the
+                // first message in this record.
+                //
+                if ((message_type == 8) && (total_message_size != 0)) {
+                    force_split = 1;
+                }
+            }
+
+            if (Incomplete == 1 || force_split == 1) {
+                if (total_message_size == 0) {
+                    //
+                    // If this is the first record, just mark this one
+                    // as being incomplete
+                    //
+                    Entry->Incomplete = 1;
+                } else {
+                    //
+                    //create the incomplete trailing record
+                    //
+                     leftover = MakeNewRecord(idx, Entry->RecLen - total_message_size,
+                                                                            Entry->Ssl);
+                     //
+                     //reduce the size of this Entry to drop whats contained
+                     //in the leftover
+                     //
+                     if (leftover != NULL) {
+                         Entry->RecLen -= leftover->RecLen;
+                         leftover->Incomplete = Incomplete;
+                     }
+                }
+                break;
+            }
+            total_message_size += message_size + 4;
+            idx += message_size + 4;
+        }
+
+        //
+        // Add the Entry, and potentially process the leftover record.
+        //
 
 insert_now:
-    *Consumed -= Entry->RecLen;
-    CxPlatListInsertTail(&AData->RecordList, &Entry->Link);
-    if (leftover != NULL) {
-        //
-        // Make sure the leftover record doesn't need to be split
-        // Do so by recursively calling this function.  This will
-        // Also add the leftover record to the list
-        //
-        return SplitAddRecord(leftover, Consumed);
-    }
+        *Consumed -= Entry->RecLen;
+        CxPlatListInsertTail(&AData->RecordList, &Entry->Link);
+        Entry = leftover;
+    } while (leftover != NULL);
+
     return Incomplete;
 }
 
@@ -3283,6 +3325,20 @@ more_handshake:
                         OpenSslNoMatchingAlpn,
                         TlsContext->Connection,
                         "Failed to find a matching ALPN");
+                    TlsContext->ResultFlags |= CXPLAT_TLS_RESULT_ERROR;
+                    goto Exit;
+                }
+
+                //
+                // By this point, OpenSSL should have called QuicTlsGotTp, which stores
+                // a non-NULL PeerTp and sets PeerTPReceived. Fail the handshake if the
+                // required transport parameters were not processed.
+                //
+                if (!TlsContext->PeerTPReceived) {
+                    QuicTraceLogConnError(
+                        OpenSslMissingTransportParameters,
+                        TlsContext->Connection,
+                        "No transport parameters received");
                     TlsContext->ResultFlags |= CXPLAT_TLS_RESULT_ERROR;
                     goto Exit;
                 }
