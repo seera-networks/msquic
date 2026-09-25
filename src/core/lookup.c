@@ -537,6 +537,7 @@ QuicLookupInsertLocalCid(
             &SourceCid->Entry,
             Hash,
             NULL);
+        SourceCid->InLookupTable = TRUE;
         CxPlatDispatchRwLockReleaseExclusive(&Table->RwLock, PrevIrql);
     }
 
@@ -647,11 +648,18 @@ QuicLookupRemoveLocalCidInt(
             //
             Lookup->SINGLE.Connection = NULL;
         }
-    } else {
+    } else if (SourceCid->InLookupTable) {
         CXPLAT_DBG_ASSERT(SourceCid->Parent->CID.Length >= MsQuicLib.CidServerIdLength + QUIC_CID_PID_LENGTH);
 
         //
         // Remove the source connection ID from the multi-hash table.
+        //
+        // The entry is only unlinked if it was actually inserted. The lookup
+        // holds no table at all while it serves a single connection, so a CID
+        // added then lands on its parent's HashEntries list without being in
+        // one; if the lookup is later partitioned and the rebalance does not
+        // carry that entry over, this would otherwise unlink an entry the
+        // table never held.
         //
         CXPLAT_STATIC_ASSERT(QUIC_CID_PID_LENGTH == 2, "The code below assumes 2 bytes");
         uint16_t PartitionIndex;
@@ -661,6 +669,7 @@ QuicLookupRemoveLocalCidInt(
         QUIC_PARTITIONED_HASHTABLE* Table = &Lookup->HASH.Tables[PartitionIndex];
         CxPlatDispatchRwLockAcquireExclusive(&Table->RwLock, PrevIrql);
         CxPlatHashtableRemove(&Table->Table, &SourceCid->Entry, NULL);
+        SourceCid->InLookupTable = FALSE;
         CxPlatDispatchRwLockReleaseExclusive(&Table->RwLock, PrevIrql);
     }
 }
@@ -803,6 +812,7 @@ QuicLookupAddLocalCid(
             HashEntry->Parent = SourceCid;
             HashEntry->Binding = QuicLookupGetBinding(Lookup);
             HashEntry->PathID = SourceCid->PathID;
+            HashEntry->InLookupTable = FALSE;
             Result =
                 QuicLookupInsertLocalCid(Lookup, Hash, HashEntry, TRUE);
             if (Result) {
