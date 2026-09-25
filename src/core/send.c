@@ -543,6 +543,30 @@ QuicSendClearStreamSendFlag(
     }
 }
 
+//
+// Whether any path is still waiting to have its status announced. The writers
+// below send one path per packet and leave the flag up so a later packet can
+// carry the next one, so the flag has to be cleared as soon as none is left --
+// otherwise the next flush builds a packet for a flag it then finds nothing to
+// write for, and QuicSendWriteFrames trips its "framed nothing" assert.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicSendPathStatusPending(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ BOOLEAN Active
+    )
+{
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path->SendStatus && (Path->IsActive != FALSE) == (Active != FALSE)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicSendWriteFrames(
@@ -713,8 +737,7 @@ QuicSendWriteFrames(
 
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_BACKUP) {
 
-        uint8_t i;
-        for (i = 0; i < Connection->PathsCount; ++i) {
+        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
             QUIC_PATH* TempPath = &Connection->Paths[i];
             if (!TempPath->SendStatus) {
                 continue;
@@ -745,7 +768,7 @@ QuicSendWriteFrames(
             }
         }
 
-        if (i == Connection->PathsCount) {
+        if (!QuicSendPathStatusPending(Connection, FALSE)) {
             Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_BACKUP;
         }
 
@@ -756,8 +779,7 @@ QuicSendWriteFrames(
 
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_AVAILABLE) {
 
-        uint8_t i;
-        for (i = 0; i < Connection->PathsCount; ++i) {
+        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
             QUIC_PATH* TempPath = &Connection->Paths[i];
             if (!TempPath->SendStatus) {
                 continue;
@@ -788,7 +810,7 @@ QuicSendWriteFrames(
             }
         }
 
-        if (i == Connection->PathsCount) {
+        if (!QuicSendPathStatusPending(Connection, TRUE)) {
             Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_AVAILABLE;
         }
 
@@ -1497,6 +1519,191 @@ QuicSendPathKeepAlives(
 // This function sends a path challenge frame out on all paths that currently
 // need one sent.
 //
+//
+// Sends an MTU probe out on every path that has one waiting.
+//
+// The probe has to leave on the path it is measuring. Acknowledgements are
+// matched against the sending path's own ProbeSize, so a probe emitted on a
+// different path is discarded as out of order and the path that asked for it is
+// never measured -- which, for a path being kept out of the send rotation until
+// it proves a size, means it can never qualify. Like path challenges, these
+// cannot ride the packet built for whichever path was chosen for this flush.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicSendPathMtuProbes(
+    _In_ QUIC_SEND* Send
+    )
+{
+    QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
+
+    CXPLAT_DBG_ASSERT(Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_1_RTT] != NULL);
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+
+        QUIC_PATH* Path = &Connection->Paths[i];
+        if (!Path->SendMtuProbe) {
+            continue;
+        }
+
+        //
+        // A path in the middle of validation is not measured. Ordering alone
+        // does not settle this: the challenge or response may be queued for a
+        // later flush, and a full-size probe sent meanwhile spends allowance
+        // it needs. There is nothing to lose by waiting -- an unvalidated path
+        // carries no traffic yet.
+        //
+        if (Path->SendChallenge || Path->SendResponse) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            continue;
+        }
+
+        //
+        // Amplification limited. The flag goes back up rather than the path
+        // being dropped: SendMtuProbe stays set either way, and nothing else
+        // re-arms it -- no packet was sent, so loss detection has nothing to
+        // discard, and the search-complete timeout only looks at paths whose
+        // search has finished. Without this the probe waits for some unrelated
+        // path to raise the flag again.
+        //
+        if (Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            continue;
+        }
+
+        //
+        // A path the peer does not believe is in use cannot be probed with a
+        // PING: PING is not a probing frame, so arriving from such an address
+        // it reads as the endpoint having migrated there, and the peer follows.
+        // Those paths get a padded PATH_CHALLENGE instead, which is a probing
+        // frame and carries no such meaning. Only a validated path is probed
+        // this way -- an unvalidated one is still being challenged by path
+        // validation itself, and a second challenge would race it.
+        //
+        const BOOLEAN ProbeWithChallenge = !Path->IsActive;
+        if (ProbeWithChallenge && !Path->IsPeerValidated) {
+            Path->SendMtuProbe = FALSE;
+            continue;
+        }
+
+        if (!CxPlatIsRouteReady(Connection, Path)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            continue;
+        }
+
+        //
+        // A probe is a full-size ack-eliciting packet and RFC 8899 has it
+        // congestion controlled like any other. It used to be, for free: the
+        // flag is not in QUIC_CONN_SEND_FLAGS_BYPASS_CC, so the send loop this
+        // was lifted out of dropped it while cwnd was full and picked it up on
+        // the next flush. Sending per path means checking that here instead.
+        //
+        // This has to be asked before the builder is initialized, not after.
+        // QuicPacketBuilderInitialize stamps Send->LastFlushTime, which is what
+        // the idle DestCid update measures its idle period against -- so a
+        // probe that initializes a builder only to give up keeps resetting that
+        // clock, and the update never fires.
+        //
+        if (!QuicCongestionControlCanSend(&Path->PathID->CongestionControl)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            continue;
+        }
+
+        QUIC_PACKET_BUILDER Builder = { 0 };
+        if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
+            continue;
+        }
+        _Analysis_assume_(Builder.Metadata != NULL);
+
+        if (!QuicPacketBuilderPrepareForPathMtuDiscovery(&Builder)) {
+            continue;
+        }
+
+        //
+        // The datagram is allocated from the probe size, but that allocation is
+        // capped by what the peer said it can receive. A probe that came back
+        // smaller than intended would be acknowledged and read as proof of a
+        // size that was never sent, so leave the flag up and give up on this
+        // size rather than measure something false.
+        //
+        const uint16_t Intended =
+            MaxUdpPayloadSizeForFamily(
+                QuicAddrGetFamily(&Path->Route.RemoteAddress),
+                Path->MtuDiscovery.ProbeSize);
+        if ((uint16_t)Builder.Datagram->Length < Intended) {
+            QuicTraceLogConnInfo(
+                MtuProbeTruncated,
+                Connection,
+                "Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+                Path->ID,
+                Intended,
+                (uint16_t)Builder.Datagram->Length);
+            Path->SendMtuProbe = FALSE;
+            QuicPacketBuilderFinalize(&Builder, TRUE);
+            QuicPacketBuilderCleanup(&Builder);
+            continue;
+        }
+
+        Builder.MinimumDatagramLength = (uint16_t)Builder.Datagram->Length;
+
+        const uint16_t AvailableBufferLength =
+            (uint16_t)Builder.Datagram->Length - Builder.EncryptionOverhead;
+
+        if (Builder.DatagramLength < AvailableBufferLength) {
+            //
+            // Something ack-eliciting, since the acknowledgement is what makes
+            // the probe mean anything.
+            //
+            if (ProbeWithChallenge) {
+                QUIC_PATH_CHALLENGE_EX Frame;
+                CxPlatRandom(sizeof(Frame.Data), Frame.Data);
+
+                if (QuicPathChallengeFrameEncode(
+                        QUIC_FRAME_PATH_CHALLENGE,
+                        &Frame,
+                        &Builder.DatagramLength,
+                        AvailableBufferLength,
+                        Builder.Datagram->Buffer)) {
+                    CxPlatCopyMemory(
+                        Builder.Metadata->Frames[Builder.Metadata->FrameCount].PATH_CHALLENGE.Data,
+                        Frame.Data,
+                        sizeof(Frame.Data));
+                    (void)QuicPacketBuilderAddFrame(
+                        &Builder, QUIC_FRAME_PATH_CHALLENGE, TRUE);
+                    Path->SendMtuProbe = FALSE;
+                } else {
+                    //
+                    // No room for the frame, so nothing in this packet is
+                    // ack-eliciting and it could never be read as a
+                    // measurement. Drop it rather than send it. The datagram is
+                    // allocated from the probe size and only a header has been
+                    // written, so this is not expected to be reachable.
+                    //
+                    Path->SendMtuProbe = FALSE;
+                    QuicPacketBuilderFinalize(&Builder, TRUE);
+                    QuicPacketBuilderCleanup(&Builder);
+                    continue;
+                }
+                //
+                // The response is not waited on and not matched: the path is
+                // already validated, so a response finds no challenge to
+                // satisfy and is dropped. What is being measured is whether the
+                // packet carrying it was acknowledged at this size, which is
+                // what QuicMtuDiscoveryOnAckedPacket looks at.
+                //
+            } else {
+                Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
+                Builder.Metadata->Frames[Builder.Metadata->FrameCount].Type = QUIC_FRAME_PING;
+                (void)QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PING, TRUE);
+                Path->SendMtuProbe = FALSE;
+            }
+        }
+
+        QuicPacketBuilderFinalize(&Builder, TRUE);
+        QuicPacketBuilderCleanup(&Builder);
+    }
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicSendPathChallenges(
@@ -1759,8 +1966,25 @@ QuicSendFlush(
     //
     if (Connection->Settings.DestCidUpdateIdleTimeoutMs != 0 &&
         Send->LastFlushTimeValid &&
-        CxPlatTimeDiff64(Send->LastFlushTime, TimeNow) >= MS_TO_US(Connection->Settings.DestCidUpdateIdleTimeoutMs) &&
-        !Path->InitiatedCidUpdate) {
+        CxPlatTimeDiff64(Send->LastFlushTime, TimeNow) >= MS_TO_US(Connection->Settings.DestCidUpdateIdleTimeoutMs)) {
+        //
+        // InitiatedCidUpdate is not consulted here, and is cleared instead.
+        //
+        // It exists to stop a change of ours and the peer's answer to it from
+        // ping-ponging: while it is set, a peer CID change clears it rather
+        // than provoking another change from us. That only needs to hold for
+        // as long as an answer might still be coming, and nothing has been
+        // sent or received on this path for the whole idle interval, so
+        // anything still pending is long over.
+        //
+        // Leaving it set here is what broke Misc.IdleDestCidChange. It is also
+        // raised by QuicPathIDReplaceRetiredCids, for a replacement the peer
+        // forced on us with retire_prior_to -- and that one is only ever
+        // cleared by a peer CID change, which need never come. A connection
+        // that took a forced replacement and then went quiet could not do an
+        // idle update again for the rest of its life.
+        //
+        Path->InitiatedCidUpdate = FALSE;
         if (QuicConnRetireCurrentDestCid(Connection, Path)) {
             Path->InitiatedCidUpdate = TRUE;
         }
@@ -1784,6 +2008,24 @@ QuicSendFlush(
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_RESPONSE) {
         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_RESPONSE;
         QuicSendPathResponses(Send);
+    }
+
+    //
+    // Send MTU probes.
+    // Each has to leave on the path it measures, so like path challenges it
+    // cannot ride the packet built for whichever path this flush chose.
+    // `QuicSendPathMtuProbes` might re-queue if a route isn't ready.
+    //
+    // These come after challenges and responses, and that order matters. A
+    // probe is a full-size datagram; sending one first can spend the
+    // amplification allowance a challenge then needs, leaving too little room
+    // for the frame -- which QuicSendPathChallenges asserts cannot happen.
+    // Validating a path also matters more than measuring one: a challenge that
+    // goes unsent long enough removes the path outright.
+    //
+    if (Send->SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD) {
+        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_DPLPMTUD;
+        QuicSendPathMtuProbes(Send);
     }
 
     //
@@ -1928,24 +2170,6 @@ QuicSendFlush(
                 break;
             }
             WrotePacketFrames = QuicSendWriteFrames(Send, &Builder);
-        } else if ((SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD) != 0) {
-            if (!QuicPacketBuilderPrepareForPathMtuDiscovery(&Builder)) {
-                break;
-            }
-            FlushBatchedDatagrams = TRUE;
-            Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_DPLPMTUD;
-            if (Builder.Metadata->FrameCount < QUIC_MAX_FRAMES_PER_PACKET &&
-                Builder.DatagramLength < Builder.Datagram->Length - Builder.EncryptionOverhead) {
-                //
-                // We are doing DPLPMTUD, so make sure there is a PING frame in there, if
-                // we have room, just to make sure we get an ACK.
-                //
-                Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
-                Builder.Metadata->Frames[Builder.Metadata->FrameCount++].Type = QUIC_FRAME_PING;
-                WrotePacketFrames = TRUE;
-            } else {
-                WrotePacketFrames = FALSE;
-            }
         } else if (Stream != NULL ||
             (Stream = QuicSendGetNextStream(Send, &StreamPacketCount)) != NULL) {
             if (!QuicPacketBuilderPrepareForStreamFrames(

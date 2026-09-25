@@ -225,6 +225,33 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_PATH_STATUS` <br> 36 | QUIC_PATH_STATUS | Set-only | Mark a path active or backup, and tell the peer. Multipath only. See [QUIC_PARAM_CONN_PATH_STATUS](#quic_param_conn_path_status). |
 | `QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` <br> 37 | uint8_t (BOOLEAN) | Both | Set on client only. Must be set before start, and requires `QUIC_PARAM_CONN_SHARE_UDP_BINDING`. See [QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET](#quic_param_conn_unconnected_udp_socket). |
 | `QUIC_PARAM_CONN_PATH_STATISTICS` <br> 38 | QUIC_PATH_STATISTICS[] | Get-only | Network statistics for every path at once, one array entry per path. See [QUIC_PARAM_CONN_PATH_STATISTICS](#quic_param_conn_path_statistics). |
+| `QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH` <br> 39 | uint16_t | Both | The datagram payload length a path must already carry before it is used for sending. Zero, the default, means no requirement. See [QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH](#quic_param_conn_path_required_datagram_length). |
+
+### QUIC_PARAM_CONN_PATH_REQUIRED_DATAGRAM_LENGTH
+
+The datagram payload length a path must already be able to carry before the connection will send on it. Zero, the default, means no requirement and is how the connection behaved before this parameter existed.
+
+It exists for applications that promise their own callers a datagram size that never shrinks. Moving to a path that carries less would break that promise inside msquic, where the application cannot recover it, so the requirement keeps such a path out of use instead.
+
+**A payload length, not an MTU.** The two are not the same question. A path's datagram capacity is derived from its MTU, its address family and its connection ID length, and the same MTU carries twenty fewer bytes over IPv6 than over IPv4. A connection that moves from an IPv4 path to an IPv6 path of identical MTU loses those twenty bytes; comparing MTUs would not notice. The comparison here is against `QuicCalculateDatagramLength` for the path in question, the same arithmetic that produces the `MaxSendLength` reported by `QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED`, so the natural value to set is the `MaxSendLength` the application last saw.
+
+**A newly added path starts at `MinimumMtu` and has to be measured up to the requirement.** It is not held at that size: a validated path is probed even while it is held back, so it climbs towards `MaximumMtu` and is admitted once it can carry the required length. What the requirement costs is time, not reachability. A requirement above what `MaximumMtu` yields is the one that can never be satisfied.
+
+Any value is accepted, including such a one. There is nothing useful to bound it against: capacity depends on family and connection ID length as well as MTU, none of them settled when the parameter is usually set. A requirement nothing meets holds every path out of use, which the path statistics make visible.
+
+**The requirement filters; it does not drive.** A path is judged on the MTU it has already measured, and setting a requirement does not ask for any particular size to be reached. It does not stop the path being measured either: a validated path that is being held back is probed on the path itself, with a padded `PATH_CHALLENGE` rather than the usual PING, so it goes on converging while out of the rotation. Nothing announces the moment it becomes wide enough, so an application that wants to know watches `QUIC_PARAM_CONN_PATH_STATISTICS`.
+
+What happens to such a path depends on whether multipath was negotiated.
+
+**Without multipath**, `QUIC_PARAM_CONN_ACTIVATE_PATH` on it fails with `QUIC_STATUS_INVALID_STATE`. Activating an address with no path at all is refused for as long as any requirement is set: that branch creates the path and migrates onto it in one step, with no validation in between and so no point at which its capacity could be judged. Reaching a new address under a requirement means adding it with `QUIC_PARAM_CONN_ADD_PATH` and activating it once it has been validated and measured.
+
+**With multipath**, a path joins the send rotation the moment it completes validation, so that is where it is judged. A path below the requirement is left in the backup state rather than dropped, and `PATH_BACKUP` is sent so the peer stops treating it as available. `QUIC_CONNECTION_EVENT_PATH_ADDED` is still indicated: the path exists and works, it is only that the application will not send on one this narrow. `QUIC_PARAM_CONN_ACTIVATE_PATH` on it is refused as well.
+
+`QUIC_PARAM_CONN_LOCAL_ADDRESS` is a third way to move onto a path, and is held to the same requirement: it refuses a matching path that is too narrow, and refuses outright to create and migrate onto a new local address while any requirement is set.
+
+A path already being sent on is not re-judged: the requirement governs putting a path to use, so activating a path that is already active, or `Paths[0]`, is not refused. `Paths[0]` is what path selection falls back to when nothing is active, so refusing it would achieve nothing.
+
+Three things this does not do. `QUIC_PARAM_CONN_PATH_STATUS` is not gated — setting a path active through it works regardless, and is the deliberate escape hatch. A path left backup can still be promoted internally, by the fallback when the active path is removed or when another path finishes validating; see the caveat under [QUIC_PARAM_CONN_PATH_STATUS](#quic_param_conn_path_status). And migration driven by the peer is not gated either: when a peer starts sending from a new address, the connection follows it onto a path created at `MinimumMtu`, whatever the requirement says. That is the ordinary NAT rebind case, and refusing it would mean refusing to follow a peer that has moved.
 
 ### QUIC_PARAM_CONN_PATH_STATUS
 

@@ -717,6 +717,18 @@ typedef struct QUIC_CONNECTION {
     uint16_t KeepAlivePadding;
 
     //
+    // The datagram payload length a path must already be able to carry before
+    // it is used for sending. Zero means no requirement, which is the default
+    // and what every caller had before the parameter existed.
+    //
+    // A length rather than an MTU because the two are not the same question:
+    // the same MTU carries twenty fewer bytes over IPv6 than over IPv4, so a
+    // path that changes address family lowers the size the application sees
+    // without its MTU moving at all.
+    //
+    uint16_t PathRequiredDatagramLength;
+
+    //
     // Connection blocked timings.
     //
     struct {
@@ -1764,6 +1776,17 @@ QuicMtuDiscoveryCheckSearchCompleteTimeout(
         // passed.
         //
         QUIC_PATH* Path = &Connection->Paths[i];
+        //
+        // Active paths only. A non-active path is measured once, when the peer
+        // validates it -- see QuicSendPathMtuProbes, which carries those probes
+        // as padded PATH_CHALLENGEs so they do not read to the peer as a
+        // migration. Re-searching one on this timeout is not done, and that is
+        // a measurement rather than a guess: it was tried at both a 100ms and a
+        // 1s timeout and made the held-back path converge less often, not more.
+        // Restarting a search moves ProbeSize out from under the probes already
+        // in flight, so their acknowledgements no longer match and are dropped
+        // as out of order.
+        //
         if (!Path->IsActive || !Path->MtuDiscovery.IsSearchComplete) {
             continue;
         }

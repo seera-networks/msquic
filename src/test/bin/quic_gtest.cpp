@@ -976,6 +976,24 @@ TEST_P(WithFamilyArgs, PathStatistics) {
         QuicTestPathStatistics(GetParam());
     }
 }
+
+TEST_P(WithFamilyArgs, PathRequiredDatagramLength) {
+    TestLoggerT<ParamType> Logger("QuicTestPathRequiredDatagramLength", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestPathRequiredDatagramLength), GetParam()));
+    } else {
+        QuicTestPathRequiredDatagramLength(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, HeldBackPathIsMeasured) {
+    TestLoggerT<ParamType> Logger("QuicTestHeldBackPathIsMeasured", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestHeldBackPathIsMeasured), GetParam()));
+    } else {
+        QuicTestHeldBackPathIsMeasured(GetParam());
+    }
+}
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Mtu, Settings) {
