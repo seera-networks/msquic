@@ -250,6 +250,13 @@ QuicCryptoUninitialize(
         }
         Crypto->TlsState.NegotiatedAlpn = NULL;
     }
+    if (Crypto->TlsState.ClientAlpnList != NULL) {
+        if (Crypto->TlsState.ClientAlpnList != Crypto->TlsState.SmallAlpnBuffer) {
+            CXPLAT_FREE(Crypto->TlsState.ClientAlpnList, QUIC_POOL_ALPN);
+        }
+        Crypto->TlsState.ClientAlpnList = NULL;
+        Crypto->TlsState.ClientAlpnListLength = 0;
+    }
     if (Crypto->Initialized) {
         QuicRecvBufferUninitialize(&Crypto->RecvBuffer);
         QuicRangeUninitialize(&Crypto->SparseAckRanges);
@@ -3148,19 +3155,15 @@ QuicCryptoReNegotiateAlpn(
     CXPLAT_DBG_ASSERT(AlpnList != NULL);
     CXPLAT_DBG_ASSERT(AlpnListLength > 0);
 
-    const uint8_t* PrevNegotiatedAlpn = Connection->Crypto.TlsState.NegotiatedAlpn;
-    if (AlpnList[0] == PrevNegotiatedAlpn[0]) {
-        if (memcmp(AlpnList + 1, PrevNegotiatedAlpn + 1, AlpnList[0]) == 0) {
-            return QUIC_STATUS_SUCCESS;
-        }
-    }
-
     const uint8_t* NewNegotiatedAlpn = NULL;
+    const uint8_t* ClientAlpnList = Connection->Crypto.TlsState.ClientAlpnList;
+    uint16_t ClientAlpnListLength = Connection->Crypto.TlsState.ClientAlpnListLength;
+
     while (AlpnListLength != 0) {
         const uint8_t* Result =
             CxPlatTlsAlpnFindInList(
-                Connection->Crypto.TlsState.ClientAlpnListLength,
-                Connection->Crypto.TlsState.ClientAlpnList,
+                ClientAlpnListLength,
+                ClientAlpnList,
                 AlpnList[0],
                 AlpnList + 1);
         if (Result != NULL) {
@@ -3169,6 +3172,17 @@ QuicCryptoReNegotiateAlpn(
         }
         AlpnListLength -= AlpnList[0] + 1;
         AlpnList += AlpnList[0] + 1;
+    }
+    
+    //
+    // Checks against SmallAlpnBuffer before freeing.
+    //
+    if (Connection->Crypto.TlsState.ClientAlpnList != NULL) {
+        if (Connection->Crypto.TlsState.ClientAlpnList != Connection->Crypto.TlsState.SmallAlpnBuffer) {
+            CXPLAT_FREE(Connection->Crypto.TlsState.ClientAlpnList, QUIC_POOL_ALPN);
+        }
+        Connection->Crypto.TlsState.ClientAlpnList = NULL;
+        Connection->Crypto.TlsState.ClientAlpnListLength = 0;
     }
 
     if (NewNegotiatedAlpn == NULL) {
@@ -3183,13 +3197,7 @@ QuicCryptoReNegotiateAlpn(
         return QUIC_STATUS_INVALID_PARAMETER;
     }
 
-    //
-    // Free current ALPN buffer if it's allocated on heap.
-    //
-    if (Connection->Crypto.TlsState.NegotiatedAlpn != Connection->Crypto.TlsState.SmallAlpnBuffer) {
-        CXPLAT_FREE(Connection->Crypto.TlsState.NegotiatedAlpn, QUIC_POOL_ALPN);
-        Connection->Crypto.TlsState.NegotiatedAlpn = NULL;
-    }
+    CXPLAT_DBG_ASSERT(Connection->Crypto.TlsState.NegotiatedAlpn == NULL);
 
     uint8_t* NegotiatedAlpn = NULL;
     uint8_t NegotiatedAlpnLength = NewNegotiatedAlpn[0];

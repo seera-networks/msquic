@@ -537,31 +537,31 @@ QuicBindingAcceptConnection(
     }
 
     //
-    // Save the negotiated ALPN (starting with the length prefix) to be
-    // used later in building up the TLS response.
+    // Info->ClientAlpnList points into the crypto recv buffer, which can be
+    // freed before ALPN renegotiation, so own a copy here. Check if 
+    // the full list fits and use the preallocated buffer, allocate on the  heap otherwise. 
     //
-    uint16_t NegotiatedAlpnLength = 1 + Info->NegotiatedAlpn[-1];
-    uint8_t* NegotiatedAlpn;
-
-    if (NegotiatedAlpnLength <= TLS_SMALL_ALPN_BUFFER_SIZE) {
-        NegotiatedAlpn = Connection->Crypto.TlsState.SmallAlpnBuffer;
+    
+    uint8_t* ClientAlpnList;
+    if (Info->ClientAlpnListLength < TLS_SMALL_ALPN_BUFFER_SIZE) {
+        ClientAlpnList = Connection->Crypto.TlsState.SmallAlpnBuffer;
     } else {
-        NegotiatedAlpn = CXPLAT_ALLOC_NONPAGED(NegotiatedAlpnLength, QUIC_POOL_ALPN);
-        if (NegotiatedAlpn == NULL) {
+        ClientAlpnList = CXPLAT_ALLOC_NONPAGED(Info->ClientAlpnListLength, QUIC_POOL_ALPN);
+        if (ClientAlpnList == NULL) {
             QuicTraceEvent(
                 AllocFailure,
                 "Allocation of '%s' failed. (%llu bytes)",
-                "NegotiatedAlpn",
-                NegotiatedAlpnLength);
+                "ClientAlpnList",
+                Info->ClientAlpnListLength);
             QuicConnTransportError(
                 Connection,
                 QUIC_ERROR_INTERNAL_ERROR);
             goto Error;
         }
     }
-    CxPlatCopyMemory(NegotiatedAlpn, Info->NegotiatedAlpn - 1, NegotiatedAlpnLength);
-    Connection->Crypto.TlsState.NegotiatedAlpn = NegotiatedAlpn;
-    Connection->Crypto.TlsState.ClientAlpnList = Info->ClientAlpnList;
+
+    CxPlatCopyMemory(ClientAlpnList, Info->ClientAlpnList, Info->ClientAlpnListLength);
+    Connection->Crypto.TlsState.ClientAlpnList = ClientAlpnList;
     Connection->Crypto.TlsState.ClientAlpnListLength = Info->ClientAlpnListLength;
 
     //

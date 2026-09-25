@@ -506,16 +506,23 @@ QuicPathIDSetProcessAckFrame(
 
                 AckDelay <<= Connection->PeerTransportParams.AckDelayExponent;
 
-                QuicLossDetectionProcessAckBlocks(
-                    &PathID->LossDetection,
-                    PathID->Path,
-                    Packet,
-                    EncryptLevel,
-                    AckDelay,
-                    &Connection->DecodedAckRanges,
-                    InvalidFrame,
-                    (FrameType == QUIC_FRAME_ACK_1 ||
-                     FrameType == QUIC_FRAME_PATH_ACK_1) ? &Ecn : NULL);
+                if (!QuicLossDetectionProcessAckBlocks(
+                        &PathID->LossDetection,
+                        PathID->Path,
+                        Packet,
+                        EncryptLevel,
+                        AckDelay,
+                        &Connection->DecodedAckRanges,
+                        (FrameType == QUIC_FRAME_ACK_1 ||
+                         FrameType == QUIC_FRAME_PATH_ACK_1) ? &Ecn : NULL)) {
+                    //
+                    // It raises the transport error itself and returns the
+                    // acknowledged packets to the pool, so only the result is
+                    // propagated here -- InvalidFrame stays clear, matching
+                    // what upstream's QuicLossDetectionProcessAckFrame does.
+                    //
+                    Result = FALSE;
+                }
             }
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
         } else {
