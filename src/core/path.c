@@ -185,7 +185,7 @@ QuicPathSetAllowance(
     )
 {
     Path->Allowance = NewAllowance;
-    BOOLEAN IsBlocked = Path->Allowance < QUIC_MIN_SEND_ALLOWANCE;
+    BOOLEAN IsBlocked = Path->Allowance < QuicPathGetMinSendAllowance(Path);
 
     if (!Path->IsPeerValidated) {
         if (!IsBlocked) {

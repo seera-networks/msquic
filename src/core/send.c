@@ -1445,7 +1445,7 @@ QuicSendPathKeepAlives(
 
         QUIC_PATH* Path = &Connection->Paths[i];
         if (!Path->SendKeepAlive ||
-            Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
             continue;
         }
 
@@ -1513,7 +1513,7 @@ QuicSendPathChallenges(
 
         QUIC_PATH* Path = &Connection->Paths[i];
         if (!Connection->Paths[i].SendChallenge ||
-            Connection->Paths[i].Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            Connection->Paths[i].Allowance < QuicPathGetMinSendAllowance(Path)) {
             continue;
         }
 
@@ -1566,7 +1566,15 @@ QuicSendPathChallenges(
                 AvailableBufferLength,
                 Builder.Datagram->Buffer);
 
-        CXPLAT_DBG_ASSERT(Result);
+        //
+        // No assert on Result. QuicPathGetMinSendAllowance keeps amplification
+        // protection from squeezing the datagram below this frame at the
+        // connection ID lengths msquic itself picks, but a peer may choose a
+        // longer one and leave no room. Nothing is framed in that case, and
+        // QuicPacketBuilderFinalize undoes the header it wrote and marks the
+        // path amplification blocked. SendChallenge stays set, so the challenge
+        // goes out once there is allowance for it.
+        //
         if (Result) {
             CxPlatCopyMemory(
                 Builder.Metadata->Frames[0].PATH_CHALLENGE.Data,
@@ -1625,7 +1633,7 @@ QuicSendPathResponses(
 
         QUIC_PATH* Path = &Connection->Paths[i];
         if (!Path->SendResponse ||
-            Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
             continue;
         }
 
@@ -1678,7 +1686,12 @@ QuicSendPathResponses(
                 AvailableBufferLength,
                 Builder.Datagram->Buffer);
 
-        CXPLAT_DBG_ASSERT(Result);
+        //
+        // No assert on Result, for the same reason as in
+        // QuicSendPathChallenges: a long peer connection ID can leave an
+        // amplification-limited datagram with no room for the frame.
+        // SendResponse stays set so the response is retried.
+        //
         if (Result) {
             CxPlatCopyMemory(
                 Builder.Metadata->Frames[Builder.Metadata->FrameCount].PATH_RESPONSE.Data,
@@ -1847,7 +1860,7 @@ QuicSendFlush(
     uint32_t StreamPacketCount = 0;
     do {
 
-        if (Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+        if (Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
             QuicTraceLogConnVerbose(
                 AmplificationProtectionBlocked,
                 Connection,

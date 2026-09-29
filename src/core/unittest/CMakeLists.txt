@@ -3,6 +3,7 @@
 
 set(SOURCES
     main.cpp
+    AllowanceTest.cpp
     BbrTest.cpp
     CubicTest.cpp
     FrameTest.cpp
