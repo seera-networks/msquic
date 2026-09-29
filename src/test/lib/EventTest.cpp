@@ -377,6 +377,13 @@ QuicTestValidateConnectionEvents1(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -443,6 +450,13 @@ QuicTestValidateConnectionEvents2(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -509,6 +523,13 @@ QuicTestValidateConnectionEvents3(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetServerResumptionLevel(QUIC_SERVER_RESUME_ONLY).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -633,6 +654,13 @@ QuicTestValidateNetStatsConnEvent1(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetMinimumMtu(1280).SetMaximumMtu(1280);
     Settings.SetCongestionControlAlgorithm(QUIC_CONGESTION_CONTROL_ALGORITHM_BBR);
     Settings.SetNetStatsEventEnabled(true);
@@ -718,6 +746,13 @@ QuicTestValidateNetStatsConnEvent2(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetMinimumMtu(1280).SetMaximumMtu(1280);
     Settings.SetCongestionControlAlgorithm(QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC);
     Settings.SetNetStatsEventEnabled(true);
@@ -840,6 +875,13 @@ QuicTestValidateStreamEvents1(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -955,6 +997,13 @@ QuicTestValidateStreamEvents2(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1054,6 +1103,13 @@ QuicTestValidateStreamEvents3(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1191,6 +1247,13 @@ QuicTestValidateStreamEvents4(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1327,6 +1390,13 @@ QuicTestValidateStreamEvents5(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1443,6 +1513,13 @@ QuicTestValidateStreamEvents6(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1573,6 +1650,13 @@ QuicTestValidateStreamEvents7(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1697,6 +1781,13 @@ QuicTestValidateStreamEvents8(
     TestScopeLogger ScopeLogger(__FUNCTION__);
 
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
@@ -1835,6 +1926,13 @@ QuicTestValidateStreamEvents9(
 
 #ifdef QUIC_PARAM_STREAM_RELIABLE_OFFSET
     MsQuicSettings Settings;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    //
+    // The validators in these tests expect QUIC_CONNECTION_EVENT_PATH_VALIDATED,
+    // which is only indicated when the application asks for it.
+    //
+    Settings.SetPathValidatedEventEnabled(true);
+#endif
     Settings.SetPeerBidiStreamCount(1).SetMinimumMtu(1280).SetMaximumMtu(1280);
     Settings.SetReliableResetEnabled(true);
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);

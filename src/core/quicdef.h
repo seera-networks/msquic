@@ -592,6 +592,7 @@ CXPLAT_STATIC_ASSERT(
 // The default settings for allowing Network Statistics event to be raised.
 //
 #define QUIC_DEFAULT_NET_STATS_EVENT_ENABLED         FALSE
+#define QUIC_DEFAULT_PATH_VALIDATED_EVENT_ENABLED    FALSE
 
 //
 // The default settings for using multiple parallel receives for streams.
@@ -768,6 +769,7 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_SETTING_QTIP_ENABLED                   "QTIPEnabled"
 #define QUIC_SETTING_ONE_WAY_DELAY_ENABLED          "OneWayDelayEnabled"
 #define QUIC_SETTING_NET_STATS_EVENT_ENABLED        "NetStatsEventEnabled"
+#define QUIC_SETTING_PATH_VALIDATED_EVENT_ENABLED   "PathValidatedEventEnabled"
 #define QUIC_SETTING_STREAM_MULTI_RECEIVE_ENABLED   "StreamMultiReceiveEnabled"
 #define QUIC_SETTING_SERVER_MIGRATION_ENABLED       "ServerMigrationEnabled"
 #define QUIC_SETTING_ADD_ADDRESS_MODE               "AddAddressMode"

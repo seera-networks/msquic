@@ -867,7 +867,8 @@ typedef struct QUIC_SETTINGS {
             uint64_t SendObservedAddressReports             : 1;
             uint64_t ReceiveObservedAddressReports          : 1;
             uint64_t PathKeepAliveIntervalMs                : 1;
-            uint64_t RESERVED                               : 11;
+            uint64_t PathValidatedEventEnabled              : 1;
+            uint64_t RESERVED                               : 10;
 #else
             uint64_t RESERVED                               : 26;
 #endif
@@ -926,7 +927,8 @@ typedef struct QUIC_SETTINGS {
             uint64_t MultipathEnabled          : 1;
             uint64_t SendObservedAddressReports    : 1;
             uint64_t ReceiveObservedAddressReports : 1;
-            uint64_t ReservedFlags             : 50;
+            uint64_t PathValidatedEventEnabled : 1;
+            uint64_t ReservedFlags             : 49;
 #else
             uint64_t ReservedFlags             : 63;
 #endif
@@ -1441,7 +1443,7 @@ typedef enum QUIC_CONNECTION_EVENT_TYPE {
     QUIC_CONNECTION_EVENT_NETWORK_STATISTICS                = 18,   // Only indicated if QUIC_SETTINGS.EnableNetStatsEvent is TRUE.
     QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS           = 19,
     QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_ADDED       = 20,   // Only indicated if QUIC_SETTINGS.AddAddressMode is MANUAL
-    QUIC_CONNECTION_EVENT_PATH_VALIDATED                    = 21,
+    QUIC_CONNECTION_EVENT_PATH_VALIDATED                    = 21,   // Only indicated if QUIC_SETTINGS.PathValidatedEventEnabled is TRUE.
     QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED     = 22,   // Only indicated if QUIC_SETTINGS.AddAddressMode is MANUAL
     QUIC_CONNECTION_EVENT_PATH_ADDED                        = 23,   // Only indicated if QUIC_SETTINGS.MultipathEnabled is TRUE.
     QUIC_CONNECTION_EVENT_PATH_REMOVED                      = 24,   // Only indicated if QUIC_SETTINGS.MultipathEnabled is TRUE.
