@@ -859,6 +859,22 @@ TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingNetStatsEventEnabled,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for SettingPathValidatedEventEnabled
+// [sett] PathValidatedEvtEnabled= %hhu
+// QuicTraceLogVerbose(SettingPathValidatedEventEnabled,   "[sett] PathValidatedEvtEnabled= %hhu", Settings->PathValidatedEventEnabled);
+// arg2 = arg2 = Settings->PathValidatedEventEnabled = arg2
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingPathValidatedEventEnabled,
+    TP_ARGS(
+        unsigned char, arg2), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for SettingServerMigrationEnabled
 // [sett] ServerMigrationEnabled = %hhu
 // QuicTraceLogVerbose(SettingServerMigrationEnabled,      "[sett] ServerMigrationEnabled = %hhu", Settings->ServerMigrationEnabled);

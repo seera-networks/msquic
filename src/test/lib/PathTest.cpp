@@ -441,7 +441,14 @@ QuicTestAddPathBeforeStart(
     MsQuicRegistration Registration(true);
     TEST_TRUE(Registration.IsValid());
 
-    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
+    //
+    // Both sides wait on QUIC_CONNECTION_EVENT_PATH_VALIDATED below, which is
+    // only indicated when the application asks for it.
+    //
+    MsQuicSettings Settings;
+    Settings.SetPathValidatedEventEnabled(true);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
 
     if (DeferConnIDGen) {
@@ -454,7 +461,7 @@ QuicTestAddPathBeforeStart(
     }
 
     MsQuicCredentialConfig ClientCredConfig;
-    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientCredConfig);
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
     MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);

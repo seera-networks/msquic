@@ -174,6 +174,9 @@ QuicSettingsSetDefault(
     if (!Settings->IsSet.NetStatsEventEnabled) {
         Settings->NetStatsEventEnabled = QUIC_DEFAULT_NET_STATS_EVENT_ENABLED;
     }
+    if (!Settings->IsSet.PathValidatedEventEnabled) {
+        Settings->PathValidatedEventEnabled = QUIC_DEFAULT_PATH_VALIDATED_EVENT_ENABLED;
+    }
     if (!Settings->IsSet.StreamMultiReceiveEnabled) {
         Settings->StreamMultiReceiveEnabled = QUIC_DEFAULT_STREAM_MULTI_RECEIVE_ENABLED;
     }
@@ -373,6 +376,9 @@ QuicSettingsCopy(
     }
     if (!Destination->IsSet.NetStatsEventEnabled) {
         Destination->NetStatsEventEnabled = Source->NetStatsEventEnabled;
+    }
+    if (!Destination->IsSet.PathValidatedEventEnabled) {
+        Destination->PathValidatedEventEnabled = Source->PathValidatedEventEnabled;
     }
     if (!Destination->IsSet.StreamMultiReceiveEnabled) {
         Destination->StreamMultiReceiveEnabled = Source->StreamMultiReceiveEnabled;
@@ -799,6 +805,11 @@ QuicSettingApply(
     if (Source->IsSet.NetStatsEventEnabled && (!Destination->IsSet.NetStatsEventEnabled || OverWrite)) {
         Destination->NetStatsEventEnabled = Source->NetStatsEventEnabled;
         Destination->IsSet.NetStatsEventEnabled = TRUE;
+    }
+
+    if (Source->IsSet.PathValidatedEventEnabled && (!Destination->IsSet.PathValidatedEventEnabled || OverWrite)) {
+        Destination->PathValidatedEventEnabled = Source->PathValidatedEventEnabled;
+        Destination->IsSet.PathValidatedEventEnabled = TRUE;
     }
 
     if (Source->IsSet.StreamMultiReceiveEnabled && (!Destination->IsSet.StreamMultiReceiveEnabled || OverWrite)) {
@@ -1530,6 +1541,16 @@ VersionSettingsFail:
             &ValueLen);
         Settings->NetStatsEventEnabled = !!Value;
     }
+    if (!Settings->IsSet.PathValidatedEventEnabled) {
+        Value = QUIC_DEFAULT_PATH_VALIDATED_EVENT_ENABLED;
+        ValueLen = sizeof(Value);
+        CxPlatStorageReadValue(
+            Storage,
+            QUIC_SETTING_PATH_VALIDATED_EVENT_ENABLED,
+            (uint8_t*)&Value,
+            &ValueLen);
+        Settings->PathValidatedEventEnabled = !!Value;
+    }
     if (!Settings->IsSet.StreamMultiReceiveEnabled) {
         Value = QUIC_DEFAULT_STREAM_MULTI_RECEIVE_ENABLED;
         ValueLen = sizeof(Value);
@@ -1683,6 +1704,7 @@ QuicSettingsDump(
     QuicTraceLogVerbose(SettingQTIPEnabled,                 "[sett] QTIPEnabled            = %hhu", Settings->QTIPEnabled);
     QuicTraceLogVerbose(SettingOneWayDelayEnabled,          "[sett] OneWayDelayEnabled     = %hhu", Settings->OneWayDelayEnabled);
     QuicTraceLogVerbose(SettingNetStatsEventEnabled,        "[sett] NetStatsEventEnabled   = %hhu", Settings->NetStatsEventEnabled);
+    QuicTraceLogVerbose(SettingPathValidatedEventEnabled,   "[sett] PathValidatedEvtEnabled= %hhu", Settings->PathValidatedEventEnabled);
     QuicTraceLogVerbose(SettingServerMigrationEnabled,      "[sett] ServerMigrationEnabled = %hhu", Settings->ServerMigrationEnabled);
     QuicTraceLogVerbose(SettingAddAddress,                  "[sett] AddAddressMode         = %hhu", Settings->AddAddressMode);
     QuicTraceLogVerbose(SettingIgnoreUnreachable,           "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);
@@ -1858,6 +1880,9 @@ QuicSettingsDumpNew(
     }
     if (Settings->IsSet.NetStatsEventEnabled) {
         QuicTraceLogVerbose(SettingNetStatsEventEnabled,            "[sett] NetStatsEventEnabled       = %hhu", Settings->NetStatsEventEnabled);
+    }
+    if (Settings->IsSet.PathValidatedEventEnabled) {
+        QuicTraceLogVerbose(SettingPathValidatedEventEnabled,       "[sett] PathValidatedEvtEnabled    = %hhu", Settings->PathValidatedEventEnabled);
     }
     if (Settings->IsSet.StreamMultiReceiveEnabled) {
         QuicTraceLogVerbose(SettingStreamMultiReceiveEnabled,       "[sett] StreamMultiReceiveEnabled  = %hhu", Settings->StreamMultiReceiveEnabled);
@@ -2206,6 +2231,14 @@ QuicSettingsSettingsToInternal(
         SettingsSize,
         InternalSettings);
 
+    SETTING_COPY_FLAG_TO_INTERNAL_SIZED(
+        Flags,
+        PathValidatedEventEnabled,
+        QUIC_SETTINGS,
+        Settings,
+        SettingsSize,
+        InternalSettings);
+
     SETTING_COPY_TO_INTERNAL_SIZED(
         PathKeepAliveIntervalMs,
         QUIC_SETTINGS,
@@ -2441,6 +2474,14 @@ QuicSettingsGetSettings(
     SETTING_COPY_FLAG_FROM_INTERNAL_SIZED(
         Flags,
         ReceiveObservedAddressReports,
+        QUIC_SETTINGS,
+        Settings,
+        *SettingsLength,
+        InternalSettings);
+
+    SETTING_COPY_FLAG_FROM_INTERNAL_SIZED(
+        Flags,
+        PathValidatedEventEnabled,
         QUIC_SETTINGS,
         Settings,
         *SettingsLength,

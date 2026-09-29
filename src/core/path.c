@@ -235,15 +235,24 @@ QuicPathSetValid(
         Path->ID,
         Reason);
 
-    QUIC_CONNECTION_EVENT Event;
-    Event.Type = QUIC_CONNECTION_EVENT_PATH_VALIDATED;
-    Event.PATH_VALIDATED.LocalAddress = &Path->Route.LocalAddress;
-    Event.PATH_VALIDATED.RemoteAddress = &Path->Route.RemoteAddress;
-    QuicTraceLogConnVerbose(
-        IndicatePathValidated,
-        Connection,
-        "Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED");
-    (void)QuicConnIndicateEvent(Connection, &Event);
+    //
+    // Only indicated when the application asked for it. Every connection
+    // validates its initial path, so indicating this unconditionally delivers a
+    // fork-only event to applications built against an msquic that has no such
+    // event -- which is what broke the down-level tests, where a released test
+    // binary runs against this library and rejects the unknown event outright.
+    //
+    if (Connection->Settings.PathValidatedEventEnabled) {
+        QUIC_CONNECTION_EVENT Event;
+        Event.Type = QUIC_CONNECTION_EVENT_PATH_VALIDATED;
+        Event.PATH_VALIDATED.LocalAddress = &Path->Route.LocalAddress;
+        Event.PATH_VALIDATED.RemoteAddress = &Path->Route.RemoteAddress;
+        QuicTraceLogConnVerbose(
+            IndicatePathValidated,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED");
+        (void)QuicConnIndicateEvent(Connection, &Event);
+    }
 
     Path->IsPeerValidated = TRUE;
     QuicPathSetAllowance(Connection, Path, UINT32_MAX);

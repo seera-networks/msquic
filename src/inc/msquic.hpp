@@ -745,6 +745,7 @@ public:
     MsQuicSettings& SetQtipEnabled(bool value) { QTIPEnabled = value; IsSet.QTIPEnabled = TRUE; return *this; }
     MsQuicSettings& SetOneWayDelayEnabled(bool value) { OneWayDelayEnabled = value; IsSet.OneWayDelayEnabled = TRUE; return *this; }
     MsQuicSettings& SetNetStatsEventEnabled(bool value) { NetStatsEventEnabled = value; IsSet.NetStatsEventEnabled = TRUE; return *this; }
+    MsQuicSettings& SetPathValidatedEventEnabled(bool value) { PathValidatedEventEnabled = value; IsSet.PathValidatedEventEnabled = TRUE; return *this; }
     MsQuicSettings& SetStreamMultiReceiveEnabled(bool value) { StreamMultiReceiveEnabled = value; IsSet.StreamMultiReceiveEnabled = TRUE; return *this; }
     MsQuicSettings& SetServerMigrationEnabled(bool value) { ServerMigrationEnabled = value; IsSet.ServerMigrationEnabled = TRUE; return *this; }
     MsQuicSettings& SetIgnoreUnreachable(bool value) { IgnoreUnreachable = value; IsSet.IgnoreUnreachable = TRUE; return *this; }
