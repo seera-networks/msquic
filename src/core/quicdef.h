@@ -380,10 +380,21 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_MAX_IDEAL_SEND_BUFFER_SIZE         0x8000000 // 134217728
 
 //
-// The minimum number of bytes of send allowance we must have before we will
-// send another packet.
+// The minimum UDP payload we must be able to put on the wire before it is
+// worth building a packet at all: enough room for the encryption overhead, a
+// short header and a small control frame.
 //
-#define QUIC_MIN_SEND_ALLOWANCE                 76  // Magic number to indicate a threshold of 'enough' allowance to send another packet.
+#define QUIC_MIN_SEND_UDP_PAYLOAD_LENGTH        48
+
+//
+// The minimum number of bytes of send allowance we must have before we will
+// send another packet. The IP and UDP headers come out of the amplification
+// allowance along with the payload, so this depends on the address family: an
+// IPv6 header is 20 bytes larger than an IPv4 one, and a single number sized
+// for IPv4 lets through an IPv6 datagram too small to frame anything into.
+//
+#define QUIC_MIN_SEND_ALLOWANCE_FOR_FAMILY(Family) \
+    ((uint32_t)PacketSizeFromUdpPayloadSize((Family), QUIC_MIN_SEND_UDP_PAYLOAD_LENGTH))
 
 //
 // The minimum buffer space that we require before we will pack another

@@ -285,7 +285,7 @@ QuicLossDetectionUpdateTimer(
 
     QUIC_PATH* Path = &Connection->Paths[0]; // TODO - Is this right?
 
-    if (!Path->IsPeerValidated && Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+    if (!Path->IsPeerValidated && Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
         //
         // Sending is restricted for amplification protection.
         // Don't run the timer, because nothing can be sent when it fires.
