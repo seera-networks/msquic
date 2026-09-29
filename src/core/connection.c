@@ -6412,15 +6412,22 @@ QuicConnRecvDatagrams(
         }
     }
     if (!Connection->State.UpdateWorker && Connection->State.Connected &&
-        !Connection->State.ShutdownComplete && RecvState.UpdatePartitionId) {
+        !Connection->State.ShutdownComplete && RecvState.UpdatePartitionId &&
+        RecvState.PartitionIndex != QuicPartitionIdGetIndex(Connection->PartitionID)) {
         //
         // Packets were received on a different partition than the one assigned to the connection.
         // Migrate the connection to a new worker. New CIDs must be generated since the partition
         // id is encoded in the CID.
         //
+        // The index has to be compared here and not merely asserted. Path->PartitionUpdated
+        // limits this to once per path, not once per chain, and QuicConnRecvPostProcessing can
+        // promote a newly created path to active in the middle of one. A chain that spans two
+        // paths can therefore pick a partition twice and land back on the one the connection
+        // already has, which would migrate it to the worker it is already on and regenerate
+        // every source CID for nothing.
+        //
         CXPLAT_DBG_ASSERT(Connection->Registration);
         CXPLAT_DBG_ASSERT(!Connection->Registration->NoPartitioning);
-        CXPLAT_DBG_ASSERT(RecvState.PartitionIndex != QuicPartitionIdGetIndex(Connection->PartitionID));
         Connection->PartitionID = QuicPartitionIdCreate(RecvState.PartitionIndex);
         QuicPathIDSetGenerateNewSourceCids(&Connection->PathIDs, TRUE);
         Connection->State.UpdateWorker = TRUE;
