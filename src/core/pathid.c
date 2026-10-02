@@ -604,6 +604,19 @@ QuicPathIDReplaceRetiredCids(
                 "Non-active path has no replacement for retired CID.");
             CXPLAT_DBG_ASSERT(i != 0);
             CXPLAT_DBG_ASSERT(PathID->Connection->Paths[i].Binding != NULL);
+            //
+            // NOTE: this removal is wider than the path being removed, in the
+            // same way QuicPathIDSetTryFreePathID's was before it was narrowed
+            // -- QuicBindingRemoveAllSourceConnectionIDs drops the source CIDs
+            // of every path ID of the connection from this binding, and any
+            // other path sharing it (on a server, every path shares the
+            // listener's) still needs them. Left as it is because the right
+            // scope here is not this path ID's CIDs: the path is going away
+            // but its path ID is not, so the condition wanted is "no other
+            // path or bound address still uses this binding" -- and this
+            // branch, a non-active path running out of destination CIDs, is
+            // not one there is a reproduction for.
+            //
             if (!PathID->Connection->Paths[i].UseBound) {
                 QuicBindingRemoveAllSourceConnectionIDs(PathID->Connection->Paths[i].Binding, PathID->Connection);
             }

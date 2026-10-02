@@ -299,9 +299,33 @@ QuicPathIDSetTryFreePathID(
     QUIC_PATH* Path = QuicConnGetPathByID(Connection, PathID->Path->ID, &PathIndex);
     CXPLAT_DBG_ASSERT(PathID->Path == Path);
 
-    if (!Path->UseBound) {
-        QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
-    }
+    //
+    // Unregister this path ID's source CIDs -- and only this path ID's --
+    // before the binding is released.
+    //
+    // This used to call QuicBindingRemoveAllSourceConnectionIDs, which removes
+    // the source CIDs of EVERY path ID of the connection from the binding,
+    // while exactly one path ID is being retired here. On a server every path
+    // shares the listener's binding, so retiring one path ID unregistered the
+    // CIDs of all the live ones with it: a peer that then used one of those
+    // CIDs on a path it had just added found no match in the binding's lookup
+    // table, got a stateless reset in reply, and the connection went on
+    // sending keepalives nothing would ever acknowledge until its own loss
+    // detection closed it.
+    //
+    // QuicPathIDFreeSourceCids already does exactly the right thing -- this
+    // path ID's CIDs, removed from every binding each was registered with --
+    // so it is moved up here rather than a narrower copy being written beside
+    // it. It has to run before QuicLibraryReleaseBinding: each CID's hash
+    // entries carry their own binding pointer, and a release that dropped the
+    // last reference would leave them pointing at freed memory.
+    //
+    // The UseBound check went with the old call and is not needed: a path ID
+    // that is going away should leave no CIDs behind on any binding, which is
+    // what this does either way -- and what the call site at the end of this
+    // function did for the UseBound case already.
+    //
+    QuicPathIDFreeSourceCids(PathID);
     QuicLibraryReleaseBinding(Path->Binding);
     Path->Binding = NULL;
 
@@ -320,7 +344,6 @@ QuicPathIDSetTryFreePathID(
     PathIDSet->CurrentPathIDCount--;
 
     QuicLossDetectionReset(&PathID->LossDetection);
-    QuicPathIDFreeSourceCids(PathID);
     QuicPathIDRelease(PathID, QUIC_PATHID_REF_PATHID_SET);
 
     if (PathIDSet->CurrentPathIDCount < PathIDSet->MaxCurrentPathIDCount) {
