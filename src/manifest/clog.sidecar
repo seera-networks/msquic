@@ -12957,6 +12957,18 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "SettingPathValidatedEventEnabled": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] PathValidatedEvtEnabled= %hhu",
+      "UniqueId": "SettingPathValidatedEventEnabled",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "SettingQTIPEnabled": {
       "ModuleProperites": {},
       "TraceString": "[sett] QTIPEnabled            = %hhu",
@@ -19236,6 +19248,11 @@
         "UniquenessHash": "9ede3ef3-06f4-9d8a-7335-f95b1c93cfa9",
         "TraceID": "SettingOneWayDelayEnabled",
         "EncodingString": "[sett] OneWayDelayEnabled     = %hhu"
+      },
+      {
+        "UniquenessHash": "ee2b274e-8542-9c0a-a30e-6b886b1824b2",
+        "TraceID": "SettingPathValidatedEventEnabled",
+        "EncodingString": "[sett] PathValidatedEvtEnabled= %hhu"
       },
       {
         "UniquenessHash": "4b7db079-533f-22a0-d0d1-a19436940ebb",

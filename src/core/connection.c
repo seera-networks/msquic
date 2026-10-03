@@ -1916,6 +1916,35 @@ QuicConnStart(
         }
     }
 
+    if (ServerName == NULL) {
+        //
+        // If a server name is not provided, use the IP address for server certificate validation.
+        //
+        QUIC_ADDR_STR RemoteAddressString;
+        if (!QuicAddrIpToString(RemoteAddress, &RemoteAddressString)) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Failed to convert remote address to server name");
+            goto Exit;
+        }
+
+        const size_t ServerNameLength = strlen(RemoteAddressString.Address);
+        ServerName = CXPLAT_ALLOC_NONPAGED(ServerNameLength + 1, QUIC_POOL_SERVERNAME);
+        if (ServerName == NULL) {
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "Server name",
+                ServerNameLength + 1);
+            goto Exit;
+        }
+        CxPlatCopyMemory((char*)ServerName, RemoteAddressString.Address, ServerNameLength + 1);
+    }
+
     QuicAddrSetPort(RemoteAddress, ServerPort);
     QuicTraceEvent(
         ConnRemoteAddrAdded,
@@ -2835,8 +2864,6 @@ QuicConnSetConfiguration(
         if (QUIC_FAILED(Status)) {
             goto Cleanup;
         }
-        Connection->Crypto.TlsState.ClientAlpnList = NULL;
-        Connection->Crypto.TlsState.ClientAlpnListLength = 0;
     }
 
     Status = QuicConnGenerateLocalTransportParameters(Connection, &LocalTP);
@@ -4291,10 +4318,18 @@ QuicConnRecvHeader(
     // don't actually know the length of the packet number so we assume maximum
     // (per spec) and start sampling 4 bytes after the start of the packet number.
     //
-    CxPlatCopyMemory(
-        Cipher,
-        Packet->AvailBuffer + Packet->HeaderLength + 4,
-        CXPLAT_HP_SAMPLE_LENGTH);
+    if (Packet->Encrypted && Connection->State.HeaderProtectionEnabled) {
+        CxPlatCopyMemory(
+            Cipher,
+            Packet->AvailBuffer + Packet->HeaderLength + 4,
+            CXPLAT_HP_SAMPLE_LENGTH);
+    } else {
+        //
+        // For unencrypted short header packets, no header protection mask will be computed,
+        // so avoid reading an HP sample that may extend beyond the packet.
+        //
+        CxPlatZeroMemory(Cipher, CXPLAT_HP_SAMPLE_LENGTH);
+    }
 
     return TRUE;
 }
@@ -6782,15 +6817,22 @@ QuicConnRecvDatagrams(
         }
     }
     if (!Connection->State.UpdateWorker && Connection->State.Connected &&
-        !Connection->State.ShutdownComplete && RecvState.UpdatePartitionId) {
+        !Connection->State.ShutdownComplete && RecvState.UpdatePartitionId &&
+        RecvState.PartitionIndex != QuicPartitionIdGetIndex(Connection->PartitionID)) {
         //
         // Packets were received on a different partition than the one assigned to the connection.
         // Migrate the connection to a new worker. New CIDs must be generated since the partition
         // id is encoded in the CID.
         //
+        // The index has to be compared here and not merely asserted. Path->PartitionUpdated
+        // limits this to once per path, not once per chain, and QuicConnRecvPostProcessing can
+        // promote a newly created path to active in the middle of one. A chain that spans two
+        // paths can therefore pick a partition twice and land back on the one the connection
+        // already has, which would migrate it to the worker it is already on and regenerate
+        // every source CID for nothing.
+        //
         CXPLAT_DBG_ASSERT(Connection->Registration);
         CXPLAT_DBG_ASSERT(!Connection->Registration->NoPartitioning);
-        CXPLAT_DBG_ASSERT(RecvState.PartitionIndex != QuicPartitionIdGetIndex(Connection->PartitionID));
         Connection->PartitionID = QuicPartitionIdCreate(RecvState.PartitionIndex);
         QuicPathIDSetGenerateNewSourceCids(&Connection->PathIDs, TRUE);
         Connection->State.UpdateWorker = TRUE;

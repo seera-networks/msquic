@@ -154,6 +154,24 @@ tracepoint(CLOG_TLS_OPENSSL_C, OpenSslNoMatchingAlpn , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for OpenSslMissingTransportParameters
+// [conn][%p] No transport parameters received
+// QuicTraceLogConnError(
+                        OpenSslMissingTransportParameters,
+                        TlsContext->Connection,
+                        "No transport parameters received");
+// arg1 = arg1 = TlsContext->Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_OpenSslMissingTransportParameters
+#define _clog_3_ARGS_TRACE_OpenSslMissingTransportParameters(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_TLS_OPENSSL_C, OpenSslMissingTransportParameters , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for OpenSslBIOWriteError
 // [conn][%p] BIO_write failed, error: %d
 // QuicTraceLogConnError(
@@ -217,10 +235,10 @@ tracepoint(CLOG_TLS_OPENSSL_C, OpenSslSSLWriteError , arg1, arg3);\
 // Decoder Ring for OpenSslSSLReadError
 // [conn][%p] SSL_read failed, error: %d
 // QuicTraceLogConnError(
-                    OpenSslSSLReadError,
-                    TlsContext->Connection,
-                    "SSL_read failed, error: %d",
-                    Err);
+                OpenSslSSLReadError,
+                TlsContext->Connection,
+                "SSL_read failed, error: %d",
+                Err);
 // arg1 = arg1 = TlsContext->Connection = arg1
 // arg3 = arg3 = Err = arg3
 ----------------------------------------------------------*/

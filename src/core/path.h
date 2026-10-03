@@ -328,6 +328,22 @@ QuicPathGetDatagramPayloadSize(
             QuicAddrGetFamily(&Path->Route.RemoteAddress), Path->Mtu);
 }
 
+//
+// Returns the send allowance below which there is no point building a packet
+// for this path, because the IP and UDP headers would leave too little of it
+// for anything to be framed into.
+//
+QUIC_INLINE
+uint32_t
+QuicPathGetMinSendAllowance(
+    _In_ const QUIC_PATH* Path
+    )
+{
+    return
+        QUIC_MIN_SEND_ALLOWANCE_FOR_FAMILY(
+            QuicAddrGetFamily(&Path->Route.RemoteAddress));
+}
+
 typedef enum QUIC_PATH_VALID_REASON {
     QUIC_PATH_VALID_INITIAL_TOKEN,
     QUIC_PATH_VALID_HANDSHAKE_PACKET,

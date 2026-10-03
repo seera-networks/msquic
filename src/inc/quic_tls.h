@@ -176,7 +176,7 @@ typedef struct CXPLAT_TLS_CONFIG {
     uint16_t TPType;
 
     //
-    // Name of the server we are connecting to (client side only).
+    // Name of the server we are connecting to (required on client side).
     //
     const char* ServerName;
 

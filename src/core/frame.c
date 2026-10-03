@@ -46,6 +46,29 @@ QuicUint8tDecode(
     return TRUE;
 }
 
+//
+// The encoded length of an ACK frame's header. Kept next to the encoder below
+// so the two cannot drift, and used by QuicAckFrameEncode to size a whole
+// frame before it writes any of it.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static
+uint16_t
+QuicAckHeaderEncodedLength(
+    _In_ BOOLEAN MultipathNegotiated,
+    _In_ const QUIC_ACK_EX * const Frame
+    )
+{
+    return
+        (uint16_t)(
+        (MultipathNegotiated ? QuicVarIntSize(QUIC_FRAME_PATH_ACK) : sizeof(uint8_t)) +     // Type
+        (MultipathNegotiated ? QuicVarIntSize(Frame->PathId) : 0) +
+        QuicVarIntSize(Frame->LargestAcknowledged) +
+        QuicVarIntSize(Frame->AckDelay) +
+        QuicVarIntSize(Frame->AdditionalAckBlockCount) +
+        QuicVarIntSize(Frame->FirstAckBlock));
+}
+
 _Success_(return != FALSE)
 BOOLEAN
 QuicAckHeaderEncode(
@@ -57,13 +80,7 @@ QuicAckHeaderEncode(
     _Out_writes_to_(BufferLength, *Offset) uint8_t* Buffer
     )
 {
-    uint16_t RequiredLength =
-        (MultipathNegotiated ? QuicVarIntSize(QUIC_FRAME_PATH_ACK) : sizeof(uint8_t)) +     // Type
-        (MultipathNegotiated ? QuicVarIntSize(Frame->PathId) : 0) +
-        QuicVarIntSize(Frame->LargestAcknowledged) +
-        QuicVarIntSize(Frame->AckDelay) +
-        QuicVarIntSize(Frame->AdditionalAckBlockCount) +
-        QuicVarIntSize(Frame->FirstAckBlock);
+    uint16_t RequiredLength = QuicAckHeaderEncodedLength(MultipathNegotiated, Frame);
 
     if (BufferLength < *Offset + RequiredLength) {
         return FALSE;
@@ -230,6 +247,38 @@ QuicAckFrameEncode(
         i,                      // AdditionalAckBlockCount
         Count - 1               // FirstAckBlock
     };
+
+    //
+    // Size the whole frame before writing any of it. The header carries
+    // AdditionalAckBlockCount, so a block that turns out not to fit cannot be
+    // dropped once the header is down, and giving up from the middle of the
+    // frame leaves a partial one in the datagram with the offset already moved
+    // past it -- which is how this used to abort on the assert below.
+    //
+    uint32_t FrameLength = QuicAckHeaderEncodedLength(MultipathNegotiated, &Frame);
+    {
+        uint64_t BlockLargest = Largest;
+        uint64_t BlockCount = Count;
+        for (uint32_t j = i; j != 0; j--) {
+            BlockLargest -= BlockCount;
+            const QUIC_SUBRANGE* NextBlock = QuicRangeGet(AckBlocks, j - 1);
+            const uint64_t NextBlockLargest = QuicRangeGetHigh(NextBlock);
+            BlockCount = NextBlock->Count;
+            FrameLength +=
+                QuicVarIntSize((BlockLargest - NextBlockLargest) - 1) +
+                QuicVarIntSize(BlockCount - 1);
+            BlockLargest = NextBlockLargest;
+        }
+    }
+    if (Ecn != NULL) {
+        FrameLength +=
+            QuicVarIntSize(Ecn->ECT_0_Count) +
+            QuicVarIntSize(Ecn->ECT_1_Count) +
+            QuicVarIntSize(Ecn->CE_Count);
+    }
+    if ((uint32_t)*Offset + FrameLength > BufferLength) {
+        return FALSE;
+    }
 
     if (!QuicAckHeaderEncode(MultipathNegotiated, &Frame, Ecn, Offset, BufferLength, Buffer)) {
         return FALSE;
