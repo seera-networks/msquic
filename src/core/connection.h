@@ -30,6 +30,10 @@ typedef union QUIC_CONNECTION_STATE {
     uint64_t Flags;
     struct {
         BOOLEAN Allocated       : 1;    // Allocated. Used for Debugging.
+        BOOLEAN IsQMux          : 1;    // Connection created by QMux.
+        BOOLEAN TcpConnected    : 1;    // TCP connection established (QMux).
+        BOOLEAN PeerTPReceived  : 1;    // Peer transport parameters received (QMux).
+        BOOLEAN LocalTPSent     : 1;    // Local transport parameters sent (QMux).
         BOOLEAN Initialized     : 1;    // Initialized successfully. Used for Debugging.
         BOOLEAN Started         : 1;    // Handshake started.
         BOOLEAN Connected       : 1;    // Handshake completed.
@@ -429,6 +433,11 @@ typedef struct QUIC_CONNECTION {
     QUIC_CONNECTION_STATE State;
 
     //
+    // QMux-specific state. Only valid if State.IsQmux is true.
+    //
+    QUIC_QMUX* QMux;
+
+    //
     // The current worker thread ID. 0 if not being processed right now.
     //
     CXPLAT_THREAD_ID WorkerThreadID;
@@ -560,6 +569,7 @@ typedef struct QUIC_CONNECTION {
     // used.
     //
     QUIC_PATH Paths[QUIC_MAX_PATH_COUNT];
+
 
     CXPLAT_LIST_ENTRY BoundAddresses;
 
@@ -786,6 +796,34 @@ typedef struct QUIC_SERIALIZED_RESUMPTION_STATE {
 
 #define QuicConnAllocOperation(Connection, Type) \
     QuicOperationAlloc((Connection)->Partition, (Type))
+
+//
+// Helper to get the QMUX module.
+//
+QUIC_INLINE
+_Ret_notnull_
+QUIC_QMUX*
+QuicConnGetQMux(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    CXPLAT_DBG_ASSERT(Connection->State.IsQMux);
+    CXPLAT_DBG_ASSERT(Connection->QMux != NULL);
+    return Connection->QMux;
+}
+
+//
+// Helper to determine if a connection is for QMux.
+//
+QUIC_INLINE
+BOOLEAN
+QuicConnIsQMux(
+    _In_ const QUIC_CONNECTION * const Connection
+    )
+{
+    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): False positive: member pointer is valid.
+    return Connection->State.IsQMux;
+}
 
 //
 // Helper to determine if a connection is server side.
@@ -1026,11 +1064,36 @@ QuicConnAlloc(
     );
 
 //
+// Allocates and initializes a connection object for QMux.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Must_inspect_result_
+_Success_(return == QUIC_STATUS_SUCCESS)
+QUIC_STATUS
+QuicConnQMuxAlloc(
+    _In_ QUIC_REGISTRATION* Registration,
+    _In_ QUIC_PARTITION* Partition,
+    _In_opt_ QUIC_WORKER* Worker,
+    _In_ BOOLEAN IsServer,
+    _Outptr_ _At_(*NewConnection, __drv_allocatesMem(Mem))
+        QUIC_CONNECTION** NewConnection
+    );
+
+//
 // Called to free the memory for a connection.
 //
 _IRQL_requires_max_(DISPATCH_LEVEL)
 void
 QuicConnFree(
+    _In_ __drv_freesMem(Mem) QUIC_CONNECTION* Connection
+    );
+
+//
+// Called to free the memory for a QMux connection.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+void
+QuicConnQMuxFree(
     _In_ __drv_freesMem(Mem) QUIC_CONNECTION* Connection
     );
 
@@ -1124,7 +1187,11 @@ QuicConnRelease(
                 CXPLAT_DBG_ASSERT(Connection->RefTypeBiasedCount[i] == 1);
             }
 #endif
-            QuicConnFree(Connection);
+            if (!QuicConnIsQMux(Connection)) {
+                QuicConnFree(Connection);
+            } else {
+                QuicConnQMuxFree(Connection);
+            }
         }
     }
 }
@@ -1218,6 +1285,15 @@ QuicConnStart(
     _In_opt_z_ const char* ServerName,
     _In_ uint16_t ServerPort, // Host byte order
     _In_ QUIC_CONN_START_FLAGS StartFlags
+    );
+
+//
+// Completes a QMux client's connection start once the TCP connect has finished.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnQMuxCompleteStart(
+    _In_ QUIC_CONNECTION* Connection
     );
 
 //
@@ -1505,6 +1581,17 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicConnFlushDeferred(
     _In_ QUIC_CONNECTION* Connection
+    );
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnTryClose(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ uint32_t Flags,
+    _In_ uint64_t ErrorCode,
+    _In_reads_bytes_opt_(RemoteReasonPhraseLength)
+         const char* RemoteReasonPhrase,
+    _In_ uint16_t RemoteReasonPhraseLength
     );
 
 //

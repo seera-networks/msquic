@@ -33,9 +33,9 @@ extern "C" {
 // Decoder Ring for NoSrcCidAvailable
 // [conn][%p] No src CID to send with
 // QuicTraceLogConnWarning(
-            NoSrcCidAvailable,
-            Connection,
-            "No src CID to send with");
+                NoSrcCidAvailable,
+                Connection,
+                "No src CID to send with");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 #ifndef _clog_3_ARGS_TRACE_NoSrcCidAvailable
@@ -54,9 +54,9 @@ tracepoint(CLOG_PACKET_BUILDER_C, NoSrcCidAvailable , arg1);\
                 SkipPacketNumber,
                 Connection,
                 "Skipped packet number %llu",
-                Connection->Send.SkippedPacketNumber);
+                PathID->SkippedPacketNumber);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Send.SkippedPacketNumber = arg3
+// arg3 = arg3 = PathID->SkippedPacketNumber = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_4_ARGS_TRACE_SkipPacketNumber
 #define _clog_4_ARGS_TRACE_SkipPacketNumber(uniqueId, arg1, encoded_arg_string, arg3)\
@@ -69,11 +69,11 @@ tracepoint(CLOG_PACKET_BUILDER_C, SkipPacketNumber , arg1, arg3);\
 
 /*----------------------------------------------------------
 // Decoder Ring for GetPacketTypeFailure
-// [conn][%p] Failed to get packet type for control frames, 0x%x
+// [conn][%p] Failed to get packet type for control frames, 0x%llx
 // QuicTraceLogConnWarning(
         GetPacketTypeFailure,
         Builder->Connection,
-        "Failed to get packet type for control frames, 0x%x",
+        "Failed to get packet type for control frames, 0x%llx",
         SendFlags);
 // arg1 = arg1 = Builder->Connection = arg1
 // arg3 = arg3 = SendFlags = arg3
@@ -101,6 +101,28 @@ tracepoint(CLOG_PACKET_BUILDER_C, GetPacketTypeFailure , arg1, arg3);\
 #ifndef _clog_4_ARGS_TRACE_PacketBuilderSendBatch
 #define _clog_4_ARGS_TRACE_PacketBuilderSendBatch(uniqueId, arg1, encoded_arg_string, arg3)\
 tracepoint(CLOG_PACKET_BUILDER_C, PacketBuilderSendBatch , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PacketBuilderQMuxSendBatch
+// [conn][%p] Sending batch. %hu datagrams %u bytes
+// QuicTraceLogConnVerbose(
+        PacketBuilderQMuxSendBatch,
+        Builder->Connection,
+        "Sending batch. %hu datagrams %u bytes",
+        (uint16_t)Builder->TotalCountDatagrams,
+        Builder->TotalDatagramsLength);
+// arg1 = arg1 = Builder->Connection = arg1
+// arg3 = arg3 = (uint16_t)Builder->TotalCountDatagrams = arg3
+// arg4 = arg4 = Builder->TotalDatagramsLength = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_PacketBuilderQMuxSendBatch
+#define _clog_5_ARGS_TRACE_PacketBuilderQMuxSendBatch(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_PACKET_BUILDER_C, PacketBuilderQMuxSendBatch , arg1, arg3, arg4);\
 
 #endif
 
@@ -263,6 +285,24 @@ tracepoint(CLOG_PACKET_BUILDER_C, ConnPacketSent , arg2, arg3, arg4, arg5);\
 #ifndef _clog_3_ARGS_TRACE_PacketBatchSent
 #define _clog_3_ARGS_TRACE_PacketBatchSent(uniqueId, encoded_arg_string, arg2)\
 tracepoint(CLOG_PACKET_BUILDER_C, PacketBatchSent , arg2);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PacketEncryptQMux
+// [pack][%llu] Encrypting
+// QuicTraceEvent(
+            PacketEncryptQMux,
+            "[pack][%llu] Encrypting",
+            Builder->Metadata->PacketId);
+// arg2 = arg2 = Builder->Metadata->PacketId = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PacketEncryptQMux
+#define _clog_3_ARGS_TRACE_PacketEncryptQMux(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_PACKET_BUILDER_C, PacketEncryptQMux , arg2);\
 
 #endif
 

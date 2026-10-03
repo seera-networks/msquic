@@ -99,9 +99,9 @@ TRACEPOINT_EVENT(CLOG_PATHID_SET_C, ConnError,
 // QuicTraceEvent(
         ConnPathIDAdd,
         "[conn][%p] Added New PathID %u",
-        QuicPathIDSetGetConnection(PathIDSet),
+        Connection,
         PathID->ID);
-// arg2 = arg2 = QuicPathIDSetGetConnection(PathIDSet) = arg2
+// arg2 = arg2 = Connection = arg2
 // arg3 = arg3 = PathID->ID = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_PATHID_SET_C, ConnPathIDAdd,

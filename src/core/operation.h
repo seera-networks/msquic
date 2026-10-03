@@ -32,6 +32,9 @@ typedef enum QUIC_OPERATION_TYPE {
     QUIC_OPER_TYPE_TRACE_RUNDOWN,       // A trace rundown was triggered.
     QUIC_OPER_TYPE_ROUTE_COMPLETION,    // Process route completion event.
     QUIC_OPER_TYPE_REMOVE_ADDRESS,      // Process remove address frame.
+    QUIC_OPER_TYPE_FLUSH_TCP_RECV,      // Process queue of received TCP data.
+    QUIC_OPER_TYPE_TCP_DISCONNECT,      // Process TCP disconnect event.
+    QUIC_OPER_TYPE_TCP_CONNECT,         // Process TCP connect completion.
 
     //
     // All stateless operations follow.
