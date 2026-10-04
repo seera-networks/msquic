@@ -610,16 +610,9 @@ QuicPathIDReplaceRetiredCids(
             // from the binding only once nothing else uses it -- another path
             // sharing it is still reached through them.
             //
-            BOOLEAN IsCommonBinding = FALSE;
-            for (uint8_t j = 0; j < PathID->Connection->PathsCount; ++j) {
-                if (i != j &&
-                    PathID->Connection->Paths[i].Binding ==
-                        PathID->Connection->Paths[j].Binding) {
-                    IsCommonBinding = TRUE;
-                    break;
-                }
-            }
-            if (!PathID->Connection->Paths[i].UseBound && !IsCommonBinding) {
+            if (!PathID->Connection->Paths[i].UseBound &&
+                !QuicConnIsBindingShared(
+                    PathID->Connection, &PathID->Connection->Paths[i])) {
                 QuicBindingRemoveAllSourceConnectionIDs(PathID->Connection->Paths[i].Binding, PathID->Connection);
             }
             QuicLibraryReleaseBinding(PathID->Connection->Paths[i].Binding);

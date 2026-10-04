@@ -300,14 +300,24 @@ QuicPathIDSetTryFreePathID(
     CXPLAT_DBG_ASSERT(PathID->Path == Path);
 
     //
-    // Only this path ID's source CIDs. QuicBindingRemoveAllSourceConnectionIDs
-    // takes every path ID's off this binding, and on a server every path shares
-    // the listener's, so retiring one path ID unregistered the live ones' CIDs
-    // with it. This must run before the binding is released: each CID's hash
-    // entries hold their own binding pointer. No UseBound check -- a path ID
-    // going away should leave nothing behind on any binding.
+    // This path ID's own source CIDs, off every binding each was registered
+    // with. Must run before the binding is released: each CID's hash entries
+    // hold their own binding pointer.
     //
     QuicPathIDFreeSourceCids(PathID);
+
+    //
+    // That leaves the other path IDs' CIDs, which QuicBindingAddAllSourceConnectionIDs
+    // put on this binding too. Withdraw them only when no other path of the
+    // connection still holds the binding -- a path that does is still reached
+    // through them, which is what retiring one path ID used to break. When
+    // nothing else holds it the binding may be destroyed by the release below,
+    // and QuicLookupUninitialize asserts on a lookup that still has CIDs in it.
+    //
+    if (!Path->UseBound && !QuicConnIsBindingShared(Connection, Path)) {
+        QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
+    }
+
     QuicLibraryReleaseBinding(Path->Binding);
     Path->Binding = NULL;
 

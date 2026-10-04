@@ -399,6 +399,19 @@ QuicConnChoosePath(
     _In_ QUIC_CONNECTION* Connection
     );
 
+//
+// Whether another path of this connection holds the same binding. An
+// unconnected binding is matched on local port alone, so paths to different
+// remote addresses can share one, and the connection's source connection IDs
+// registered on it are how those paths are still reached.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnIsBindingShared(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path
+    );
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicCopyRouteInfo(

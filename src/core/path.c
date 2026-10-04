@@ -531,6 +531,22 @@ QuicConnChoosePath(
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnIsBindingShared(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path
+    )
+{
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Other = &Connection->Paths[i];
+        if (Other != Path && Other->Binding == Path->Binding) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathSetActive(
     _In_ QUIC_CONNECTION* Connection,
