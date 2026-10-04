@@ -559,6 +559,22 @@ QuicConnHasOtherUsablePath(
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
+_Ret_maybenull_
+QUIC_PATH*
+QuicConnGetPathForPathID(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATHID* PathID
+    )
+{
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].PathID == PathID) {
+            return &Connection->Paths[i];
+        }
+    }
+    return NULL;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicConnIsBindingShared(
     _In_ const QUIC_CONNECTION* Connection,

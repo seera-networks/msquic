@@ -2070,20 +2070,26 @@ QuicLossDetectionProcessTimerOperation(
         // whichever path is still alive. The connection only goes down with its
         // last usable path.
         //
+        //
+        // Looked up rather than taken from PathID->Path, which QuicPathRemove
+        // leaves behind when it detaches a path from a path ID that stays in
+        // the set -- a path validation timeout does exactly that.
+        //
         QUIC_PATHID* PathID = QuicLossDetectionGetPathID(LossDetection);
-        if (PathID->Path != NULL &&
-            QuicConnHasOtherUsablePath(Connection, PathID->Path)) {
+        QUIC_PATH* Path = QuicConnGetPathForPathID(Connection, PathID);
+        if (Path != NULL &&
+            QuicConnHasOtherUsablePath(Connection, Path)) {
             //
             // The packets stay outstanding on a path nothing comes back on, and
             // this timer fires for every path ID of the connection, so this is
             // reached again on every tick. Only the first one has work to do.
             //
-            if (!PathID->Path->LocalClose) {
+            if (!Path->LocalClose) {
                 QuicTraceLogConnInfo(
                     PathIDAbandonedOnTimeout,
                     Connection,
                     "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
-                    PathID->Path->ID,
+                    Path->ID,
                     PathID->ID);
                 QuicPathIDAbandonLocally(PathID);
             }

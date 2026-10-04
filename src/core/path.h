@@ -413,6 +413,20 @@ QuicConnHasOtherUsablePath(
     );
 
 //
+// Returns the path this path ID is currently attached to, or NULL if it has
+// none. QuicPathRemove clears the path's forward pointer to the path ID but
+// leaves PathID->Path behind, pointing at a slot that has since been shifted
+// or marked unused, so the forward pointers are the ones to trust.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Ret_maybenull_
+QUIC_PATH*
+QuicConnGetPathForPathID(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATHID* PathID
+    );
+
+//
 // Whether another path of this connection holds the same binding. An
 // unconnected binding is matched on local port alone, so paths to different
 // remote addresses can share one, and the connection's source connection IDs
