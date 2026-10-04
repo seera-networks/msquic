@@ -400,6 +400,19 @@ QuicConnChoosePath(
     );
 
 //
+// Whether any path other than the excluded one is still something
+// QuicConnChoosePath would send on -- including the state it requires before
+// it distributes at all. Uses the same test, so a TRUE answer means the
+// connection has somewhere to go without the excluded path.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnHasOtherUsablePath(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* ExcludedPath
+    );
+
+//
 // Whether another path of this connection holds the same binding. An
 // unconnected binding is matched on local port alone, so paths to different
 // remote addresses can share one, and the connection's source connection IDs

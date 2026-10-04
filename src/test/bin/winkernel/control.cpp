@@ -603,6 +603,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestServerProbePath);
     RegisterTestFunction(QuicTestServerMigration);
     RegisterTestFunction(QuicTestMultipath);
+    RegisterTestFunction(QuicTestMultipathPathDeath);
     RegisterTestFunction(QuicTestPathKeepAlive);
     RegisterTestFunction(QuicTestPathStatistics);
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES

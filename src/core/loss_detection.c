@@ -2061,13 +2061,40 @@ QuicLossDetectionProcessTimerOperation(
         // OldestPacket has been in the SentPackets list for at least
         // DisconnectTimeoutUs without an ACK for either OldestPacket or for any
         // packets sent more than the reordering threshold after it. Assume the
-        // path is dead and close the connection.
+        // path is dead.
         //
-        QuicConnCloseLocally(
-            Connection,
-            QUIC_CLOSE_INTERNAL_SILENT | QUIC_CLOSE_QUIC_STATUS,
-            (uint64_t)QUIC_STATUS_CONNECTION_TIMEOUT,
-            NULL);
+        // This loss detection belongs to one path ID, so with multipath a dead
+        // path is not a dead connection. Abandon the path instead and let the
+        // others carry the connection: QuicConnChoosePath stops selecting it
+        // the moment LocalClose is set, and the PATH_ABANDON frame rides out on
+        // whichever path is still alive. The connection only goes down with its
+        // last usable path.
+        //
+        QUIC_PATHID* PathID = QuicLossDetectionGetPathID(LossDetection);
+        if (PathID->Path != NULL &&
+            QuicConnHasOtherUsablePath(Connection, PathID->Path)) {
+            //
+            // The packets stay outstanding on a path nothing comes back on, and
+            // this timer fires for every path ID of the connection, so this is
+            // reached again on every tick. Only the first one has work to do.
+            //
+            if (!PathID->Path->LocalClose) {
+                QuicTraceLogConnInfo(
+                    PathIDAbandonedOnTimeout,
+                    Connection,
+                    "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+                    PathID->Path->ID,
+                    PathID->ID);
+                QuicPathIDAbandonLocally(PathID);
+            }
+
+        } else {
+            QuicConnCloseLocally(
+                Connection,
+                QUIC_CLOSE_INTERNAL_SILENT | QUIC_CLOSE_QUIC_STATUS,
+                (uint64_t)QUIC_STATUS_CONNECTION_TIMEOUT,
+                NULL);
+        }
 
     } else {
 

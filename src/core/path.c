@@ -532,6 +532,34 @@ QuicConnChoosePath(
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
+QuicConnHasOtherUsablePath(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* ExcludedPath
+    )
+{
+    if (!Connection->State.MultipathNegotiated ||
+        !Connection->State.HandshakeConfirmed) {
+        //
+        // QuicConnChoosePath returns Paths[0] regardless until both of these
+        // hold, so no other path is usable whatever its own flags say.
+        //
+        return FALSE;
+    }
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path != ExcludedPath &&
+            Path->IsActive &&
+            !Path->LocalClose &&
+            !Path->RemoteClose) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
 QuicConnIsBindingShared(
     _In_ const QUIC_CONNECTION* Connection,
     _In_ const QUIC_PATH* Path

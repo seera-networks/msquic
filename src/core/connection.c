@@ -5213,42 +5213,15 @@ QuicConnRecvFrames(
             }
 
             PathID->Path->RemoteClose = TRUE;
-            if (!PathID->Path->LocalClose) {
-                PathID->Path->LocalClose = TRUE;
-                PathID->Path->SendAbandon = TRUE;
-                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
 
-                QUIC_CONNECTION_EVENT Event;
-                Event.Type = QUIC_CONNECTION_EVENT_PATH_REMOVED;
-                Event.PATH_REMOVED.PeerAddress = &PathID->Path->Route.RemoteAddress;
-                Event.PATH_REMOVED.LocalAddress = &PathID->Path->Route.LocalAddress;
-                Event.PATH_REMOVED.PathId = PathID->ID;
-                QuicTraceLogConnVerbose(
-                    IndicatePathRemoved,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-                (void)QuicConnIndicateEvent(Connection, &Event);
-            }
-
+            //
+            // Read before abandoning, which does not touch LocalCloseAcked.
+            //
             if (PathID->Path->LocalCloseAcked) {
                 PathID->Flags.Abandoned = TRUE;
             }
 
-            if (!PathID->Flags.Closed) {
-                uint64_t ThreePto =
-                    QuicLossDetectionComputeProbeTimeout(
-                        &PathID->LossDetection,
-                        PathID->Path,
-                        3);
-                PathID->Flags.WaitClose = TRUE;
-                uint64_t TimeNow = CxPlatTimeUs64();
-                PathID->CloseTime = TimeNow + ThreePto;
-                QuicConnTimerSetEx(
-                    Connection,
-                    QUIC_CONN_TIMER_PATH_CLOSE,
-                    ThreePto,
-                    TimeNow);
-            }
+            QuicPathIDAbandonLocally(PathID);
 
             AckEliciting = TRUE;
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
