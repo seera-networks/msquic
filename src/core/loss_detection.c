@@ -2058,6 +2058,54 @@ QuicLossDetectionProcessTimerOperation(
         CxPlatTimeDiff64(OldestPacket->SentTime, TimeNow) >=
             MS_TO_US((uint64_t)Connection->Settings.DisconnectTimeoutMs)) {
         //
+        // **A path id with no path left is not evidence about the connection.**
+        // Loss detection is per path id here, but this remedy is not: it closes
+        // the whole connection. That is sound while the path id still has a path
+        // -- nothing arriving on the only way the peer can answer does mean the
+        // peer is gone -- and wrong once the path has been removed, because then
+        // no acknowledgement is *possible*. The packets sit in SentPackets with
+        // nowhere to be retransmitted and no ack that could ever retire them, so
+        // the first time this timer is processed afterwards they are, by
+        // construction, older than DisconnectTimeoutMs.
+        //
+        // A failed hole punch produces exactly that, and it is the common case
+        // rather than a corner: NAT traversal opens a path towards the address
+        // the peer advertised, pads a PATH_CHALLENGE to the path MTU, and
+        // `QuicConnPathValidationTimeout` abandons the path a few seconds later
+        // when nothing answers -- taking the path, and leaving the challenge.
+        // Neither it nor `QuicPathRemove` touches the path id's loss detection.
+        // In the field this closed an idle forwarded SSH session 53 seconds in
+        // while its relay path was carrying in both directions, with the whole
+        // connection reporting `in_flight=0` and `send_lost=0` because the only
+        // unacknowledgeable packet belonged to a path that had already gone.
+        //
+        // So: throw those packets away and let the connection carry on. The
+        // path id is left in place -- retiring one is the peer's business, by
+        // PATH_ABANDON -- but with nothing outstanding it stops being a fuse.
+        //
+        // `QuicLossDetectionReset` cancels QUIC_CONN_TIMER_LOSS_DETECTION,
+        // which is one timer for the whole connection even though loss
+        // detection is per path id, so this leaves the connection without one
+        // until the next `QuicLossDetectionOnPacketSent` re-arms it. That is
+        // the same clobbering every other per-path-id call to
+        // `QuicLossDetectionUpdateTimer` already does, and the alternative --
+        // re-arming from the earliest deadline across every path id -- is a
+        // change to how that timer is owned, not to this decision.
+        //
+        BOOLEAN PathIDStillHasAPath = FALSE;
+        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+            if (Connection->Paths[i].InUse &&
+                Connection->Paths[i].PathID == QuicLossDetectionGetPathID(LossDetection)) {
+                PathIDStillHasAPath = TRUE;
+                break;
+            }
+        }
+        if (!PathIDStillHasAPath) {
+            QuicLossDetectionReset(LossDetection);
+            return;
+        }
+
+        //
         // OldestPacket has been in the SentPackets list for at least
         // DisconnectTimeoutUs without an ACK for either OldestPacket or for any
         // packets sent more than the reordering threshold after it. Assume the
