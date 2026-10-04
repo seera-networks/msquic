@@ -1603,6 +1603,7 @@ struct PathDeathClientContext {
     CxPlatEvent PathAddedEvent;
     CxPlatEvent PathRemovedEvent;
     CxPlatEvent ShutdownEvent;
+    CxPlatEvent StreamCountEvent;
     MsQuicConnection* Connection {nullptr};
 
     static QUIC_STATUS ConnCallback(_In_ MsQuicConnection* Conn, _In_opt_ void* Context, _Inout_ QUIC_CONNECTION_EVENT* Event) {
@@ -1620,6 +1621,8 @@ struct PathDeathClientContext {
             Ctx->PathRemovedEvent.Set();
         } else if (Event->Type == QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED) {
             MsQuic->StreamClose(Event->PEER_STREAM_STARTED.Stream);
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE) {
+            Ctx->StreamCountEvent.Set();
         }
         return QUIC_STATUS_SUCCESS;
     }
@@ -1762,6 +1765,115 @@ QuicTestMultipathPathDeath(
     //
     const uint32_t PathDeathTimeout = 5000;
     TEST_TRUE(ClientContext.PathRemovedEvent.WaitTimeout(PathDeathTimeout));
+}
+
+void
+QuicTestMultipathPathValidationFailed(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    //
+    // Path validation waits max(3 PTO, 6 x InitialRtt), so a small initial RTT
+    // is what keeps this test short rather than any change in behaviour.
+    //
+    const uint32_t InitialRttMs = 50;
+
+    PathTestContext Context;
+    PathDeathClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE).SetInitialRttMs(InitialRttMs);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathDeathClientContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // Path validation only starts once the handshake is confirmed.
+    //
+    CxPlatSleep(100);
+
+    QuicAddr SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    //
+    // 255 drops in each direction, so neither the PATH_CHALLENGE nor the
+    // PATH_RESPONSE ever lands and validation runs out of time.
+    //
+    PathProbeHelper* ProbeHelper =
+        new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 255, 255);
+    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(
+            QUIC_PARAM_CONN_ADD_PATH,
+            sizeof(PathParam),
+            &PathParam);
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+            SecondLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 255, 255);
+        }
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    if (QUIC_FAILED(Status)) {
+        delete ProbeHelper;
+    }
+    TEST_QUIC_SUCCEEDED(Status);
+
+    //
+    // The path that never came up is abandoned, so the client indicates it
+    // removed. Without that it was taken out of the path array silently: no
+    // event, no PATH_ABANDON for the peer, and the path ID left in the set
+    // with nothing attached to it.
+    //
+    TEST_TRUE(ClientContext.PathRemovedEvent.WaitTimeout(TestWaitTimeout));
+
+    //
+    // Unlike the dead-path test, nothing here is working against a shortened
+    // disconnect timeout -- the original path is healthy throughout -- so the
+    // connection surviving is worth asserting, and so is it still carrying
+    // traffic afterwards.
+    //
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    MsQuicSettings UpdatedSettings;
+    Context.Connection->GetSettings(&UpdatedSettings);
+    UpdatedSettings.IsSetFlags = 0;
+    UpdatedSettings.SetPeerBidiStreamCount(UpdatedSettings.PeerBidiStreamCount + 1);
+    Context.Connection->SetSettings(UpdatedSettings);
+    TEST_TRUE(ClientContext.StreamCountEvent.WaitTimeout(TestWaitTimeout));
+
+    delete ProbeHelper;
 }
 
 #endif

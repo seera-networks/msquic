@@ -968,6 +968,15 @@ TEST_P(WithFamilyArgs, MultipathPathDeath) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathPathValidationFailed) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathValidationFailed", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathValidationFailed), GetParam()));
+    } else {
+        QuicTestMultipathPathValidationFailed(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, PathKeepAlive) {
     TestLoggerT<ParamType> Logger("QuicTestPathKeepAlive", GetParam());
     if (TestingKernelMode) {
