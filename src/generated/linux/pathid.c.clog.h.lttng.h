@@ -43,9 +43,9 @@ TRACEPOINT_EVENT(CLOG_PATHID_C, NonActivePathCidRetired,
 // Decoder Ring for IndicatePathRemoved
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED
 // QuicTraceLogConnVerbose(
-            IndicatePathRemoved,
-            Connection,
-            "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
+        IndicatePathRemoved,
+        Connection,
+        "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_PATHID_C, IndicatePathRemoved,

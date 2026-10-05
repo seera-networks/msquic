@@ -331,13 +331,13 @@ tracepoint(CLOG_LOSS_DETECTION_C, ScheduleProbe , arg1, arg3);\
 // Decoder Ring for PathIDAbandonedOnTimeout
 // [conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection
 // QuicTraceLogConnInfo(
-                PathIDAbandonedOnTimeout,
-                Connection,
-                "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
-                PathID->Path->ID,
-                PathID->ID);
+                    PathIDAbandonedOnTimeout,
+                    Connection,
+                    "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+                    Path->ID,
+                    PathID->ID);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = PathID->Path->ID = arg3
+// arg3 = arg3 = Path->ID = arg3
 // arg4 = arg4 = PathID->ID = arg4
 ----------------------------------------------------------*/
 #ifndef _clog_5_ARGS_TRACE_PathIDAbandonedOnTimeout
@@ -361,24 +361,6 @@ tracepoint(CLOG_LOSS_DETECTION_C, PathIDAbandonedOnTimeout , arg1, arg3, arg4);\
 #ifndef _clog_3_ARGS_TRACE_KeyChangeConfirmed
 #define _clog_3_ARGS_TRACE_KeyChangeConfirmed(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_LOSS_DETECTION_C, KeyChangeConfirmed , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for IndicatePathRemoved
-// [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED
-// QuicTraceLogConnVerbose(
-                    IndicatePathRemoved,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_IndicatePathRemoved
-#define _clog_3_ARGS_TRACE_IndicatePathRemoved(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_LOSS_DETECTION_C, IndicatePathRemoved , arg1);\
 
 #endif
 

@@ -654,20 +654,26 @@ QuicLossDetectionOnPacketAcknowledged(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             if (PathID != NULL) {
-                PathID->Path->LocalCloseAcked = TRUE;
+                //
+                // Looked up rather than taken from PathID->Path: once the path
+                // is detached that still points at the slot, which another path
+                // may have shifted into, and these flags belong to the path
+                // this acknowledgement is about.
+                //
+                QUIC_PATH* AbandonedPath =
+                    QuicConnGetPathForPathID(Connection, PathID);
+                if (AbandonedPath != NULL) {
+                    AbandonedPath->LocalCloseAcked = TRUE;
+                }
 
-                QUIC_CONNECTION_EVENT Event;
-                Event.Type = QUIC_CONNECTION_EVENT_PATH_REMOVED;
-                Event.PATH_REMOVED.PeerAddress = &PathID->Path->Route.RemoteAddress;
-                Event.PATH_REMOVED.LocalAddress = &PathID->Path->Route.LocalAddress;
-                Event.PATH_REMOVED.PathId = PathID->ID;
-                QuicTraceLogConnVerbose(
-                    IndicatePathRemoved,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-                (void)QuicConnIndicateEvent(Connection, &Event);
+                //
+                // The peer has confirmed the path is gone. Whoever abandoned it
+                // may already have reported it, so this only reports a removal
+                // the application has not been told about yet.
+                //
+                QuicPathIDIndicatePathRemoved(PathID);
 
-                if (PathID->Path->RemoteClose) {
+                if (AbandonedPath != NULL && AbandonedPath->RemoteClose) {
                     PathID->Flags.Abandoned = TRUE;
                     QuicPathIDSetTryFreePathID(&Connection->PathIDs, PathID);
                 }
