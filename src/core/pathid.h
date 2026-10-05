@@ -16,6 +16,17 @@ typedef union QUIC_PATHID_FLAGS {
         BOOLEAN InPathIDTable           : 1;    // The path id is currently in the connection's table.
         BOOLEAN InUse                   : 1;    // The path id is currently in use.
         BOOLEAN Abandoned               : 1;
+        //
+        // A PATH_ABANDON for this path ID needs to go out.
+        //
+        // On the path ID and not the path, because the path may not exist. A
+        // path ID the peer opened towards us and never got a packet through
+        // on has no QUIC_PATH bound, and that is exactly the case that has to
+        // be able to answer an abandon: without the answer the peer never
+        // sets its own Abandoned, never frees the path ID, and never gets its
+        // QUIC_PATH slot back.
+        //
+        BOOLEAN SendAbandon             : 1;
         BOOLEAN WaitClose               : 1;    
         BOOLEAN Closed                  : 1;    
         BOOLEAN Started                 : 1;    // The path id has started.
@@ -473,6 +484,24 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicPathIDAssignCids(
     _In_ QUIC_PATHID* PathID
+    );
+
+//
+// Writes a PATH_ABANDON frame for this path ID, if it has one waiting.
+//
+// Takes the same shape as QuicPathIDWriteNewConnectionIDFrame below: every
+// path ID is visited even once the packet is full, so each can say it still
+// has something to send and the caller keeps the send flag raised.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
+QuicPathIDWritePathAbandonFrame(
+    _In_ QUIC_PATHID* PathID,
+    _Inout_ QUIC_PACKET_BUILDER* Builder,
+    _In_ uint16_t AvailableBufferLength,
+    _Inout_ BOOLEAN* HasMoreToSend,
+    _Inout_ BOOLEAN* MaxFrameLimitHit,
+    _In_ BOOLEAN NoRoom
     );
 
 _IRQL_requires_max_(DISPATCH_LEVEL)

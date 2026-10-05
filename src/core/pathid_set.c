@@ -273,6 +273,41 @@ QuicPathIDSetProcessPathCloseTimerOperation(
         QuicPathIDProcessPathCloseTimerOperation(PathIDs[i]);
         QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
     }
+
+    //
+    // Re-arm for whichever close is now the earliest still pending.
+    //
+    // QuicConnTimerSetEx overwrites the expiration rather than keeping the
+    // earlier one, so two path IDs waiting at once leave only the deadline of
+    // whichever armed last. If that one is the shorter it fires, closes its own
+    // path ID, and nothing here used to wake the other again -- it stayed
+    // WaitClose for the life of the connection and was never freed, which is
+    // the leak this whole change is about. Every path ID's close is now driven
+    // from the earliest remaining deadline instead of from whoever armed last.
+    //
+    QUIC_CONNECTION* Connection = QuicPathIDSetGetConnection(PathIDSet);
+    uint64_t EarliestCloseTime = UINT64_MAX;
+
+    PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+    QuicPathIDSetGetPathIDs(PathIDSet, PathIDs, &PathIDCount);
+    for (uint8_t i = 0; i < PathIDCount; i++) {
+        if (PathIDs[i]->Flags.WaitClose &&
+            PathIDs[i]->CloseTime < EarliestCloseTime) {
+            EarliestCloseTime = PathIDs[i]->CloseTime;
+        }
+        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+    }
+
+    if (EarliestCloseTime == UINT64_MAX) {
+        QuicConnTimerCancel(Connection, QUIC_CONN_TIMER_PATH_CLOSE);
+    } else {
+        const uint64_t TimeNow = CxPlatTimeUs64();
+        QuicConnTimerSetEx(
+            Connection,
+            QUIC_CONN_TIMER_PATH_CLOSE,
+            EarliestCloseTime > TimeNow ? EarliestCloseTime - TimeNow : 0,
+            TimeNow);
+    }
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -294,34 +329,48 @@ QuicPathIDSetTryFreePathID(
         Connection,
         PathID->ID);
 
-    CXPLAT_DBG_ASSERT(PathID->Path != NULL);
-    uint8_t PathIndex;
-    QUIC_PATH* Path = QuicConnGetPathByID(Connection, PathID->Path->ID, &PathIndex);
-    CXPLAT_DBG_ASSERT(PathID->Path == Path);
-
     //
     // This path ID's own source CIDs, off every binding each was registered
     // with. Must run before the binding is released: each CID's hash entries
-    // hold their own binding pointer.
+    // hold their own binding pointer. It runs whether or not a path was ever
+    // bound, because QuicBindingAddAllSourceConnectionIDs puts every path ID's
+    // CIDs on every binding the connection acquires, so one that never got a
+    // path still has entries to withdraw.
     //
     QuicPathIDFreeSourceCids(PathID);
 
     //
-    // That leaves the other path IDs' CIDs, which QuicBindingAddAllSourceConnectionIDs
-    // put on this binding too. Withdraw them only when no other path of the
-    // connection still holds the binding -- a path that does is still reached
-    // through them, which is what retiring one path ID used to break. When
-    // nothing else holds it the binding may be destroyed by the release below,
-    // and QuicLookupUninitialize asserts on a lookup that still has CIDs in it.
+    // A path ID with no path still has to be freed, and everything below here
+    // is about the path. One the peer opened towards us and never got a packet
+    // through on never had a QUIC_PATH bound: no binding to release and no slot
+    // to give back, but the path ID is as spent as any other and holds
+    // CurrentPathIDCount up. That count decides whether MaxPathID rises and a
+    // MAX_PATH_ID frame goes out, so keeping it stops the peer opening new path
+    // IDs at all -- its QuicPathIDSetNewLocalPathID answers
+    // QUIC_STATUS_PATHID_LIMIT_REACHED while nothing looks wrong.
     //
-    if (!Path->UseBound && !QuicConnIsBindingShared(Connection, Path)) {
-        QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
+    if (PathID->Path != NULL) {
+        uint8_t PathIndex;
+        QUIC_PATH* Path = QuicConnGetPathByID(Connection, PathID->Path->ID, &PathIndex);
+        CXPLAT_DBG_ASSERT(PathID->Path == Path);
+
+        //
+        // That leaves the other path IDs' CIDs, which QuicBindingAddAllSourceConnectionIDs
+        // put on this binding too. Withdraw them only when no other path of the
+        // connection still holds the binding -- a path that does is still reached
+        // through them, which is what retiring one path ID used to break. When
+        // nothing else holds it the binding may be destroyed by the release below,
+        // and QuicLookupUninitialize asserts on a lookup that still has CIDs in it.
+        //
+        if (!Path->UseBound && !QuicConnIsBindingShared(Connection, Path)) {
+            QuicBindingRemoveAllSourceConnectionIDs(Path->Binding, Connection);
+        }
+
+        QuicLibraryReleaseBinding(Path->Binding);
+        Path->Binding = NULL;
+
+        QuicPathRemove(Connection, PathIndex);
     }
-
-    QuicLibraryReleaseBinding(Path->Binding);
-    Path->Binding = NULL;
-
-    QuicPathRemove(Connection, PathIndex);
 
     PathID->Flags.InPathIDTable = FALSE;
 
@@ -382,6 +431,45 @@ QuicPathIDSetGenerateNewSourceCids(
         QuicPathIDGenerateNewSourceCids(PathIDs[i], ReplaceExistingCids);
         QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
     }
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
+QuicPathIDSetWritePathAbandonFrame(
+    _In_ QUIC_PATHID_SET* PathIDSet,
+    _Inout_ QUIC_PACKET_BUILDER* Builder,
+    _In_ uint16_t AvailableBufferLength,
+    _Out_ BOOLEAN* HasMoreToSend,
+    _Out_ BOOLEAN* MaxFrameLimitHit
+    )
+{
+    BOOLEAN HaveRoom = TRUE;
+    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+    QuicPathIDSetGetPathIDs(PathIDSet, PathIDs, &PathIDCount);
+
+    //
+    // Walked over the path ID set rather than Connection->Paths, which is
+    // what this used to do. A path ID whose QUIC_PATH was never bound -- one
+    // the peer opened towards us and never got a packet through on -- is
+    // absent from Paths and so was never asked whether it had an abandon to
+    // send. It is the one that most needs to answer: see SendAbandon's
+    // comment in pathid.h.
+    //
+    *HasMoreToSend = FALSE;
+    *MaxFrameLimitHit = FALSE;
+    for (uint8_t i = 0; i < PathIDCount; i++) {
+        HaveRoom = QuicPathIDWritePathAbandonFrame(
+            PathIDs[i],
+            Builder,
+            AvailableBufferLength,
+            HasMoreToSend,
+            MaxFrameLimitHit,
+            !HaveRoom);
+        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+    }
+
+    return HaveRoom;
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
