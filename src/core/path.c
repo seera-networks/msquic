@@ -100,37 +100,100 @@ QuicPathRemove(
         return FALSE;
     }
 
+    BOOLEAN CloseWithNowhereToGo = FALSE;
+
     if (Index == 0) {
         //
-        // Removing the active path while other paths exist. Promote the best
-        // available fallback: prefer a peer-validated path, otherwise accept
-        // any path.
+        // Removing the active path while other paths exist. Whatever is
+        // promoted has to be something QuicPathSetActive accepts and the
+        // connection can actually send on, so a candidate needs a destination
+        // CID that is not retired, a path ID (QuicPathSetActive resets its
+        // congestion control), and no close in progress. Prefer a peer
+        // validated path among those, take any of them otherwise.
         //
-        uint8_t FallbackIndex = 1;
+        // This used to select on IsPeerValidated alone and default to index 1,
+        // which promoted whatever sat there -- including a path still waiting
+        // for its first CID -- and then asserted one call later in
+        // QuicPathSetActive. QuicConnRemovePath has always tested the
+        // destination CID before calling here; the two disagreed.
+        //
+        uint8_t FallbackIndex = Connection->PathsCount;
         for (uint8_t j = 1; j < Connection->PathsCount; ++j) {
-            if (Connection->Paths[j].IsPeerValidated) {
+            const QUIC_PATH* Candidate = &Connection->Paths[j];
+            if (Candidate->PathID == NULL ||
+                Candidate->LocalClose ||
+                Candidate->RemoteClose ||
+                Candidate->DestCid == NULL ||
+                Candidate->DestCid->CID.Retired) {
+                continue;
+            }
+            if (Candidate->IsPeerValidated) {
                 FallbackIndex = j;
                 break;
             }
+            if (FallbackIndex == Connection->PathsCount) {
+                FallbackIndex = j;
+            }
         }
-        QuicTraceLogConnInfo(
-            PathActiveFallback,
-            Connection,
-            "Path[%hhu] removed; falling back to Path[%hhu]",
-            Path->ID,
-            Connection->Paths[FallbackIndex].ID);
-        QuicPathSetActive(Connection, &Connection->Paths[FallbackIndex]);
-        //
-        // In non-multipath mode QuicPathSetActive swaps Paths[0] and
-        // Paths[FallbackIndex], so the path being removed now lives at
-        // FallbackIndex and we remove it there. In multipath mode no swap
-        // happens (QuicPathSetActive only sets the new path's IsActive flag),
-        // so the path being removed is still at index 0 and Index must stay 0
-        // -- otherwise we would remove the just-promoted fallback path instead,
-        // leaking its UDP binding.
-        //
-        if (!Connection->State.MultipathNegotiated) {
-            Index = FallbackIndex;
+
+        if (FallbackIndex != Connection->PathsCount) {
+            QuicTraceLogConnInfo(
+                PathActiveFallback,
+                Connection,
+                "Path[%hhu] removed; falling back to Path[%hhu]",
+                Path->ID,
+                Connection->Paths[FallbackIndex].ID);
+            QuicPathSetActive(Connection, &Connection->Paths[FallbackIndex]);
+            //
+            // In non-multipath mode QuicPathSetActive swaps Paths[0] and
+            // Paths[FallbackIndex], so the path being removed now lives at
+            // FallbackIndex and we remove it there. In multipath mode no swap
+            // happens (QuicPathSetActive only sets the new path's IsActive
+            // flag), so the path being removed is still at index 0 and Index
+            // must stay 0 -- otherwise we would remove the just-promoted
+            // fallback path instead, leaking its UDP binding.
+            //
+            if (!Connection->State.MultipathNegotiated) {
+                Index = FallbackIndex;
+            }
+
+        } else if (Connection->State.MultipathNegotiated) {
+            //
+            // Nothing worth promoting, and under multipath nothing needs to be:
+            // several paths carry IsActive at once, QuicConnChoosePath picks
+            // among them, and the one going away drops out of that set by being
+            // removed. Raising IsActive on a path that cannot be sent on would
+            // only give QuicConnChoosePath a candidate it then filters out.
+            //
+            QuicTraceLogConnInfo(
+                PathActiveFallbackNone,
+                Connection,
+                "Path[%hhu] removed; no path to promote",
+                Path->ID);
+
+        } else {
+            //
+            // Without multipath there is exactly one active path and nothing
+            // able to take over, so the connection has nowhere left to send.
+            //
+            // The removal still has to happen before closing. Callers release
+            // this path's binding before calling whenever PathsCount > 1 and
+            // rely on the slot being gone; returning early would leave an
+            // InUse, IsActive Paths[0] with a NULL binding for the rest of the
+            // operation batch, which a flush in that same batch would
+            // dereference.
+            //
+            // QuicConnRemovePath handles its own version of this case by moving
+            // the departing path's destination CID to the survivor instead,
+            // which can keep the connection alive. Doing that here would change
+            // every QuicPathRemove caller's behaviour, so it is left alone.
+            //
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "No path to fall back to");
+            CloseWithNowhereToGo = TRUE;
         }
     }
 
@@ -173,6 +236,15 @@ QuicPathRemove(
     Connection->PathsCount--;
     // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): False positive: new index is valid.
     Connection->Paths[Connection->PathsCount].InUse = FALSE;
+
+    if (CloseWithNowhereToGo && !Connection->State.ClosedLocally) {
+        QuicConnCloseLocally(
+            Connection,
+            QUIC_CLOSE_INTERNAL_SILENT | QUIC_CLOSE_QUIC_STATUS,
+            (uint64_t)QUIC_STATUS_UNREACHABLE,
+            NULL);
+    }
+
     return TRUE;
 }
 
