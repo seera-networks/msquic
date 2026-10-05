@@ -435,6 +435,21 @@ QuicConnGetPathForPacket(
         return &Connection->Paths[i];
     }
 
+    if (PathID->Flags.Abandoned ||
+        PathID->Flags.WaitClose ||
+        PathID->Flags.Closed) {
+        //
+        // A path ID on its way out gets no path. A late or reordered packet
+        // can arrive after both ends have declared the path ID dead -- the
+        // receive side answers a PATH_ABANDON for a path ID with no path and
+        // sets Abandoned there -- and attaching one here would allocate a
+        // slot, initialize congestion control and make the path selectable
+        // for sending, only for the close timer to tear it all down again.
+        //
+        QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
+        return NULL;
+    }
+
     if (!((QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||
           (QuicConnIsServer(Connection) && !Connection->State.ServerMigrationNegotiated))) {
         // Client doesn't create a new path.

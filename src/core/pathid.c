@@ -160,7 +160,7 @@ QuicPathIDAbandonLocally(
 
     if (!PathID->Path->LocalClose) {
         PathID->Path->LocalClose = TRUE;
-        PathID->Path->SendAbandon = TRUE;
+        PathID->Flags.SendAbandon = TRUE;
         QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
 
         QuicPathIDIndicatePathRemoved(PathID);
@@ -879,6 +879,49 @@ QuicPathIDAssignCids(
     }
 
     return Assigned;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
+QuicPathIDWritePathAbandonFrame(
+    _In_ QUIC_PATHID* PathID,
+    _Inout_ QUIC_PACKET_BUILDER* Builder,
+    _In_ uint16_t AvailableBufferLength,
+    _Inout_ BOOLEAN* HasMoreToSend,
+    _Inout_ BOOLEAN* MaxFrameLimitHit,
+    _In_ BOOLEAN NoRoom
+    )
+{
+    if (!PathID->Flags.SendAbandon) {
+        return !NoRoom;
+    }
+
+    //
+    // Cannot go in the current packet but still wants to be sent. Saying so
+    // is what keeps the send flag raised for the next one.
+    //
+    if (*MaxFrameLimitHit || NoRoom) {
+        *HasMoreToSend = TRUE;
+        return !NoRoom;
+    }
+
+    QUIC_PATH_ABANDON_EX Frame = { PathID->ID, 0x00 };
+    if (!QuicPathAbandonFrameEncode(
+            &Frame,
+            &Builder->DatagramLength,
+            AvailableBufferLength,
+            Builder->Datagram->Buffer)) {
+        *HasMoreToSend = TRUE;
+        return FALSE;
+    }
+
+    PathID->Flags.SendAbandon = FALSE;
+    Builder->Metadata->Frames[Builder->Metadata->FrameCount].PATH_ABANDON.PathID =
+        (uint32_t)Frame.PathID;
+    if (QuicPacketBuilderAddFrame(Builder, QUIC_FRAME_PATH_ABANDON, TRUE)) {
+        *MaxFrameLimitHit = TRUE;
+    }
+    return TRUE;
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)

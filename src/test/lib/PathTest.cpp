@@ -1876,4 +1876,120 @@ QuicTestMultipathPathValidationFailed(
     delete ProbeHelper;
 }
 
+void
+QuicTestMultipathPathIdReclaimed(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+    const uint32_t InitialRttMs = 50;
+
+    //
+    // One more doomed path than there are path ID slots. Each round opens a
+    // path whose probe never lands, so validation times out and both ends
+    // abandon it. If a path ID is not reclaimed on either side the supply runs
+    // out and QUIC_PARAM_CONN_ADD_PATH starts refusing, which is what this
+    // asserts does not happen.
+    //
+    const uint32_t Rounds = QUIC_ACTIVE_PATH_ID_LIMIT + 1;
+
+    PathTestContext Context;
+    PathDeathClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE).SetInitialRttMs(InitialRttMs);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathDeathClientContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    CxPlatSleep(100);
+
+    QuicAddr PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+
+    for (uint32_t Round = 0; Round < Rounds; ++Round) {
+        QuicAddr DoomedLocalAddr;
+        TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(DoomedLocalAddr));
+        DoomedLocalAddr.SetEphemeralPort();
+
+        PathProbeHelper* ProbeHelper =
+            new(std::nothrow) PathProbeHelper(DoomedLocalAddr.GetPort(), 255, 255);
+        TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+        QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+        QUIC_PATH_PARAM PathParam = { &DoomedLocalAddr.SockAddr, &PairAddr.SockAddr };
+        int Try = 0;
+        do {
+            Status = Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_PATH,
+                sizeof(PathParam),
+                &PathParam);
+            //
+            // Running out of path IDs is the failure this test is looking for,
+            // so that one is never retried -- picking another port would paper
+            // over exactly what is being measured. Anything else is the local
+            // address not being obtainable, which is worth another port: an
+            // earlier version retried only QUIC_STATUS_ADDRESS_IN_USE and hit
+            // WSAEACCES on Windows, where a bind can be refused for a port in
+            // an excluded or exclusive-use range.
+            //
+            if (Status == QUIC_STATUS_OUT_OF_MEMORY || QUIC_SUCCEEDED(Status)) {
+                break;
+            }
+            delete ProbeHelper;
+            DoomedLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(DoomedLocalAddr.GetPort(), 255, 255);
+        } while (++Try <= 3);
+
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+        }
+        TEST_QUIC_SUCCEEDED(Status);
+
+        //
+        // The client's own loss of the path, which also tells us the round is
+        // over and the abandon exchange has started.
+        //
+        TEST_TRUE(ClientContext.PathRemovedEvent.WaitTimeout(TestWaitTimeout));
+        ClientContext.PathRemovedEvent.Reset();
+
+        //
+        // Both sides need their close timer, three PTO, before the path ID is
+        // actually back. The doomed path never took an RTT sample, so its PTO
+        // rests on InitialRttMs: 3 x (SmoothedRtt + 4 x RttVariance +
+        // MaxAckDelay) is already over ten initial RTTs, and review caught an
+        // earlier version of this sleeping for six and calling it comfortable.
+        // Waiting too little would let QUIC_PARAM_CONN_ADD_PATH fail for want
+        // of a Paths slot rather than a path ID, which is the one thing this
+        // test must not confuse.
+        //
+        CxPlatSleep(20 * InitialRttMs);
+
+        delete ProbeHelper;
+    }
+}
+
 #endif
