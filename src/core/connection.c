@@ -5628,6 +5628,13 @@ QuicConnRecvFrames(
                 // and no slot, so it has nothing of its own to reclaim; the
                 // frame is for the peer's benefit.
                 //
+                // Abandoned, here and not through RemoteClose: the flag means
+                // both ends are done with the path ID, and for this one the
+                // peer has just said so while this side has nothing of its own
+                // to wind down. What remains is our answer being acknowledged,
+                // which Flags.Closed stands for -- see the acknowledged handler
+                // in `loss_detection.c`.
+                PathID->Flags.Abandoned = TRUE;
                 PathID->Flags.SendAbandon = TRUE;
                 QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
                 AckEliciting = TRUE;

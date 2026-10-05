@@ -654,14 +654,29 @@ QuicLossDetectionOnPacketAcknowledged(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             //
-            // **A path id with no QUIC_PATH gets no further than this.** It can
-            // now answer an abandon (see SendAbandon in `pathid.h`), so its
-            // frames reach here -- but LocalCloseAcked lives on the path, the
-            // PATH_REMOVED event needs the path's addresses, and there is no
-            // slot of ours to reclaim. Having been acknowledged is the whole of
-            // what such a path id wanted.
+            // **A path id with no QUIC_PATH is freed right here.** Our answer
+            // having been acknowledged is the last thing it was waiting for:
+            // the peer said it was done when it sent the abandon this replies
+            // to, and this side has no path to wind down, no addresses to
+            // report a PATH_REMOVED with, and no slot to give back. There is
+            // also nothing for the three-PTO close timer to protect -- that
+            // window exists to let packets still in flight *on the path* drain,
+            // and there is no path.
             //
-            if (PathID != NULL && PathID->Path != NULL) {
+            // Not freeing it is not harmless. The path ID stays in the set and
+            // holds CurrentPathIDCount up, which is what decides whether
+            // MaxPathID rises and a MAX_PATH_ID frame goes out, so the peer
+            // stops being able to open new path IDs: its
+            // QuicPathIDSetNewLocalPathID answers
+            // QUIC_STATUS_PATHID_LIMIT_REACHED with nothing visibly wrong.
+            //
+            if (PathID != NULL && PathID->Path == NULL) {
+                PathID->Flags.Closed = TRUE;
+                QuicPathIDSetTryFreePathID(&Connection->PathIDs, PathID);
+                QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
+                break;
+            }
+            if (PathID != NULL) {
                 PathID->Path->LocalCloseAcked = TRUE;
 
                 QUIC_CONNECTION_EVENT Event;
