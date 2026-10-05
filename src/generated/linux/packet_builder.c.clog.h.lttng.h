@@ -27,9 +27,9 @@ TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, NoSrcCidAvailable,
                 SkipPacketNumber,
                 Connection,
                 "Skipped packet number %llu",
-                Connection->Send.SkippedPacketNumber);
+                PathID->SkippedPacketNumber);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Send.SkippedPacketNumber = arg3
+// arg3 = arg3 = PathID->SkippedPacketNumber = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, SkipPacketNumber,
     TP_ARGS(

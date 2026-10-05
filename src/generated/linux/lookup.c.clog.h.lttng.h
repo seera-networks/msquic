@@ -108,10 +108,10 @@ TRACEPOINT_EVENT(CLOG_LOOKUP_C, LookupRemoteHashNotFound,
         LookupCidInsert,
         "[look][%p] Insert Conn=%p Hash=%u",
         Lookup,
-        SourceCid->Connection,
+        SourceCid->PathID->Connection,
         Hash);
 // arg2 = arg2 = Lookup = arg2
-// arg3 = arg3 = SourceCid->Connection = arg3
+// arg3 = arg3 = SourceCid->PathID->Connection = arg3
 // arg4 = arg4 = Hash = arg4
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_LOOKUP_C, LookupCidInsert,
@@ -162,9 +162,9 @@ TRACEPOINT_EVENT(CLOG_LOOKUP_C, LookupRemoteHashInsert,
         LookupCidRemoved,
         "[look][%p] Remove Conn=%p",
         Lookup,
-        SourceCid->Connection);
+        SourceCid->PathID->Connection);
 // arg2 = arg2 = Lookup = arg2
-// arg3 = arg3 = SourceCid->Connection = arg3
+// arg3 = arg3 = SourceCid->PathID->Connection = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_LOOKUP_C, LookupCidRemoved,
     TP_ARGS(

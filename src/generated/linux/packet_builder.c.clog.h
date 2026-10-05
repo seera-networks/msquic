@@ -54,9 +54,9 @@ tracepoint(CLOG_PACKET_BUILDER_C, NoSrcCidAvailable , arg1);\
                 SkipPacketNumber,
                 Connection,
                 "Skipped packet number %llu",
-                Connection->Send.SkippedPacketNumber);
+                PathID->SkippedPacketNumber);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Send.SkippedPacketNumber = arg3
+// arg3 = arg3 = PathID->SkippedPacketNumber = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_4_ARGS_TRACE_SkipPacketNumber
 #define _clog_4_ARGS_TRACE_SkipPacketNumber(uniqueId, arg1, encoded_arg_string, arg3)\
