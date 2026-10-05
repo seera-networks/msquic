@@ -104,6 +104,57 @@ QuicPathIDProcessPathCloseTimerOperation(
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
+QuicPathIDAbandonLocally(
+    _Inout_ QUIC_PATHID* PathID
+    )
+{
+    QUIC_CONNECTION* Connection = PathID->Connection;
+
+    CXPLAT_DBG_ASSERT(PathID->Path != NULL);
+
+    if (!PathID->Path->LocalClose) {
+        PathID->Path->LocalClose = TRUE;
+        PathID->Path->SendAbandon = TRUE;
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
+
+        QUIC_CONNECTION_EVENT Event;
+        Event.Type = QUIC_CONNECTION_EVENT_PATH_REMOVED;
+        Event.PATH_REMOVED.PeerAddress = &PathID->Path->Route.RemoteAddress;
+        Event.PATH_REMOVED.LocalAddress = &PathID->Path->Route.LocalAddress;
+        Event.PATH_REMOVED.PathId = PathID->ID;
+        QuicTraceLogConnVerbose(
+            IndicatePathRemoved,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
+        (void)QuicConnIndicateEvent(Connection, &Event);
+    }
+
+    //
+    // Armed once. QuicConnTimerSetEx overwrites the expiration rather than
+    // keeping the earlier one, so re-arming would push the close deadline
+    // further out every time and the path ID would never reach it. The
+    // loss detection timer fires for every path ID on the connection, so a
+    // caller driven by it gets here repeatedly.
+    //
+    if (!PathID->Flags.WaitClose && !PathID->Flags.Closed) {
+        uint64_t ThreePto =
+            QuicLossDetectionComputeProbeTimeout(
+                &PathID->LossDetection,
+                PathID->Path,
+                3);
+        PathID->Flags.WaitClose = TRUE;
+        uint64_t TimeNow = CxPlatTimeUs64();
+        PathID->CloseTime = TimeNow + ThreePto;
+        QuicConnTimerSetEx(
+            Connection,
+            QUIC_CONN_TIMER_PATH_CLOSE,
+            ThreePto,
+            TimeNow);
+    }
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
 QuicPathIDAddDestCID(
     _Inout_ QUIC_PATHID* PathID,
     _In_ QUIC_CID_LIST_ENTRY *DestCid
@@ -610,16 +661,9 @@ QuicPathIDReplaceRetiredCids(
             // from the binding only once nothing else uses it -- another path
             // sharing it is still reached through them.
             //
-            BOOLEAN IsCommonBinding = FALSE;
-            for (uint8_t j = 0; j < PathID->Connection->PathsCount; ++j) {
-                if (i != j &&
-                    PathID->Connection->Paths[i].Binding ==
-                        PathID->Connection->Paths[j].Binding) {
-                    IsCommonBinding = TRUE;
-                    break;
-                }
-            }
-            if (!PathID->Connection->Paths[i].UseBound && !IsCommonBinding) {
+            if (!PathID->Connection->Paths[i].UseBound &&
+                !QuicConnIsBindingShared(
+                    PathID->Connection, &PathID->Connection->Paths[i])) {
                 QuicBindingRemoveAllSourceConnectionIDs(PathID->Connection->Paths[i].Binding, PathID->Connection);
             }
             QuicLibraryReleaseBinding(PathID->Connection->Paths[i].Binding);

@@ -254,11 +254,11 @@ TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, PacketTxProbeRetransmit,
                 AttackDetected,
                 Connection,
                 "Attack detected: Skipped packet number %llu ACKed in range [%llu, %llu]",
-                Connection->Send.SkippedPacketNumber,
+                PathID->SkippedPacketNumber,
                 AckBlock->Low,
                 QuicRangeGetHigh(AckBlock));
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Send.SkippedPacketNumber = arg3
+// arg3 = arg3 = PathID->SkippedPacketNumber = arg3
 // arg4 = arg4 = AckBlock->Low = arg4
 // arg5 = arg5 = QuicRangeGetHigh(AckBlock) = arg5
 ----------------------------------------------------------*/
@@ -338,6 +338,33 @@ TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, ScheduleProbe,
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
         ctf_integer(unsigned short, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PathIDAbandonedOnTimeout
+// [conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection
+// QuicTraceLogConnInfo(
+                PathIDAbandonedOnTimeout,
+                Connection,
+                "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+                PathID->Path->ID,
+                PathID->ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = PathID->Path->ID = arg3
+// arg4 = arg4 = PathID->ID = arg4
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, PathIDAbandonedOnTimeout,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3,
+        unsigned int, arg4), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg4, arg4)
     )
 )
 

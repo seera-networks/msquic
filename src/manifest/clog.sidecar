@@ -439,6 +439,18 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "BoundAddressWildcardForQtip": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Binding a bound address on the wildcard, as QTIP requires",
+      "UniqueId": "BoundAddressWildcardForQtip",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "CertCapiFormattedChain": {
       "ModuleProperites": {},
       "TraceString": "[cert] Successfully formatted chain of %u certificate(s)",
@@ -9610,6 +9622,26 @@
       ],
       "macroName": "QuicTraceEvent"
     },
+    "PathIDAbandonedOnTimeout": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+      "UniqueId": "PathIDAbandonedOnTimeout",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "PathInFlowStats": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p][pathid][%u] IN: BytesRecv=%llu",
@@ -13709,6 +13741,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "UpdateUnconnectedSocket": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Updated UnconnectedSocket = %hhu",
+      "UniqueId": "UpdateUnconnectedSocket",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "VersionInfoChosenVersionZero": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Version Info Chosen Version is zero!",
@@ -15047,6 +15095,11 @@
         "UniquenessHash": "8419ad0b-e226-53e3-837c-4eebd4cc6619",
         "TraceID": "BindingSendTestDrop",
         "EncodingString": "[bind][%p] Test dropped packet"
+      },
+      {
+        "UniquenessHash": "6c1e8d47-86a1-ba49-405a-000c6a3f1bff",
+        "TraceID": "BoundAddressWildcardForQtip",
+        "EncodingString": "[conn][%p] Binding a bound address on the wildcard, as QTIP requires"
       },
       {
         "UniquenessHash": "bc118133-e7f5-68c2-fd22-5dba9202e2eb",
@@ -17674,6 +17727,11 @@
         "EncodingString": "[conn][%p][pathid][%u] HyStart: State=%u CongestionWindow=%u SlowStartThreshold=%u"
       },
       {
+        "UniquenessHash": "3f38bc82-ff15-134b-3886-3fbe978840c5",
+        "TraceID": "PathIDAbandonedOnTimeout",
+        "EncodingString": "[conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection"
+      },
+      {
         "UniquenessHash": "894e7ef6-f0d0-5ee0-bfd0-f63945bfa39a",
         "TraceID": "PathInFlowStats",
         "EncodingString": "[conn][%p][pathid][%u] IN: BytesRecv=%llu"
@@ -19047,6 +19105,11 @@
         "UniquenessHash": "f433b4bc-afec-9da4-79cb-eb11596d42e4",
         "TraceID": "UpdateStreamSchedulingScheme",
         "EncodingString": "[conn][%p] Updated Stream Scheduling Scheme = %u"
+      },
+      {
+        "UniquenessHash": "89710b0d-5e79-3c73-e0f2-0fe63b6936c0",
+        "TraceID": "UpdateUnconnectedSocket",
+        "EncodingString": "[conn][%p] Updated UnconnectedSocket = %hhu"
       },
       {
         "UniquenessHash": "0c7aa55b-0fac-8bf3-13f4-2a80e4a8b2ba",

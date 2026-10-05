@@ -5213,42 +5213,15 @@ QuicConnRecvFrames(
             }
 
             PathID->Path->RemoteClose = TRUE;
-            if (!PathID->Path->LocalClose) {
-                PathID->Path->LocalClose = TRUE;
-                PathID->Path->SendAbandon = TRUE;
-                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
 
-                QUIC_CONNECTION_EVENT Event;
-                Event.Type = QUIC_CONNECTION_EVENT_PATH_REMOVED;
-                Event.PATH_REMOVED.PeerAddress = &PathID->Path->Route.RemoteAddress;
-                Event.PATH_REMOVED.LocalAddress = &PathID->Path->Route.LocalAddress;
-                Event.PATH_REMOVED.PathId = PathID->ID;
-                QuicTraceLogConnVerbose(
-                    IndicatePathRemoved,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-                (void)QuicConnIndicateEvent(Connection, &Event);
-            }
-
+            //
+            // Read before abandoning, which does not touch LocalCloseAcked.
+            //
             if (PathID->Path->LocalCloseAcked) {
                 PathID->Flags.Abandoned = TRUE;
             }
 
-            if (!PathID->Flags.Closed) {
-                uint64_t ThreePto =
-                    QuicLossDetectionComputeProbeTimeout(
-                        &PathID->LossDetection,
-                        PathID->Path,
-                        3);
-                PathID->Flags.WaitClose = TRUE;
-                uint64_t TimeNow = CxPlatTimeUs64();
-                PathID->CloseTime = TimeNow + ThreePto;
-                QuicConnTimerSetEx(
-                    Connection,
-                    QUIC_CONN_TIMER_PATH_CLOSE,
-                    ThreePto,
-                    TimeNow);
-            }
+            QuicPathIDAbandonLocally(PathID);
 
             AckEliciting = TRUE;
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
@@ -6866,6 +6839,43 @@ QuicConnProcessPathValidationTimerOperation(
             Connection,
             Path->ID);
         QuicPerfCounterIncrement(Connection->Partition, QUIC_PERF_COUNTER_PATH_FAILURE);
+
+        //
+        // The path ID is spent whether the path came up or not, and
+        // draft-ietf-quic-multipath section 3.1 is explicit about what that
+        // obliges: "As the used path ID is consumed either way, the endpoint
+        // MUST explicitly close the path". Section 3.4 says the same from the
+        // other direction -- an endpoint abandoning a path MUST send a
+        // PATH_ABANDON frame, whatever prompted it -- and recommends sending it
+        // on a different path precisely when the one being abandoned looks
+        // broken, which is this case.
+        //
+        // Removing the path silently instead left the peer believing the path
+        // ID was still in use, with no way to learn otherwise, and left our own
+        // path ID in the set with no path attached to it, never freed and never
+        // put on the close timer. Abandoning tells the peer and leaves
+        // QuicPathIDSetTryFreePathID to take the path and its path ID away
+        // together once the close timer expires.
+        //
+        // Only under multipath, which is what PATH_ABANDON requires, and only
+        // while another usable path remains: there is nothing to carry the
+        // frame otherwise, and nothing to carry the connection either, so the
+        // last path still falls through to removal and closes the connection.
+        //
+        if (Connection->State.MultipathNegotiated &&
+            Connection->Paths[i].PathID != NULL &&
+            QuicConnHasOtherUsablePath(Connection, &Connection->Paths[i])) {
+            QuicPathIDAbandonLocally(Connection->Paths[i].PathID);
+            //
+            // Keeps this path out of the validation timer from here on: it is
+            // leaving on the close timer now, and QuicConnPathValidationTimerUpdate
+            // skips paths with no validation in progress.
+            //
+            Connection->Paths[i].PathValidationStartTime = 0;
+            ++i;
+            continue;
+        }
+
         //
         // Release the abandoned path's UDP binding before removing it, matching
         // the convention used by every other QuicPathRemove caller (QuicPathRemove
