@@ -22,6 +22,8 @@ typedef union QUIC_PATHID_FLAGS {
         BOOLEAN Freed                   : 1;    // The path id has been freed.
         BOOLEAN LocalBlocked            : 1;    // The path id is blocked by local restriction.
         BOOLEAN PeerBlocked             : 1;    // The path id is blocked by peer restriction.
+        BOOLEAN PathRemovedIndicated    : 1;    // PATH_REMOVED has been given to the application.
+        BOOLEAN RemovedAddressesValid   : 1;    // Removed*Address hold the detached path's addresses.
     };
 } QUIC_PATHID_FLAGS;
 
@@ -136,6 +138,14 @@ typedef struct QUIC_PATHID {
     uint64_t CloseTime;
 
     //
+    // The addresses the path had, captured by QuicPathRemove as it detaches
+    // the path, so a PATH_REMOVED indicated afterwards still reports the
+    // right one.
+    //
+    QUIC_ADDR RemovedLocalAddress;
+    QUIC_ADDR RemovedRemoteAddress;
+
+    //
     // Per-encryption level packet space information.
     //
     QUIC_PACKET_SPACE* Packets[QUIC_ENCRYPT_LEVEL_COUNT];
@@ -247,6 +257,19 @@ QuicPathIDFreeSourceCids(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathIDProcessPathCloseTimerOperation(
+    _Inout_ QUIC_PATHID* PathID
+    );
+
+//
+// Gives the application QUIC_CONNECTION_EVENT_PATH_REMOVED for this path ID,
+// at most once in its lifetime. One path going away reaches two places that
+// want to report it -- abandoning it, and the peer acknowledging our
+// PATH_ABANDON -- and an application that frees per-path state in that handler
+// must not be told twice.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicPathIDIndicatePathRemoved(
     _Inout_ QUIC_PATHID* PathID
     );
 
