@@ -763,40 +763,26 @@ QuicSendWriteFrames(
     // `QuicSendPathResponses` (invoked from `QuicSendFlush`).
     //
 
+    //
+    // **Over the path id set, not Connection->Paths.** A path id with no
+    // QUIC_PATH bound is absent from that array, and it is the one that has to
+    // be able to answer an abandon -- see SendAbandon in `pathid.h`.
+    //
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_ABANDON) {
-
-        uint8_t i;
-        for (i = 0; i < Connection->PathsCount; ++i) {
-            QUIC_PATH* TempPath = &Connection->Paths[i];
-            if (!TempPath->SendAbandon) {
-                continue;
-            }
-
-            QUIC_PATH_ABANDON_EX Frame = { TempPath->PathID->ID, 0x00 };
-
-            if (QuicPathAbandonFrameEncode(
-                    &Frame,
-                    &Builder->DatagramLength,
-                    AvailableBufferLength,
-                    Builder->Datagram->Buffer)) {
-
-                TempPath->SendAbandon = FALSE;
-                Builder->Metadata->Frames[Builder->Metadata->FrameCount].PATH_ABANDON.PathID =
-                    (uint32_t)Frame.PathID;
-                if (QuicPacketBuilderAddFrame(Builder, QUIC_FRAME_PATH_ABANDON, TRUE)) {
-                    break;
-                }
-            } else {
-                RanOutOfRoom = TRUE;
-                break;
-            }
+        BOOLEAN HasMoreToSend = FALSE;
+        BOOLEAN MaxFrameLimitHit = FALSE;
+        if (!QuicPathIDSetWritePathAbandonFrame(
+                &Connection->PathIDs,
+                Builder,
+                AvailableBufferLength,
+                &HasMoreToSend,
+                &MaxFrameLimitHit)) {
+            RanOutOfRoom = TRUE;
         }
-
-        if (i == Connection->PathsCount) {
+        if (!HasMoreToSend) {
             Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_ABANDON;
         }
-
-        if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
+        if (MaxFrameLimitHit) {
             return TRUE;
         }
     }

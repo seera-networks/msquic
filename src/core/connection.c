@@ -5609,10 +5609,28 @@ QuicConnRecvFrames(
             }
             if (PathID->Path == NULL) {
                 //
-                // The peer referenced a path id whose QUIC_PATH is not (yet)
-                // bound (e.g. CIDs provisioned via PATH_NEW_CONNECTION_ID before
-                // QuicConnAssignPathIDs could attach a path). Ignore the frame.
+                // The peer referenced a path id with no QUIC_PATH bound -- its
+                // CIDs were provisioned by PATH_NEW_CONNECTION_ID but no packet
+                // ever arrived to attach a path, either because one has not yet
+                // or because one never will. **Answer it anyway.**
                 //
+                // Ignoring it was what stranded the peer: it needs our abandon
+                // to set its own Abandoned flag, and without that
+                // QuicPathIDSetTryFreePathID returns early for good,
+                // QuicPathRemove is never called, and one of its four QUIC_PATH
+                // slots is spent for the life of the connection. A hole punch
+                // that fails produces exactly this, which makes it the common
+                // case rather than a corner.
+                //
+                // Nothing else can be recorded here, and nothing else needs to
+                // be: RemoteClose, LocalClose and LocalCloseAcked all live on
+                // the QUIC_PATH there isn't one of. This side holds a path id
+                // and no slot, so it has nothing of its own to reclaim; the
+                // frame is for the peer's benefit.
+                //
+                PathID->Flags.SendAbandon = TRUE;
+                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
+                AckEliciting = TRUE;
                 QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
                 break;
             }
@@ -8432,7 +8450,7 @@ QuicConnRemovePath(
                 }
             } else {
                 Path->LocalClose = TRUE;
-                Path->SendAbandon = TRUE;
+                Path->PathID->Flags.SendAbandon = TRUE;
                 QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
             }
         }

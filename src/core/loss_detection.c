@@ -653,7 +653,15 @@ QuicLossDetectionOnPacketAcknowledged(
                 Packet->Frames[i].PATH_ABANDON.PathID,
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
-            if (PathID != NULL) {
+            //
+            // **A path id with no QUIC_PATH gets no further than this.** It can
+            // now answer an abandon (see SendAbandon in `pathid.h`), so its
+            // frames reach here -- but LocalCloseAcked lives on the path, the
+            // PATH_REMOVED event needs the path's addresses, and there is no
+            // slot of ours to reclaim. Having been acknowledged is the whole of
+            // what such a path id wanted.
+            //
+            if (PathID != NULL && PathID->Path != NULL) {
                 PathID->Path->LocalCloseAcked = TRUE;
 
                 QUIC_CONNECTION_EVENT Event;
@@ -962,8 +970,13 @@ QuicLossDetectionRetransmitFrames(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             if (PathID != NULL) {
-                if (!PathID->Path->LocalCloseAcked) {
-                    PathID->Path->SendAbandon = TRUE;
+                //
+                // No path means no LocalCloseAcked to consult, and a lost
+                // abandon on such a path id still has to be re-sent -- it is
+                // the only thing that lets the peer free its own.
+                //
+                if (PathID->Path == NULL || !PathID->Path->LocalCloseAcked) {
+                    PathID->Flags.SendAbandon = TRUE;
                     QuicSendSetSendFlag(
                         &Connection->Send,
                         QUIC_CONN_SEND_FLAG_PATH_ABANDON);

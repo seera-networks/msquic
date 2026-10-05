@@ -386,6 +386,45 @@ QuicPathIDSetGenerateNewSourceCids(
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 BOOLEAN
+QuicPathIDSetWritePathAbandonFrame(
+    _In_ QUIC_PATHID_SET* PathIDSet,
+    _Inout_ QUIC_PACKET_BUILDER* Builder,
+    _In_ uint16_t AvailableBufferLength,
+    _Out_ BOOLEAN* HasMoreToSend,
+    _Out_ BOOLEAN* MaxFrameLimitHit
+    )
+{
+    BOOLEAN HaveRoom = TRUE;
+    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+    QuicPathIDSetGetPathIDs(PathIDSet, PathIDs, &PathIDCount);
+
+    //
+    // **Walked over the path id set rather than Connection->Paths**, which is
+    // what this used to do. A path id whose QUIC_PATH was never bound -- one
+    // the peer opened towards us and never got a packet through on -- is absent
+    // from Paths and so was never asked whether it had an abandon to send. It
+    // is the one that most needs to answer: see SendAbandon's comment in
+    // pathid.h.
+    //
+    *HasMoreToSend = FALSE;
+    *MaxFrameLimitHit = FALSE;
+    for (uint8_t i = 0; i < PathIDCount; i++) {
+        HaveRoom = QuicPathIDWritePathAbandonFrame(
+            PathIDs[i],
+            Builder,
+            AvailableBufferLength,
+            HasMoreToSend,
+            MaxFrameLimitHit,
+            !HaveRoom);
+        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+    }
+
+    return HaveRoom;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
 QuicPathIDSetWriteNewConnectionIDFrame(
     _In_ QUIC_PATHID_SET* PathIDSet,
     _Inout_ QUIC_PACKET_BUILDER* Builder,
