@@ -328,6 +328,28 @@ tracepoint(CLOG_LOSS_DETECTION_C, ScheduleProbe , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathIDAbandonedOnTimeout
+// [conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection
+// QuicTraceLogConnInfo(
+                PathIDAbandonedOnTimeout,
+                Connection,
+                "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+                PathID->Path->ID,
+                PathID->ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = PathID->Path->ID = arg3
+// arg4 = arg4 = PathID->ID = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_PathIDAbandonedOnTimeout
+#define _clog_5_ARGS_TRACE_PathIDAbandonedOnTimeout(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_LOSS_DETECTION_C, PathIDAbandonedOnTimeout , arg1, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for KeyChangeConfirmed
 // [conn][%p] Key change confirmed by peer
 // QuicTraceLogConnVerbose(

@@ -251,6 +251,17 @@ QuicPathIDProcessPathCloseTimerOperation(
     );
 
 //
+// Abandons this path ID on our own initiative: stops it being selected for
+// sending, queues a PATH_ABANDON frame for the peer, and starts the close
+// timer. Idempotent. Requires PathID->Path to be non-NULL.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicPathIDAbandonLocally(
+    _Inout_ QUIC_PATHID* PathID
+    );
+
+//
 // Tracing rundown for the pathid.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)

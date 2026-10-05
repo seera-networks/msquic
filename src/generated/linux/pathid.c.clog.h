@@ -66,6 +66,24 @@ tracepoint(CLOG_PATHID_C, NonActivePathCidRetired , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for IndicatePathRemoved
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED
+// QuicTraceLogConnVerbose(
+            IndicatePathRemoved,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_IndicatePathRemoved
+#define _clog_3_ARGS_TRACE_IndicatePathRemoved(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_PATHID_C, IndicatePathRemoved , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for NewSrcCidNameCollision
 // [conn][%p] CID collision, trying again
 // QuicTraceLogConnVerbose(

@@ -777,6 +777,9 @@ tracepoint(CLOG_CONNECTION_C, UpdatePeerPacketTolerance , arg1, arg3);\
 
 #endif
 
+
+
+
 /*----------------------------------------------------------
 // Decoder Ring for BoundAddressWildcardForQtip
 // [conn][%p] Binding a bound address on the wildcard, as QTIP requires
@@ -791,9 +794,6 @@ tracepoint(CLOG_CONNECTION_C, UpdatePeerPacketTolerance , arg1, arg3);\
 tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
 
 #endif
-
-
-
 
 
 
@@ -1384,24 +1384,6 @@ tracepoint(CLOG_CONNECTION_C, IndicatePeerNeedStreamsV2 , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_IndicatePathAdded
 #define _clog_3_ARGS_TRACE_IndicatePathAdded(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, IndicatePathAdded , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for IndicatePathRemoved
-// [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED
-// QuicTraceLogConnVerbose(
-                    IndicatePathRemoved,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_IndicatePathRemoved
-#define _clog_3_ARGS_TRACE_IndicatePathRemoved(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, IndicatePathRemoved , arg1);\
 
 #endif
 

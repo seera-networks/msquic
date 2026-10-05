@@ -534,6 +534,66 @@ QuicConnChoosePath(
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnHasOtherUsablePath(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* ExcludedPath
+    )
+{
+    if (!Connection->State.MultipathNegotiated ||
+        !Connection->State.HandshakeConfirmed) {
+        //
+        // QuicConnChoosePath returns Paths[0] regardless until both of these
+        // hold, so no other path is usable whatever its own flags say.
+        //
+        return FALSE;
+    }
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path != ExcludedPath &&
+            Path->IsActive &&
+            !Path->LocalClose &&
+            !Path->RemoteClose) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Ret_maybenull_
+QUIC_PATH*
+QuicConnGetPathForPathID(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATHID* PathID
+    )
+{
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].PathID == PathID) {
+            return &Connection->Paths[i];
+        }
+    }
+    return NULL;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnIsBindingShared(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path
+    )
+{
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Other = &Connection->Paths[i];
+        if (Other != Path && Other->Binding == Path->Binding) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathSetActive(
     _In_ QUIC_CONNECTION* Connection,

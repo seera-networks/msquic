@@ -706,6 +706,16 @@ QuicTestQMuxKeepAlive(
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 void
+QuicTestMultipathPathDeath(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestMultipathPathValidationFailed(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestPathKeepAlive(
     _In_ const FamilyArgs& Params
     );
