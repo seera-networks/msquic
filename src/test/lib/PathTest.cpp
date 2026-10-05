@@ -1948,17 +1948,20 @@ QuicTestMultipathPathIdReclaimed(
                 sizeof(PathParam),
                 &PathParam);
             //
-            // Only an address collision is retried. A refusal for want of a
-            // path ID is the failure this test is looking for, so it is not
-            // papered over by picking another port.
+            // Running out of path IDs is the failure this test is looking for,
+            // so that one is never retried -- picking another port would paper
+            // over exactly what is being measured. Anything else is the local
+            // address not being obtainable, which is worth another port: an
+            // earlier version retried only QUIC_STATUS_ADDRESS_IN_USE and hit
+            // WSAEACCES on Windows, where a bind can be refused for a port in
+            // an excluded or exclusive-use range.
             //
-            if (Status == QUIC_STATUS_ADDRESS_IN_USE) {
-                delete ProbeHelper;
-                DoomedLocalAddr.SetEphemeralPort();
-                ProbeHelper = new(std::nothrow) PathProbeHelper(DoomedLocalAddr.GetPort(), 255, 255);
-            } else {
+            if (Status == QUIC_STATUS_OUT_OF_MEMORY || QUIC_SUCCEEDED(Status)) {
                 break;
             }
+            delete ProbeHelper;
+            DoomedLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(DoomedLocalAddr.GetPort(), 255, 255);
         } while (++Try <= 3);
 
         if (QUIC_FAILED(Status)) {
