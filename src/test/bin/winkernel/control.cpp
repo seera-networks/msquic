@@ -607,6 +607,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestMultipathPathValidationFailed);
     RegisterTestFunction(QuicTestMultipathPathIdReclaimed);
     RegisterTestFunction(QuicTestMultipathPathIdFreeAckState);
+    RegisterTestFunction(QuicTestMultipathRemovedPathAcks);
     RegisterTestFunction(QuicTestPathKeepAlive);
     RegisterTestFunction(QuicTestPathStatistics);
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
