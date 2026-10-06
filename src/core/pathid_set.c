@@ -384,6 +384,17 @@ QuicPathIDSetTryFreePathID(
     CxPlatDispatchRwLockReleaseExclusive(&PathIDSet->RwLock, PrevIrql);
     PathIDSet->CurrentPathIDCount--;
 
+    //
+    // The path ID is out of the set now, and that alone can change the answer
+    // to QuicSendHasAckElicitingPacketsToAcknowledge, which counts the set.
+    // Taking the last path ID that had ack-eliciting packets out of it leaves
+    // the connection's ACK state -- the QUIC_CONN_SEND_FLAG_ACK flag and the
+    // delayed ACK timer, both connection-wide -- armed for packets no longer
+    // reachable. The next QuicSendSetSendFlag then trips QuicSendValidate,
+    // starting with the one QuicLossDetectionReset is about to make.
+    //
+    QuicSendUpdateAckState(&Connection->Send);
+
     QuicLossDetectionReset(&PathID->LossDetection);
     QuicPathIDRelease(PathID, QUIC_PATHID_REF_PATHID_SET);
 

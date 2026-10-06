@@ -986,6 +986,15 @@ TEST_P(WithFamilyArgs, MultipathPathIdReclaimed) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathPathIdFreeAckState) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathIdFreeAckState", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathIdFreeAckState), GetParam()));
+    } else {
+        QuicTestMultipathPathIdFreeAckState(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, PathKeepAlive) {
     TestLoggerT<ParamType> Logger("QuicTestPathKeepAlive", GetParam());
     if (TestingKernelMode) {
