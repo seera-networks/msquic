@@ -283,25 +283,73 @@ QuicSendWritePathAckFrames(
         return FALSE;
     }
 
-    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-        QUIC_PATHID* TempPathID = Connection->Paths[i].PathID;
-        if (TempPathID == NULL) {
-            continue;
-        }
-        if (!Connection->State.MultipathNegotiated && i > 0) {
+    //
+    // Over the path ID set, not Connection->Paths, so that this agrees with
+    // QuicSendHasAckElicitingPacketsToAcknowledge about which path IDs the
+    // connection's ACK state covers. That one walks the set; this walked the
+    // array, and a path ID can be in the set with no QUIC_PATH to be found
+    // through -- QuicPathRemove shifts the array down and decrements
+    // PathsCount, and PathID->Path is never cleared, which is #115.
+    //
+    // QuicPathIDReplaceRetiredCids leaves exactly that, for an unbounded time:
+    // a non-active path whose destination CID was retired with no unused one to
+    // replace it goes away while its path ID stays, not abandoned, keeping its
+    // packet number spaces. Its received packets then had nothing able to
+    // acknowledge them. The invalid-path removal after a failed route
+    // resolution leaves the same.
+    //
+    // An ACK_MP frame names the path ID it acknowledges, so
+    // draft-ietf-quic-multipath-21 section 3.4 lets it go out on whichever path
+    // this builder is targeting. That is what makes reaching a path-less path
+    // ID possible at all, and it is the same reason
+    // QuicPathIDSetWritePathAbandonFrame walks the set.
+    //
+    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+    QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
+
+    //
+    // The active path's ACKs first, as they were when this walked
+    // Connection->Paths from index zero: the enumeration order of the path ID
+    // set is arbitrary, and under room pressure the path the packet is going
+    // out on is the one whose ACKs are worth the space.
+    //
+    QUIC_PATHID* ActivePathID = Connection->Paths[0].PathID;
+    for (uint8_t i = 1; i < PathIDCount; ++i) {
+        if (PathIDs[i] == ActivePathID) {
+            QUIC_PATHID* Swap = PathIDs[0];
+            PathIDs[0] = PathIDs[i];
+            PathIDs[i] = Swap;
             break;
-        }
-        QUIC_PACKET_SPACE* Packets = TempPathID->Packets[Builder->EncryptLevel];
-        if (Packets != NULL && QuicAckTrackerHasPacketsToAck(&Packets->AckTracker)) {
-            if (QuicAckTrackerAckFrameEncode(&Packets->AckTracker, Builder)) {
-                *WroteFrames = TRUE;
-            } else if (StopOnRoomFailure) {
-                return TRUE;
-            }
         }
     }
 
-    return FALSE;
+    BOOLEAN RanOutOfRoom = FALSE;
+    for (uint8_t i = 0; i < PathIDCount; ++i) {
+        //
+        // Every path ID is released, including after room runs out, because
+        // QuicPathIDSetGetPathIDs took a reference on each.
+        //
+        if (!RanOutOfRoom &&
+            (Connection->State.MultipathNegotiated || PathIDs[i] == ActivePathID)) {
+            //
+            // Without multipath a plain ACK frame carries no path ID, so two of
+            // them in one packet would be two claims about one number space.
+            // Only the active path's are written, as before.
+            //
+            QUIC_PACKET_SPACE* Packets = PathIDs[i]->Packets[Builder->EncryptLevel];
+            if (Packets != NULL && QuicAckTrackerHasPacketsToAck(&Packets->AckTracker)) {
+                if (QuicAckTrackerAckFrameEncode(&Packets->AckTracker, Builder)) {
+                    *WroteFrames = TRUE;
+                } else if (StopOnRoomFailure) {
+                    RanOutOfRoom = TRUE;
+                }
+            }
+        }
+        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+    }
+
+    return RanOutOfRoom;
 }
 
 #if DEBUG

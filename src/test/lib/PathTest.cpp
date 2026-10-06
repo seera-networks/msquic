@@ -1992,4 +1992,285 @@ QuicTestMultipathPathIdReclaimed(
     }
 }
 
+//
+// The connection's ACK state -- the QUIC_CONN_SEND_FLAG_ACK flag and the
+// delayed ACK timer -- is connection-wide, while the ack-eliciting packets it
+// stands for are counted per path ID, which is what
+// QuicSendHasAckElicitingPacketsToAcknowledge walks the path ID set to find.
+// Taking a path ID out of the set can therefore change that answer, and
+// QuicPathIDSetTryFreePathID did so without reconciling the two: the last path
+// ID holding ack-eliciting packets would leave with the timer still armed for
+// packets no longer reachable, and the next QuicSendSetSendFlag would trip
+// QuicSendValidate.
+//
+// Removing every path is what makes this observable. QuicSendValidate's third
+// branch is skipped for a closed connection but its second is not, and a
+// closing connection stops writing ACK frames, so the timer stays armed over
+// the path ID frees that follow.
+//
+// Issue #122. The abort is timing-dependent -- the delayed ACK timer has to be
+// armed when the free lands -- at about one round in two, so the sequence runs
+// several times over fresh connections.
+//
+void
+QuicTestMultipathPathIdFreeAckState(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+    const uint32_t InitialRttMs = 50;
+    const uint32_t Rounds = 4;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE).SetInitialRttMs(InitialRttMs);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+
+    PathTestContext Context;
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    for (uint32_t Round = 0; Round < Rounds; ++Round) {
+        PathDeathClientContext ClientContext;
+        MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathDeathClientContext::ConnCallback, &ClientContext);
+        TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+        Connection.SetShareUdpBinding();
+
+        TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+        TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+
+        //
+        // Paths only open once the handshake is confirmed.
+        //
+        CxPlatSleep(100);
+
+        QuicAddr LocalAddr, PairAddr;
+        TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(LocalAddr));
+        TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+
+        //
+        // A path whose probes are all dropped, so validation times out and its
+        // path ID is freed. The issue reports this precondition as mattering:
+        // without a path ID freed just before, the sequence completes.
+        //
+        QuicAddr DoomedLocalAddr = LocalAddr;
+        DoomedLocalAddr.SetEphemeralPort();
+        PathProbeHelper* ProbeHelper =
+            new(std::nothrow) PathProbeHelper(DoomedLocalAddr.GetPort(), 255, 255);
+        TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+        QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+        QUIC_PATH_PARAM DoomedParam = { &DoomedLocalAddr.SockAddr, &PairAddr.SockAddr };
+        int Try = 0;
+        do {
+            Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(DoomedParam), &DoomedParam);
+            if (Status == QUIC_STATUS_OUT_OF_MEMORY || QUIC_SUCCEEDED(Status)) {
+                break;
+            }
+            delete ProbeHelper;
+            DoomedLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(DoomedLocalAddr.GetPort(), 255, 255);
+        } while (++Try <= 3);
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+        }
+        TEST_QUIC_SUCCEEDED(Status);
+
+        TEST_TRUE(ClientContext.PathRemovedEvent.WaitTimeout(TestWaitTimeout));
+
+        //
+        // Its path ID goes three PTO after the abandon, and the doomed path
+        // never took an RTT sample, so that rests on InitialRttMs.
+        //
+        CxPlatSleep(10 * InitialRttMs);
+        delete ProbeHelper;
+
+        //
+        // A path that does validate, so its path ID receives ack-eliciting
+        // packets and arms the connection's delayed ACK timer.
+        //
+        QuicAddr GoodLocalAddr = LocalAddr;
+        GoodLocalAddr.SetEphemeralPort();
+        QUIC_PATH_PARAM GoodParam = { &GoodLocalAddr.SockAddr, &PairAddr.SockAddr };
+        Try = 0;
+        do {
+            Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(GoodParam), &GoodParam);
+            if (Status == QUIC_STATUS_OUT_OF_MEMORY || QUIC_SUCCEEDED(Status)) {
+                break;
+            }
+            GoodLocalAddr.SetEphemeralPort();
+            GoodParam.LocalAddress = &GoodLocalAddr.SockAddr;
+        } while (++Try <= 3);
+        TEST_QUIC_SUCCEEDED(Status);
+
+        CxPlatSleep(4 * InitialRttMs);
+
+        //
+        // A wildcard local address, so the remote alone selects. Both paths
+        // share it, so every path goes and the connection closes with nowhere
+        // left to send -- which is the state the frees below have to survive.
+        //
+        QuicAddr WildcardLocalAddr(QuicAddrFamily, (uint16_t)0);
+        QUIC_PATH_PARAM RemoveParam = { &WildcardLocalAddr.SockAddr, &PairAddr.SockAddr };
+        TEST_QUIC_SUCCEEDED(
+            Connection.SetParam(QUIC_PARAM_CONN_REMOVE_PATH, sizeof(RemoveParam), &RemoveParam));
+
+        //
+        // Long enough for every remaining path ID's close timer to run, which
+        // is where the abort landed.
+        //
+        CxPlatSleep(10 * InitialRttMs);
+    }
+}
+
+//
+// Coverage for a validated multipath path being made active and then removed,
+// which is the shape QuicSendWritePathAckFrames' set walk has to keep working
+// for. No existing test activates a path it added and then takes it away.
+//
+// This is not a regression test for the asymmetry that walk fixes: the
+// QUIC_PARAM_CONN_REMOVE_PATH route does not reach it, because the multipath
+// branch of QuicConnRemovePath leaves the path in Connection->Paths until
+// QuicPathIDSetTryFreePathID takes both away together. See the pull request
+// for the measurement that established that.
+//
+void
+QuicTestMultipathRemovedPathAcks(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+    const uint32_t InitialRttMs = 50;
+
+    PathTestContext Context;
+    PathTestClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE).SetInitialRttMs(InitialRttMs);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathTestClientContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // Paths only open once the handshake is confirmed.
+    //
+    CxPlatSleep(100);
+
+    QuicAddr LocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(LocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+
+    QuicAddr SecondLocalAddr = LocalAddr;
+    SecondLocalAddr.SetEphemeralPort();
+    QUIC_PATH_PARAM AddParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(AddParam), &AddParam);
+        if (QUIC_SUCCEEDED(Status)) {
+            break;
+        }
+        SecondLocalAddr.SetEphemeralPort();
+        AddParam.LocalAddress = &SecondLocalAddr.SockAddr;
+    } while (++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    //
+    // The server indicating the path is how the client learns the probe landed.
+    //
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    CxPlatSleep(4 * InitialRttMs);
+
+    //
+    // Send on the new path, so the server answers on it and the client's second
+    // path ID is where those packets land and have to be acknowledged from.
+    //
+    QUIC_PATH_PARAM ActivateParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(ActivateParam), &ActivateParam));
+    CxPlatSleep(2 * InitialRttMs);
+
+    //
+    // Ack-eliciting traffic from the server, left in flight, and then the path
+    // carrying it is taken away.
+    //
+    MsQuicSettings Poke;
+    for (uint32_t i = 0; i < 20; ++i) {
+        Context.Connection->GetSettings(&Poke);
+        Poke.IsSetFlags = 0;
+        Poke.SetPeerBidiStreamCount(Poke.PeerBidiStreamCount + 1);
+        Context.Connection->SetSettings(Poke);
+    }
+
+    QUIC_PATH_PARAM RemoveParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_REMOVE_PATH, sizeof(RemoveParam), &RemoveParam));
+
+    //
+    // Past the removed path ID's three PTO close timer.
+    //
+    CxPlatSleep(30 * InitialRttMs);
+
+    //
+    // The original path carries the connection on: it is back to being the one
+    // that sends, and it still carries traffic in both directions.
+    //
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // The pokes above already signalled these once, so both are reset first.
+    //
+    ClientContext.StreamCountEvent.Reset();
+    Context.PeerStreamChangedEvent.Reset();
+
+    MsQuicSettings UpdatedSettings;
+    Context.Connection->GetSettings(&UpdatedSettings);
+    UpdatedSettings.IsSetFlags = 0;
+    UpdatedSettings.SetPeerBidiStreamCount(UpdatedSettings.PeerBidiStreamCount + 1);
+    Context.Connection->SetSettings(UpdatedSettings);
+    TEST_TRUE(ClientContext.StreamCountEvent.WaitTimeout(TestWaitTimeout));
+
+    Connection.GetSettings(&UpdatedSettings);
+    UpdatedSettings.IsSetFlags = 0;
+    UpdatedSettings.SetPeerBidiStreamCount(UpdatedSettings.PeerBidiStreamCount + 1);
+    Connection.SetSettings(UpdatedSettings);
+    TEST_TRUE(Context.PeerStreamChangedEvent.WaitTimeout(TestWaitTimeout));
+}
+
 #endif

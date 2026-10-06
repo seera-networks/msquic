@@ -721,6 +721,16 @@ QuicTestMultipathPathIdReclaimed(
     );
 
 void
+QuicTestMultipathPathIdFreeAckState(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestMultipathRemovedPathAcks(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestPathKeepAlive(
     _In_ const FamilyArgs& Params
     );
