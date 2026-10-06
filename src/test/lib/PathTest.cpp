@@ -2049,12 +2049,6 @@ QuicTestMultipathPathIdFreeAckState(
         TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
 
         Connection.SetShareUdpBinding();
-        TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket());
-
-        QuicAddr ClientLocalAddr(QuicAddrFamily);
-        QuicAddrSetToLoopback(&ClientLocalAddr.SockAddr);
-        QuicAddrSetPort(&ClientLocalAddr.SockAddr, 0);
-        TEST_QUIC_SUCCEEDED(Connection.SetLocalAddr(ClientLocalAddr));
 
         TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
         TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
