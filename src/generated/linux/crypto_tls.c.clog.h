@@ -626,9 +626,9 @@ tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPTimestamp , arg1, arg3);\
             EncodeTPObservedAddress,
             Connection,
             "TP: Observed Address (%u)",
-            2);
+            (uint32_t)TransportParams->ObservedAddressRole);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = 2 = arg3
+// arg3 = arg3 = (uint32_t)TransportParams->ObservedAddressRole = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_4_ARGS_TRACE_EncodeTPObservedAddress
 #define _clog_4_ARGS_TRACE_EncodeTPObservedAddress(uniqueId, arg1, encoded_arg_string, arg3)\

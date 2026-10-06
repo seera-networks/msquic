@@ -52,26 +52,6 @@ tracepoint(CLOG_PATH_C, PathActiveFallback , arg1, arg3, arg4);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for PathActiveFallbackNone
-// [conn][%p] Path[%hhu] removed; no path to promote
-// QuicTraceLogConnInfo(
-                PathActiveFallbackNone,
-                Connection,
-                "Path[%hhu] removed; no path to promote",
-                Path->ID);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Path->ID = arg3
-----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_PathActiveFallbackNone
-#define _clog_4_ARGS_TRACE_PathActiveFallbackNone(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_PATH_C, PathActiveFallbackNone , arg1, arg3);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for PathChosen
 // [conn][%p] Path[%hhu][PathID][%u] Chosen
 // QuicTraceLogConnInfo(

@@ -679,9 +679,9 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPTimestamp,
             EncodeTPObservedAddress,
             Connection,
             "TP: Observed Address (%u)",
-            2);
+            (uint32_t)TransportParams->ObservedAddressRole);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = 2 = arg3
+// arg3 = arg3 = (uint32_t)TransportParams->ObservedAddressRole = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPObservedAddress,
     TP_ARGS(

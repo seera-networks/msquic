@@ -5609,10 +5609,62 @@ QuicConnRecvFrames(
             }
             if (PathID->Path == NULL) {
                 //
-                // The peer referenced a path id whose QUIC_PATH is not (yet)
-                // bound (e.g. CIDs provisioned via PATH_NEW_CONNECTION_ID before
-                // QuicConnAssignPathIDs could attach a path). Ignore the frame.
+                // The peer referenced a path ID with no QUIC_PATH bound: its
+                // CIDs were provisioned by PATH_NEW_CONNECTION_ID but no packet
+                // ever arrived to attach a path, either because one has not yet
+                // or because one never will. Answer it anyway.
                 //
+                // Ignoring it was what stranded the peer. It needs our abandon
+                // to set its own Abandoned flag, and without that
+                // QuicPathIDSetTryFreePathID returns early for good,
+                // QuicPathRemove is never called, and one of its QUIC_PATH
+                // slots is spent for the life of the connection. A hole punch
+                // that fails produces exactly this, which makes it the common
+                // case rather than a corner.
+                //
+                // Nothing of RemoteClose, LocalClose or LocalCloseAcked can be
+                // recorded, because all three live on the QUIC_PATH there isn't
+                // one of. Abandoned is set here instead: it means both ends are
+                // done with the path ID, the peer has just said so, and this
+                // side holds no path to wind down.
+                //
+                PathID->Flags.Abandoned = TRUE;
+                PathID->Flags.SendAbandon = TRUE;
+                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
+                AckEliciting = TRUE;
+
+                //
+                // Still three PTO before the path ID goes, even though there is
+                // no path to drain. draft-ietf-quic-multipath-21 section 3.4
+                // asks for "knowledge of the connection IDs issued to the peer
+                // and of the state of the number space associated to the path"
+                // to "be retained for 3 PTO after the PATH_ABANDON frame has
+                // been received", and section 3.4.2 gives the reason: packets
+                // sent on the abandoned path can arrive after the CIDs are
+                // retired, and one that finds no match makes us answer with a
+                // stateless reset. A path ID with no path still has CIDs issued
+                // to the peer and still has packet number spaces, so the window
+                // applies to it as much as to any other.
+                //
+                // The PTO comes from the active path: this path ID has no RTT
+                // of its own, having never carried anything.
+                //
+                if (!PathID->Flags.WaitClose && !PathID->Flags.Closed) {
+                    const uint64_t ThreePto =
+                        QuicLossDetectionComputeProbeTimeout(
+                            &PathID->LossDetection,
+                            &Connection->Paths[0],
+                            3);
+                    const uint64_t TimeNow = CxPlatTimeUs64();
+                    PathID->Flags.WaitClose = TRUE;
+                    PathID->CloseTime = TimeNow + ThreePto;
+                    QuicConnTimerSetEx(
+                        Connection,
+                        QUIC_CONN_TIMER_PATH_CLOSE,
+                        ThreePto,
+                        TimeNow);
+                }
+
                 QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
                 break;
             }
@@ -8432,7 +8484,13 @@ QuicConnRemovePath(
                 }
             } else {
                 Path->LocalClose = TRUE;
-                Path->SendAbandon = TRUE;
+                //
+                // PathID can be NULL for a path that never finished opening;
+                // there is no abandon to send for a path ID it never got.
+                //
+                if (Path->PathID != NULL) {
+                    Path->PathID->Flags.SendAbandon = TRUE;
+                }
                 QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
             }
         }

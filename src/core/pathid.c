@@ -104,6 +104,52 @@ QuicPathIDProcessPathCloseTimerOperation(
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
+QuicPathIDIndicatePathRemoved(
+    _Inout_ QUIC_PATHID* PathID
+    )
+{
+    QUIC_CONNECTION* Connection = PathID->Connection;
+
+    if (PathID->Flags.PathRemovedIndicated) {
+        return;
+    }
+
+    //
+    // The addresses come from the path while it is still attached, and from
+    // the snapshot QuicPathRemove took otherwise. PathID->Path is deliberately
+    // not consulted: QuicPathRemove leaves it pointing at a slot another path
+    // may have shifted into, so it would describe the wrong path, and since
+    // this indicates only once there would be no corrected event to follow.
+    //
+    const QUIC_ADDR* LocalAddress;
+    const QUIC_ADDR* RemoteAddress;
+    const QUIC_PATH* Path = QuicConnGetPathForPathID(Connection, PathID);
+    if (Path != NULL) {
+        LocalAddress = &Path->Route.LocalAddress;
+        RemoteAddress = &Path->Route.RemoteAddress;
+    } else if (PathID->Flags.RemovedAddressesValid) {
+        LocalAddress = &PathID->RemovedLocalAddress;
+        RemoteAddress = &PathID->RemovedRemoteAddress;
+    } else {
+        return;
+    }
+
+    PathID->Flags.PathRemovedIndicated = TRUE;
+
+    QUIC_CONNECTION_EVENT Event;
+    Event.Type = QUIC_CONNECTION_EVENT_PATH_REMOVED;
+    Event.PATH_REMOVED.PeerAddress = RemoteAddress;
+    Event.PATH_REMOVED.LocalAddress = LocalAddress;
+    Event.PATH_REMOVED.PathId = PathID->ID;
+    QuicTraceLogConnVerbose(
+        IndicatePathRemoved,
+        Connection,
+        "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
+    (void)QuicConnIndicateEvent(Connection, &Event);
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
 QuicPathIDAbandonLocally(
     _Inout_ QUIC_PATHID* PathID
     )
@@ -114,19 +160,10 @@ QuicPathIDAbandonLocally(
 
     if (!PathID->Path->LocalClose) {
         PathID->Path->LocalClose = TRUE;
-        PathID->Path->SendAbandon = TRUE;
+        PathID->Flags.SendAbandon = TRUE;
         QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
 
-        QUIC_CONNECTION_EVENT Event;
-        Event.Type = QUIC_CONNECTION_EVENT_PATH_REMOVED;
-        Event.PATH_REMOVED.PeerAddress = &PathID->Path->Route.RemoteAddress;
-        Event.PATH_REMOVED.LocalAddress = &PathID->Path->Route.LocalAddress;
-        Event.PATH_REMOVED.PathId = PathID->ID;
-        QuicTraceLogConnVerbose(
-            IndicatePathRemoved,
-            Connection,
-            "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-        (void)QuicConnIndicateEvent(Connection, &Event);
+        QuicPathIDIndicatePathRemoved(PathID);
     }
 
     //
@@ -842,6 +879,49 @@ QuicPathIDAssignCids(
     }
 
     return Assigned;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
+QuicPathIDWritePathAbandonFrame(
+    _In_ QUIC_PATHID* PathID,
+    _Inout_ QUIC_PACKET_BUILDER* Builder,
+    _In_ uint16_t AvailableBufferLength,
+    _Inout_ BOOLEAN* HasMoreToSend,
+    _Inout_ BOOLEAN* MaxFrameLimitHit,
+    _In_ BOOLEAN NoRoom
+    )
+{
+    if (!PathID->Flags.SendAbandon) {
+        return !NoRoom;
+    }
+
+    //
+    // Cannot go in the current packet but still wants to be sent. Saying so
+    // is what keeps the send flag raised for the next one.
+    //
+    if (*MaxFrameLimitHit || NoRoom) {
+        *HasMoreToSend = TRUE;
+        return !NoRoom;
+    }
+
+    QUIC_PATH_ABANDON_EX Frame = { PathID->ID, 0x00 };
+    if (!QuicPathAbandonFrameEncode(
+            &Frame,
+            &Builder->DatagramLength,
+            AvailableBufferLength,
+            Builder->Datagram->Buffer)) {
+        *HasMoreToSend = TRUE;
+        return FALSE;
+    }
+
+    PathID->Flags.SendAbandon = FALSE;
+    Builder->Metadata->Frames[Builder->Metadata->FrameCount].PATH_ABANDON.PathID =
+        (uint32_t)Frame.PathID;
+    if (QuicPacketBuilderAddFrame(Builder, QUIC_FRAME_PATH_ABANDON, TRUE)) {
+        *MaxFrameLimitHit = TRUE;
+    }
+    return TRUE;
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)

@@ -69,9 +69,9 @@ tracepoint(CLOG_PATHID_C, NonActivePathCidRetired , arg1);\
 // Decoder Ring for IndicatePathRemoved
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED
 // QuicTraceLogConnVerbose(
-            IndicatePathRemoved,
-            Connection,
-            "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
+        IndicatePathRemoved,
+        Connection,
+        "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 #ifndef _clog_3_ARGS_TRACE_IndicatePathRemoved

@@ -102,7 +102,16 @@ QuicPathRemove(
 
     BOOLEAN CloseWithNowhereToGo = FALSE;
 
-    if (Index == 0) {
+    if (Index == 0 && !Connection->State.MultipathNegotiated) {
+        //
+        // Promoting a replacement is a non-multipath concern: there the
+        // active path has to be Paths[0] and QuicPathSetActive swaps it in.
+        // Under multipath several paths carry IsActive independently,
+        // QuicPathSetActive performs no swap, and raising the flag on another
+        // path would only reset its congestion control and leave
+        // QuicPathSetActive's trailing asserts examining Paths[0] -- the path
+        // being removed -- rather than the promoted one. So nothing is
+        // promoted there.
         //
         // Removing the active path while other paths exist. Whatever is
         // promoted has to be something QuicPathSetActive accepts and the
@@ -145,31 +154,11 @@ QuicPathRemove(
                 Connection->Paths[FallbackIndex].ID);
             QuicPathSetActive(Connection, &Connection->Paths[FallbackIndex]);
             //
-            // In non-multipath mode QuicPathSetActive swaps Paths[0] and
-            // Paths[FallbackIndex], so the path being removed now lives at
-            // FallbackIndex and we remove it there. In multipath mode no swap
-            // happens (QuicPathSetActive only sets the new path's IsActive
-            // flag), so the path being removed is still at index 0 and Index
-            // must stay 0 -- otherwise we would remove the just-promoted
-            // fallback path instead, leaking its UDP binding.
+            // QuicPathSetActive swapped Paths[0] and Paths[FallbackIndex], so
+            // the path being removed now lives at FallbackIndex and we remove
+            // it there.
             //
-            if (!Connection->State.MultipathNegotiated) {
-                Index = FallbackIndex;
-            }
-
-        } else if (Connection->State.MultipathNegotiated) {
-            //
-            // Nothing worth promoting, and under multipath nothing needs to be:
-            // several paths carry IsActive at once, QuicConnChoosePath picks
-            // among them, and the one going away drops out of that set by being
-            // removed. Raising IsActive on a path that cannot be sent on would
-            // only give QuicConnChoosePath a candidate it then filters out.
-            //
-            QuicTraceLogConnInfo(
-                PathActiveFallbackNone,
-                Connection,
-                "Path[%hhu] removed; no path to promote",
-                Path->ID);
+            Index = FallbackIndex;
 
         } else {
             //
@@ -207,7 +196,17 @@ QuicPathRemove(
     // assigned); QuicConnAddPath then calls here to undo the half-added slot.
     //
     if (Connection->Paths[Index].PathID != NULL) {
-        QuicPathIDRelease(Connection->Paths[Index].PathID, QUIC_PATHID_REF_PATH);
+        //
+        // Keep the addresses, so a PATH_REMOVED indicated after this still
+        // describes the path it is about. PathID->Path is left behind pointing
+        // at a slot another path may be about to shift into.
+        //
+        QUIC_PATHID* RemovedPathID = Connection->Paths[Index].PathID;
+        RemovedPathID->RemovedLocalAddress = Connection->Paths[Index].Route.LocalAddress;
+        RemovedPathID->RemovedRemoteAddress = Connection->Paths[Index].Route.RemoteAddress;
+        RemovedPathID->Flags.RemovedAddressesValid = TRUE;
+
+        QuicPathIDRelease(RemovedPathID, QUIC_PATHID_REF_PATH);
         Connection->Paths[Index].PathID = NULL;
     }
 
@@ -434,6 +433,21 @@ QuicConnGetPathForPacket(
         }
         QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
         return &Connection->Paths[i];
+    }
+
+    if (PathID->Flags.Abandoned ||
+        PathID->Flags.WaitClose ||
+        PathID->Flags.Closed) {
+        //
+        // A path ID on its way out gets no path. A late or reordered packet
+        // can arrive after both ends have declared the path ID dead -- the
+        // receive side answers a PATH_ABANDON for a path ID with no path and
+        // sets Abandoned there -- and attaching one here would allocate a
+        // slot, initialize congestion control and make the path selectable
+        // for sending, only for the close timer to tear it all down again.
+        //
+        QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
+        return NULL;
     }
 
     if (!((QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||

@@ -116,8 +116,6 @@ typedef struct QUIC_PATH {
     BOOLEAN LocalClose : 1;
     BOOLEAN LocalCloseAcked : 1;
 
-    BOOLEAN SendAbandon : 1;
-
     BOOLEAN RemoteClose : 1;
 
     //

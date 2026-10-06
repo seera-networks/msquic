@@ -716,6 +716,11 @@ QuicTestMultipathPathValidationFailed(
     );
 
 void
+QuicTestMultipathPathIdReclaimed(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestPathKeepAlive(
     _In_ const FamilyArgs& Params
     );

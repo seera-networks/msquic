@@ -105,6 +105,7 @@
 ../src/perf/lib/PerfServer.cpp
 ../src/perf/lib/CMakeLists.txt
 ../src/perf/lib/Tcp.cpp
+../src/core/unittest/AllowanceTest.cpp
 ../src/core/unittest/SettingsTest.cpp
 ../src/core/unittest/SpinFrame.cpp
 ../src/core/unittest/SlidingWindowExtremumTest.cpp
