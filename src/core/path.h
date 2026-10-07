@@ -234,6 +234,20 @@ typedef struct QUIC_PATH {
     uint64_t PathValidationStartTime;
 
     //
+    // How many PATH_CHALLENGE sends the validation currently in progress has
+    // queued, including the first. Paces the retries: the validation timeout is
+    // divided into QUIC_PATH_VALIDATION_PTO_COUNT intervals and one challenge
+    // is queued at each boundary, so the budget is spent probing rather than
+    // waiting on a single probe. Counted when queued rather than when framed,
+    // so that a send deferred by amplification protection does not make the
+    // timer re-arm on a boundary it has already passed.
+    //
+    // Not touched by the loss-detection re-arm in QuicLossDetectionOnPacketDiscarded,
+    // which is an extra challenge outside this schedule.
+    //
+    uint8_t ChallengeCount;
+
+    //
     // Time (in microseconds) the last datagram was sent on this path. Drives
     // the per-path keep alive, which cares about what this path carried rather
     // than about what the connection as a whole has been doing.

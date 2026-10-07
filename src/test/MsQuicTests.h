@@ -693,6 +693,11 @@ QuicTestMultipathPathValidationFailed(
     );
 
 void
+QuicTestMultipathPathValidationRetry(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestMultipathPathIdReclaimed(
     _In_ const FamilyArgs& Params
     );
