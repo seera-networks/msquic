@@ -2273,4 +2273,118 @@ QuicTestMultipathRemovedPathAcks(
     TEST_TRUE(Context.PeerStreamChangedEvent.WaitTimeout(TestWaitTimeout));
 }
 
+//
+// A lost PATH_RESPONSE must not cost the path. The challenger is the only side
+// that can recover it: RFC 9000 section 8.2.2 forbids the responder from
+// re-sending -- "An endpoint MUST NOT send more than one PATH_RESPONSE frame in
+// response to one PATH_CHALLENGE frame [...] The peer is expected to send more
+// PATH_CHALLENGE frames as necessary to evoke additional PATH_RESPONSE frames"
+// -- and loss detection cannot help either, because the packet carrying the
+// challenge was acknowledged, so it is never declared lost and the re-arm in
+// QuicLossDetectionOnPacketDiscarded never fires.
+//
+// Issue #129. Before the retry schedule, one lost response abandoned the path
+// at the validation deadline and the connection lost it for the rest of the
+// session.
+//
+void
+QuicTestMultipathPathValidationRetry(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    //
+    // The deadline is max(3 PTO, 6 x InitialRtt) and the retries fall on its
+    // thirds, so a small initial RTT is what keeps this test short: 300 ms of
+    // budget, a challenge at 0 and at each 100 ms boundary.
+    //
+    const uint32_t InitialRttMs = 50;
+
+    PathTestContext Context;
+    PathDeathClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE).SetInitialRttMs(InitialRttMs);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathDeathClientContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // Path validation only starts once the handshake is confirmed.
+    //
+    CxPlatSleep(100);
+
+    QuicAddr SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    //
+    // Nothing dropped towards the server, so the challenge lands and the server
+    // answers. Two datagrams dropped coming back, which is what the issue's
+    // trace shows: the server's PATH_RESPONSE and the challenge for its own
+    // direction, lost together. Everything after that is delivered, so the
+    // retry evokes a second response and the path comes up.
+    //
+    PathProbeHelper* ProbeHelper =
+        new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 0, 2);
+    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(
+            QUIC_PARAM_CONN_ADD_PATH,
+            sizeof(PathParam),
+            &PathParam);
+        if (QUIC_SUCCEEDED(Status)) {
+            break;
+        }
+        delete ProbeHelper;
+        SecondLocalAddr.SetEphemeralPort();
+        ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 0, 2);
+    } while (++Try <= 3);
+    if (QUIC_FAILED(Status)) {
+        delete ProbeHelper;
+    }
+    TEST_QUIC_SUCCEEDED(Status);
+
+    //
+    // The client indicates PATH_ADDED when its own validation succeeds, which
+    // is the whole assertion: the re-sent challenge got a response. Without the
+    // retry the client sends one challenge, never hears back, and abandons --
+    // PATH_REMOVED instead, and this times out.
+    //
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_FALSE(ClientContext.PathRemovedEvent.WaitTimeout(100));
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
+
+    delete ProbeHelper;
+}
+
 #endif

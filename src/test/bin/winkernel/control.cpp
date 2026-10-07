@@ -605,6 +605,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestMultipath);
     RegisterTestFunction(QuicTestMultipathPathDeath);
     RegisterTestFunction(QuicTestMultipathPathValidationFailed);
+    RegisterTestFunction(QuicTestMultipathPathValidationRetry);
     RegisterTestFunction(QuicTestMultipathPathIdReclaimed);
     RegisterTestFunction(QuicTestMultipathPathIdFreeAckState);
     RegisterTestFunction(QuicTestMultipathRemovedPathAcks);

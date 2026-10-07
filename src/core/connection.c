@@ -5971,6 +5971,7 @@ QuicConnRecvPostProcessing(
             QuicPathValidate((*Path));
             (*Path)->SendChallenge = TRUE;
             (*Path)->PathValidationStartTime = CxPlatTimeUs64();
+            (*Path)->ChallengeCount = 1;
 
             //
             // NB: The path challenge payload is initialized here and reused
@@ -5989,6 +5990,7 @@ QuicConnRecvPostProcessing(
                     Connection->Paths[0].IsPeerValidated = FALSE;
                     Connection->Paths[0].SendChallenge = TRUE;
                     Connection->Paths[0].PathValidationStartTime = CxPlatTimeUs64();
+                    Connection->Paths[0].ChallengeCount = 1;
                     CxPlatRandom(sizeof(Connection->Paths[0].Challenge), Connection->Paths[0].Challenge);
                 }
             }
@@ -6825,6 +6827,47 @@ QuicConnPathValidationTimeoutUs(
                 MS_TO_US(Connection->Settings.InitialRttMs));
 }
 
+//
+// When the next thing is due for a validation in progress: either the boundary
+// at which another PATH_CHALLENGE should be queued, or the deadline at which
+// the path is given up on, whichever comes first.
+//
+// RFC 9000 section 8.2.1 permits the retries -- "An endpoint MAY send multiple
+// PATH_CHALLENGE frames to guard against packet loss" -- and section 8.2.2 puts
+// the obligation here rather than on the peer: "An endpoint MUST NOT send more
+// than one PATH_RESPONSE frame in response to one PATH_CHALLENGE frame [...]
+// The peer is expected to send more PATH_CHALLENGE frames as necessary to evoke
+// additional PATH_RESPONSE frames". Section 8.2.1 also caps the rate -- not
+// "more frequently than it would send an Initial packet" -- which a PTO-sized
+// interval satisfies.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint64_t
+QuicConnPathValidationNextEventTime(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path
+    )
+{
+    const uint64_t Timeout = QuicConnPathValidationTimeoutUs(Connection, Path);
+    const uint64_t Deadline = Path->PathValidationStartTime + Timeout;
+
+    if (Path->ChallengeCount >= QUIC_PATH_VALIDATION_PTO_COUNT) {
+        return Deadline;
+    }
+
+    //
+    // CXPLAT_MAX of one keeps a degenerate timeout from making this zero and
+    // the timer fire in a tight loop.
+    //
+    const uint64_t Interval =
+        CXPLAT_MAX(Timeout / QUIC_PATH_VALIDATION_PTO_COUNT, 1);
+    return
+        CXPLAT_MIN(
+            Path->PathValidationStartTime + (Path->ChallengeCount * Interval),
+            Deadline);
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicConnPathValidationTimerUpdate(
@@ -6832,8 +6875,9 @@ QuicConnPathValidationTimerUpdate(
     )
 {
     //
-    // Find the earliest validation deadline across all paths that currently
-    // have a validation in progress and arm (or cancel) the timer accordingly.
+    // Find the earliest thing due across all paths that currently have a
+    // validation in progress -- a challenge to re-send or a deadline to give up
+    // at -- and arm (or cancel) the timer accordingly.
     //
     const uint64_t TimeNow = CxPlatTimeUs64();
     uint64_t EarliestDeadline = UINT64_MAX;
@@ -6843,8 +6887,7 @@ QuicConnPathValidationTimerUpdate(
         if (Path->IsPeerValidated || Path->PathValidationStartTime == 0) {
             continue;
         }
-        const uint64_t Deadline =
-            Path->PathValidationStartTime + QuicConnPathValidationTimeoutUs(Connection, Path);
+        const uint64_t Deadline = QuicConnPathValidationNextEventTime(Connection, Path);
         EarliestDeadline = CXPLAT_MIN(Deadline, EarliestDeadline);
     }
 
@@ -6869,7 +6912,8 @@ QuicConnProcessPathValidationTimerOperation(
     )
 {
     //
-    // Abandon any path whose validation timed-out.
+    // Re-send the challenge for any path still waiting, and abandon any whose
+    // validation timed out.
     //
     const uint64_t TimeNow = CxPlatTimeUs64();
     uint8_t i = 0;
@@ -6880,7 +6924,46 @@ QuicConnProcessPathValidationTimerOperation(
             continue;
         }
         const uint64_t Timeout = QuicConnPathValidationTimeoutUs(Connection, Path);
-        if (CxPlatTimeDiff64(Path->PathValidationStartTime, TimeNow) <= Timeout) {
+        const uint64_t Elapsed = CxPlatTimeDiff64(Path->PathValidationStartTime, TimeNow);
+        if (Elapsed <= Timeout) {
+            //
+            // Still within the deadline, so this is a retry boundary rather
+            // than the end. One PATH_CHALLENGE was queued when validation
+            // started and one more is queued at each boundary after it, up to
+            // QUIC_PATH_VALIDATION_PTO_COUNT in total.
+            //
+            // Nothing else re-sends it. The loss handler only re-arms when the
+            // packet carrying the challenge is itself declared lost, and a lost
+            // PATH_RESPONSE leaves that packet acknowledged, so without this a
+            // single lost response cost the path permanently.
+            //
+            // Path->Challenge is deliberately left alone, so a response to any
+            // copy still matches. RFC 9000 section 8.2.1 asks for unpredictable
+            // data in every PATH_CHALLENGE frame, which reusing one payload for
+            // the retries of a single validation does not do; the data is still
+            // unpredictable to anyone who has not seen it, so what is given up
+            // is only knowing which copy a response answers, which nothing here
+            // uses. That deviation already existed for the loss-handler re-send
+            // and is tracked separately.
+            //
+            const uint64_t Interval =
+                CXPLAT_MAX(Timeout / QUIC_PATH_VALIDATION_PTO_COUNT, 1);
+            const uint8_t Due =
+                (uint8_t)CXPLAT_MIN(
+                    (Elapsed / Interval) + 1,
+                    QUIC_PATH_VALIDATION_PTO_COUNT);
+            if (Due > Path->ChallengeCount) {
+                Path->ChallengeCount = Due;
+                Path->SendChallenge = TRUE;
+                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
+                QuicTraceLogConnInfo(
+                    PathChallengeResend,
+                    Connection,
+                    "Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
+                    Path->ID,
+                    Path->ChallengeCount,
+                    (uint32_t)QUIC_PATH_VALIDATION_PTO_COUNT);
+            }
             ++i;
             continue;
         }
@@ -7262,6 +7345,7 @@ QuicConnOpenNewPath(
         QuicPathValidate(Path);
         Path->SendChallenge = TRUE;
         Path->PathValidationStartTime = CxPlatTimeUs64();
+        Path->ChallengeCount = 1;
 
         CxPlatRandom(sizeof(Path->Challenge), Path->Challenge);
 
