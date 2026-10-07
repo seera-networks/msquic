@@ -2296,8 +2296,13 @@ QuicTestMultipathPathValidationRetry(
 
     //
     // The deadline is max(3 PTO, 6 x InitialRtt) and the retries fall on its
-    // thirds, so a small initial RTT is what keeps this test short: 300 ms of
-    // budget, a challenge at 0 and at each 100 ms boundary.
+    // thirds, so a small initial RTT is what keeps this test short. The PTO
+    // branch is the one that wins here, not the floor: a new path starts at
+    // SmoothedRtt = InitialRtt and RttVariance = half of it (path.c), so
+    // PTO = 50 + 4 x 25 + 25 (the default MaxAckDelay) = 175 ms and three of
+    // those come to 525 ms, past the 6 x 50 = 300 ms floor. So the budget is
+    // 525 ms, with challenges at 0, 175 and 350 ms -- comfortably inside
+    // TestWaitTimeout, which is what matters for the wait below.
     //
     const uint32_t InitialRttMs = 50;
 
@@ -2350,9 +2355,16 @@ QuicTestMultipathPathValidationRetry(
     // direction, lost together. Everything after that is delivered, so the
     // retry evokes a second response and the path comes up.
     //
-    PathProbeHelper* ProbeHelper =
-        new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 0, 2);
-    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+    //
+    // Owned, because TEST_TRUE and friends return on failure. A raw delete at
+    // the end of the function is skipped exactly when an assertion fails, which
+    // here is the regression case, and the hook would stay registered in the
+    // process-global DatapathHooks for every later test in the binary -- still
+    // matching on an ephemeral port that by then belongs to someone else.
+    //
+    UniquePtr<PathProbeHelper> ProbeHelper(
+        new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 0, 2));
+    TEST_NOT_EQUAL(nullptr, ProbeHelper.get());
 
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
     QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
@@ -2365,13 +2377,11 @@ QuicTestMultipathPathValidationRetry(
         if (QUIC_SUCCEEDED(Status)) {
             break;
         }
-        delete ProbeHelper;
         SecondLocalAddr.SetEphemeralPort();
-        ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 0, 2);
+        ProbeHelper.reset(
+            new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort(), 0, 2));
+        TEST_NOT_EQUAL(nullptr, ProbeHelper.get());
     } while (++Try <= 3);
-    if (QUIC_FAILED(Status)) {
-        delete ProbeHelper;
-    }
     TEST_QUIC_SUCCEEDED(Status);
 
     //
@@ -2383,8 +2393,6 @@ QuicTestMultipathPathValidationRetry(
     TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
     TEST_FALSE(ClientContext.PathRemovedEvent.WaitTimeout(100));
     TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
-
-    delete ProbeHelper;
 }
 
 #endif

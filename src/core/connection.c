@@ -6841,6 +6841,25 @@ QuicConnPathValidationTimeoutUs(
 // "more frequently than it would send an Initial packet" -- which a PTO-sized
 // interval satisfies.
 //
+//
+// How long between the PATH_CHALLENGEs of one validation. The timer handler and
+// the arming below must agree on this, or a re-arm could land on a boundary the
+// handler does not consider due and the timer would fire in a loop, so it lives
+// in one place.
+//
+// CXPLAT_MAX of one keeps a degenerate timeout from making this zero, for the
+// same reason.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint64_t
+QuicConnPathValidationIntervalUs(
+    _In_ uint64_t Timeout
+    )
+{
+    return CXPLAT_MAX(Timeout / QUIC_PATH_VALIDATION_PTO_COUNT, 1);
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
 uint64_t
@@ -6856,15 +6875,10 @@ QuicConnPathValidationNextEventTime(
         return Deadline;
     }
 
-    //
-    // CXPLAT_MAX of one keeps a degenerate timeout from making this zero and
-    // the timer fire in a tight loop.
-    //
-    const uint64_t Interval =
-        CXPLAT_MAX(Timeout / QUIC_PATH_VALIDATION_PTO_COUNT, 1);
     return
         CXPLAT_MIN(
-            Path->PathValidationStartTime + (Path->ChallengeCount * Interval),
+            Path->PathValidationStartTime +
+                (Path->ChallengeCount * QuicConnPathValidationIntervalUs(Timeout)),
             Deadline);
 }
 
@@ -6946,8 +6960,17 @@ QuicConnProcessPathValidationTimerOperation(
             // uses. That deviation already existed for the loss-handler re-send
             // and is tracked separately.
             //
-            const uint64_t Interval =
-                CXPLAT_MAX(Timeout / QUIC_PATH_VALIDATION_PTO_COUNT, 1);
+            // Which challenge the elapsed time says is due, rather than
+            // simply the next one. A timer that fires late -- a loaded machine,
+            // a busy worker -- therefore skips the boundaries it slept through
+            // instead of firing off their challenges back to back, which would
+            // breach the rate section 8.2.1 asks for. The cost is that a late
+            // timer spends fewer than QUIC_PATH_VALIDATION_PTO_COUNT probes;
+            // keeping the pacing is worth more than keeping the count, since
+            // the probes exist to cover loss and two spaced a PTO apart cover
+            // more than three bunched together.
+            //
+            const uint64_t Interval = QuicConnPathValidationIntervalUs(Timeout);
             const uint8_t Due =
                 (uint8_t)CXPLAT_MIN(
                     (Elapsed / Interval) + 1,
