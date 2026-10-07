@@ -9886,6 +9886,30 @@
       ],
       "macroName": "QuicTraceEvent"
     },
+    "PathChallengeResend": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
+      "UniqueId": "PathChallengeResend",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "PathChosen": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu][PathID][%u] Chosen",
@@ -18317,6 +18341,11 @@
         "UniquenessHash": "327a7afe-ed73-6a7f-9a19-c69fcb4b2e0a",
         "TraceID": "PathBbr",
         "EncodingString": "[conn][%p][pathid][%hhu] BBR: State=%u RState=%u CongestionWindow=%u BytesInFlight=%u BytesInFlightMax=%u MinRttEst=%lu EstBw=%lu AppLimited=%u"
+      },
+      {
+        "UniquenessHash": "95ff69a6-fa4b-062d-a323-d8e079e8341a",
+        "TraceID": "PathChallengeResend",
+        "EncodingString": "[conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)"
       },
       {
         "UniquenessHash": "774db9aa-c37a-ad1e-6fae-d6b5d61f82f8",

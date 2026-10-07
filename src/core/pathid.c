@@ -863,6 +863,7 @@ QuicPathIDAssignCids(
 
         Path->SendChallenge = TRUE;
         Path->PathValidationStartTime = CxPlatTimeUs64();
+        Path->ChallengeCount = 1;
 
         CxPlatRandom(sizeof(Path->Challenge), Path->Challenge);
 

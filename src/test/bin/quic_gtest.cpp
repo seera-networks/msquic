@@ -977,6 +977,15 @@ TEST_P(WithFamilyArgs, MultipathPathValidationFailed) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathPathValidationRetry) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathValidationRetry", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathValidationRetry), GetParam()));
+    } else {
+        QuicTestMultipathPathValidationRetry(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, MultipathPathIdReclaimed) {
     TestLoggerT<ParamType> Logger("QuicTestMultipathPathIdReclaimed", GetParam());
     if (TestingKernelMode) {

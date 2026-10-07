@@ -813,6 +813,37 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, FailedRouteResolution,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathChallengeResend
+// [conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)
+// QuicTraceLogConnInfo(
+                    PathChallengeResend,
+                    Connection,
+                    "Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
+                    Path->ID,
+                    Path->ChallengeCount,
+                    (uint32_t)QUIC_PATH_VALIDATION_PTO_COUNT);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+// arg4 = arg4 = Path->ChallengeCount = arg4
+// arg5 = arg5 = (uint32_t)QUIC_PATH_VALIDATION_PTO_COUNT = arg5
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathChallengeResend,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3,
+        unsigned char, arg4,
+        unsigned int, arg5), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned char, arg4, arg4)
+        ctf_integer(unsigned int, arg5, arg5)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdatePeerPacketTolerance
 // [conn][%p] Updating peer packet tolerance to %hhu
 // QuicTraceLogConnInfo(
