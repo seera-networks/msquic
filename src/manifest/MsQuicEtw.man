@@ -2350,6 +2350,16 @@
                 name="Count2"
                 />
           </template>
+          <template tid="tid_CONN_COUNT">
+            <data
+                inType="win:Pointer"
+                name="Connection"
+                />
+            <data
+                inType="win:UInt16"
+                name="Count"
+                />
+          </template>
           <template tid="tid_OBSERVED_ADDRESS">
             <data
                 inType="win:Pointer"
@@ -3909,6 +3919,33 @@
               template="tid_CONN_CID"
               value="5208"
               />
+          <event
+              keywords="ut:Connection ut:DataFlow"
+              level="win:Informational"
+              message="$(string.Etw.ConnRecvTcpData)"
+              opcode="Connection"
+              symbol="QuicConnRecvTcpData"
+              template="tid_CONN_COUNT_COUNT"
+              value="5209"
+              />
+          <event
+              keywords="ut:Connection ut:DataFlow"
+              level="win:Informational"
+              message="$(string.Etw.ConnRecvPacket)"
+              opcode="Connection"
+              symbol="QuicConnRecvPacket"
+              template="tid_CONN_COUNT"
+              value="5210"
+              />
+          <event
+              keywords="ut:Connection ut:DataFlow"
+              level="win:Informational"
+              message="$(string.Etw.ConnEarlyDataStatus)"
+              opcode="Connection"
+              symbol="QuicConnEarlyDataStatus"
+              template="tid_CONN_MESSAGE"
+              value="5211"
+              />
           <!-- 6144 - 7167 | Stream Events -->
           <event
               keywords="ut:Stream ut:LowVolume ut:RPS"
@@ -4482,6 +4519,15 @@
               template="tid_PATHID_BBR"
               value="11280"
               />
+          <event
+              keywords="ut:RPS"
+              level="win:Verbose"
+              message="$(string.Etw.PacketEncryptQMux)"
+              opcode="Global"
+              symbol="QuicPacketEncryptQMux"
+              template="tid_ID"
+              value="11281"
+              />
         </events>
       </provider>
     </events>
@@ -4741,6 +4787,18 @@
         <string
             id="Etw.ConnRecvUdpDatagrams"
             value="[conn][%1] Recv %2 UDP datagrams, %3 bytes"
+            />
+        <string
+            id="Etw.ConnRecvTcpData"
+            value="[conn][%p] Recv %u TCP data, %u bytes"
+            />
+        <string
+            id="Etw.ConnRecvPacket"
+            value="[conn][%p][RX] %hu bytes"
+            />
+        <string
+            id="Etw.ConnEarlyDataStatus"
+            value="[conn][%p] Early data %s"
             />
         <string
             id="Etw.StreamCreated"
@@ -5117,6 +5175,10 @@
         <string
             id="Etw.PacketEncrypt"
             value="[pack][%1][%2] Encrypting"
+            />
+        <string
+            id="Etw.PacketEncryptQMux"
+            value="[pack][%1] Encrypting"
             />
         <string
             id="Etw.PacketFinalize"
