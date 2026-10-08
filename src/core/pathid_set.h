@@ -160,6 +160,16 @@ QuicPathIDSetGenerateNewSourceCids(
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 BOOLEAN
+QuicPathIDSetWritePathAbandonFrame(
+    _In_ QUIC_PATHID_SET* PathIDSet,
+    _Inout_ QUIC_PACKET_BUILDER* Builder,
+    _In_ uint16_t AvailableBufferLength,
+    _Out_ BOOLEAN* HasMoreToSend,
+    _Out_ BOOLEAN* MaxFrameLimitHit
+    );
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
 QuicPathIDSetWriteNewConnectionIDFrame(
     _In_ QUIC_PATHID_SET* PathIDSet,
     _Inout_ QUIC_PACKET_BUILDER* Builder,

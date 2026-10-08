@@ -213,6 +213,8 @@ impl Settings {
     define_settings_entry_bitflag2!(set_SendObservedAddressReports);
     #[cfg(feature = "preview-api")]
     define_settings_entry_bitflag2!(set_ReceiveObservedAddressReports);
+    #[cfg(feature = "preview-api")]
+    define_settings_entry_bitflag2!(set_PathValidatedEventEnabled);
 
     define_settings_entry!(
         set_StreamRecvWindowBidiLocalDefault,
@@ -242,5 +244,39 @@ mod tests {
             .set_PeerUnidiStreamCount(4);
         assert_eq!(3, s.as_ffi_ref().PeerBidiStreamCount);
         assert_eq!(4, s.as_ffi_ref().PeerUnidiStreamCount);
+    }
+
+    /// A flag setter has to set both the value bit and its IsSet bit. Setting
+    /// only the value leaves msquic ignoring the setting, with nothing to see.
+    #[cfg(feature = "preview-api")]
+    #[test]
+    fn test_path_validated_event_enabled() {
+        let s = Settings::new();
+        assert_eq!(0, unsafe {
+            s.as_ffi_ref()
+                .__bindgen_anon_1
+                .IsSet
+                .PathValidatedEventEnabled()
+        });
+        assert_eq!(0, unsafe {
+            s.as_ffi_ref()
+                .__bindgen_anon_2
+                .__bindgen_anon_1
+                .PathValidatedEventEnabled()
+        });
+
+        let s = s.set_PathValidatedEventEnabled();
+        assert_eq!(1, unsafe {
+            s.as_ffi_ref()
+                .__bindgen_anon_1
+                .IsSet
+                .PathValidatedEventEnabled()
+        });
+        assert_eq!(1, unsafe {
+            s.as_ffi_ref()
+                .__bindgen_anon_2
+                .__bindgen_anon_1
+                .PathValidatedEventEnabled()
+        });
     }
 }

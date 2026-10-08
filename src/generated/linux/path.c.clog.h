@@ -33,11 +33,11 @@ extern "C" {
 // Decoder Ring for PathActiveFallback
 // [conn][%p] Path[%hhu] removed; falling back to Path[%hhu]
 // QuicTraceLogConnInfo(
-            PathActiveFallback,
-            Connection,
-            "Path[%hhu] removed; falling back to Path[%hhu]",
-            Path->ID,
-            Connection->Paths[FallbackIndex].ID);
+                PathActiveFallback,
+                Connection,
+                "Path[%hhu] removed; falling back to Path[%hhu]",
+                Path->ID,
+                Connection->Paths[FallbackIndex].ID);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Path->ID = arg3
 // arg4 = arg4 = Connection->Paths[FallbackIndex].ID = arg4
@@ -117,9 +117,9 @@ tracepoint(CLOG_PATH_C, PathQeoDisabled , arg1, arg3);\
 // Decoder Ring for IndicatePathValidated
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED
 // QuicTraceLogConnVerbose(
-        IndicatePathValidated,
-        Connection,
-        "Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED");
+            IndicatePathValidated,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 #ifndef _clog_3_ARGS_TRACE_IndicatePathValidated
@@ -165,6 +165,26 @@ tracepoint(CLOG_PATH_C, ConnPathInitialized , arg2, arg3);\
 #ifndef _clog_4_ARGS_TRACE_ConnPathRemoved
 #define _clog_4_ARGS_TRACE_ConnPathRemoved(uniqueId, encoded_arg_string, arg2, arg3)\
 tracepoint(CLOG_PATH_C, ConnPathRemoved , arg2, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ConnError
+// [conn][%p] ERROR, %s.
+// QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "No path to fall back to");
+// arg2 = arg2 = Connection = arg2
+// arg3 = arg3 = "No path to fall back to" = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ConnError
+#define _clog_4_ARGS_TRACE_ConnError(uniqueId, encoded_arg_string, arg2, arg3)\
+tracepoint(CLOG_PATH_C, ConnError , arg2, arg3);\
 
 #endif
 

@@ -254,11 +254,11 @@ TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, PacketTxProbeRetransmit,
                 AttackDetected,
                 Connection,
                 "Attack detected: Skipped packet number %llu ACKed in range [%llu, %llu]",
-                Connection->Send.SkippedPacketNumber,
+                PathID->SkippedPacketNumber,
                 AckBlock->Low,
                 QuicRangeGetHigh(AckBlock));
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Send.SkippedPacketNumber = arg3
+// arg3 = arg3 = PathID->SkippedPacketNumber = arg3
 // arg4 = arg4 = AckBlock->Low = arg4
 // arg5 = arg5 = QuicRangeGetHigh(AckBlock) = arg5
 ----------------------------------------------------------*/
@@ -344,6 +344,33 @@ TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, ScheduleProbe,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathIDAbandonedOnTimeout
+// [conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection
+// QuicTraceLogConnInfo(
+                    PathIDAbandonedOnTimeout,
+                    Connection,
+                    "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+                    Path->ID,
+                    PathID->ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+// arg4 = arg4 = PathID->ID = arg4
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, PathIDAbandonedOnTimeout,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3,
+        unsigned int, arg4), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg4, arg4)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for KeyChangeConfirmed
 // [conn][%p] Key change confirmed by peer
 // QuicTraceLogConnVerbose(
@@ -353,25 +380,6 @@ TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, ScheduleProbe,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, KeyChangeConfirmed,
-    TP_ARGS(
-        const void *, arg1), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for IndicatePathRemoved
-// [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED
-// QuicTraceLogConnVerbose(
-                    IndicatePathRemoved,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_LOSS_DETECTION_C, IndicatePathRemoved,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(

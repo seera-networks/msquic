@@ -180,6 +180,14 @@ typedef struct QUIC_CID_HASH_ENTRY {
     QUIC_BINDING* Binding;
     QUIC_CID_SLIST_ENTRY* Parent;
 
+    //
+    // Whether Entry is actually linked into one of the lookup's partitioned
+    // hash tables. A lookup with a single connection keeps no table at all, so
+    // an entry can live on the parent's HashEntries list without being in one;
+    // removing such an entry from a table would corrupt it.
+    //
+    BOOLEAN InLookupTable;
+
 } QUIC_CID_HASH_ENTRY;
 
 //

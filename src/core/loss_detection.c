@@ -285,7 +285,7 @@ QuicLossDetectionUpdateTimer(
 
     QUIC_PATH* Path = &Connection->Paths[0]; // TODO - Is this right?
 
-    if (!Path->IsPeerValidated && Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+    if (!Path->IsPeerValidated && Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
         //
         // Sending is restricted for amplification protection.
         // Don't run the timer, because nothing can be sent when it fires.
@@ -654,20 +654,26 @@ QuicLossDetectionOnPacketAcknowledged(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             if (PathID != NULL) {
-                PathID->Path->LocalCloseAcked = TRUE;
+                //
+                // Looked up rather than taken from PathID->Path: once the path
+                // is detached that still points at the slot, which another path
+                // may have shifted into, and these flags belong to the path
+                // this acknowledgement is about.
+                //
+                QUIC_PATH* AbandonedPath =
+                    QuicConnGetPathForPathID(Connection, PathID);
+                if (AbandonedPath != NULL) {
+                    AbandonedPath->LocalCloseAcked = TRUE;
+                }
 
-                QUIC_CONNECTION_EVENT Event;
-                Event.Type = QUIC_CONNECTION_EVENT_PATH_REMOVED;
-                Event.PATH_REMOVED.PeerAddress = &PathID->Path->Route.RemoteAddress;
-                Event.PATH_REMOVED.LocalAddress = &PathID->Path->Route.LocalAddress;
-                Event.PATH_REMOVED.PathId = PathID->ID;
-                QuicTraceLogConnVerbose(
-                    IndicatePathRemoved,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-                (void)QuicConnIndicateEvent(Connection, &Event);
+                //
+                // The peer has confirmed the path is gone. Whoever abandoned it
+                // may already have reported it, so this only reports a removal
+                // the application has not been told about yet.
+                //
+                QuicPathIDIndicatePathRemoved(PathID);
 
-                if (PathID->Path->RemoteClose) {
+                if (AbandonedPath != NULL && AbandonedPath->RemoteClose) {
                     PathID->Flags.Abandoned = TRUE;
                     QuicPathIDSetTryFreePathID(&Connection->PathIDs, PathID);
                 }
@@ -962,8 +968,21 @@ QuicLossDetectionRetransmitFrames(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             if (PathID != NULL) {
-                if (!PathID->Path->LocalCloseAcked) {
-                    PathID->Path->SendAbandon = TRUE;
+                //
+                // Looked up rather than taken from PathID->Path, for the same
+                // reason as the acknowledged handler above: once detached
+                // that still points at a slot another path may have shifted
+                // into, and reading its LocalCloseAcked could drop this
+                // abandon for good.
+                //
+                // No path means no LocalCloseAcked to consult, and a lost
+                // abandon on such a path ID still has to be re-sent: it is
+                // the only thing that lets the peer free its own.
+                //
+                const QUIC_PATH* AbandonedPath =
+                    QuicConnGetPathForPathID(Connection, PathID);
+                if (AbandonedPath == NULL || !AbandonedPath->LocalCloseAcked) {
+                    PathID->Flags.SendAbandon = TRUE;
                     QuicSendSetSendFlag(
                         &Connection->Send,
                         QUIC_CONN_SEND_FLAG_PATH_ABANDON);
@@ -983,11 +1002,17 @@ QuicLossDetectionRetransmitFrames(
             if (PathID != NULL) {
                 //
                 // The path can be gone while a frame describing it is still in
-                // flight -- a QUIC_PATHID outlives its QUIC_PATH -- so this is
-                // guarded the way connection.c guards its own uses.
+                // flight -- a QUIC_PATHID outlives its QUIC_PATH. Looked up
+                // forwards rather than through PathID->Path, which is never
+                // cleared when QuicPathRemove takes the path away (#115), so a
+                // NULL check alone would still let this write SendStatus onto a
+                // slot that is out of the live array or belongs to another
+                // path. The PATH_ABANDON case above settled on the same helper
+                // for the same reason.
                 //
-                if (PathID->Path != NULL &&
-                    !PathID->Path->IsActive &&
+                QUIC_PATH* StatusPath = QuicConnGetPathForPathID(Connection, PathID);
+                if (StatusPath != NULL &&
+                    !StatusPath->IsActive &&
                     Packet->Frames[i].PATH_BACKUP.Sequence + 1 == PathID->StatusSendSeq) {
                     //
                     // The flag on its own is not enough. QuicSendWriteFrames
@@ -995,7 +1020,7 @@ QuicLossDetectionRetransmitFrames(
                     // flag without it builds a packet the writer then has
                     // nothing to put in, and it asserts having framed nothing.
                     //
-                    PathID->Path->SendStatus = TRUE;
+                    StatusPath->SendStatus = TRUE;
                     QuicSendSetSendFlag(
                         &Connection->Send,
                         QUIC_CONN_SEND_FLAG_PATH_BACKUP);
@@ -1015,11 +1040,17 @@ QuicLossDetectionRetransmitFrames(
             if (PathID != NULL) {
                 //
                 // The path can be gone while a frame describing it is still in
-                // flight -- a QUIC_PATHID outlives its QUIC_PATH -- so this is
-                // guarded the way connection.c guards its own uses.
+                // flight -- a QUIC_PATHID outlives its QUIC_PATH. Looked up
+                // forwards rather than through PathID->Path, which is never
+                // cleared when QuicPathRemove takes the path away (#115), so a
+                // NULL check alone would still let this write SendStatus onto a
+                // slot that is out of the live array or belongs to another
+                // path. The PATH_ABANDON case above settled on the same helper
+                // for the same reason.
                 //
-                if (PathID->Path != NULL &&
-                    PathID->Path->IsActive &&
+                QUIC_PATH* StatusPath = QuicConnGetPathForPathID(Connection, PathID);
+                if (StatusPath != NULL &&
+                    StatusPath->IsActive &&
                     Packet->Frames[i].PATH_AVAILABLE.Sequence + 1 == PathID->StatusSendSeq) {
                     //
                     // The flag on its own is not enough. QuicSendWriteFrames
@@ -1027,7 +1058,7 @@ QuicLossDetectionRetransmitFrames(
                     // flag without it builds a packet the writer then has
                     // nothing to put in, and it asserts having framed nothing.
                     //
-                    PathID->Path->SendStatus = TRUE;
+                    StatusPath->SendStatus = TRUE;
                     QuicSendSetSendFlag(
                         &Connection->Send,
                         QUIC_CONN_SEND_FLAG_PATH_AVAILABLE);
@@ -1585,7 +1616,7 @@ QuicLossDetectionOnZeroRttRejected(
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
-void
+BOOLEAN
 QuicLossDetectionProcessAckBlocks(
     _In_ QUIC_LOSS_DETECTION* LossDetection,
     _In_ QUIC_PATH* Path,
@@ -1593,10 +1624,10 @@ QuicLossDetectionProcessAckBlocks(
     _In_ QUIC_ENCRYPT_LEVEL EncryptLevel,
     _In_ uint64_t AckDelay,
     _In_ QUIC_RANGE* AckBlocks,
-    _Out_ BOOLEAN* InvalidAckBlock,
     _In_opt_ QUIC_ACK_ECN_EX* Ecn
     )
 {
+    BOOLEAN Result = TRUE;
     QUIC_SENT_PACKET_METADATA* AckedPackets = NULL;
     QUIC_SENT_PACKET_METADATA** AckedPacketsTail = &AckedPackets;
 
@@ -1609,8 +1640,6 @@ QuicLossDetectionProcessAckBlocks(
     BOOLEAN NewLargestAckRetransmittable = FALSE;
     BOOLEAN NewLargestAckDifferentPath = FALSE;
     uint64_t NewLargestAckTimestamp = 0;
-
-    *InvalidAckBlock = FALSE;
 
     QUIC_SENT_PACKET_METADATA** LostPacketsStart = &LossDetection->LostPackets;
     QUIC_SENT_PACKET_METADATA** SentPacketsStart = &LossDetection->SentPackets;
@@ -1632,8 +1661,8 @@ QuicLossDetectionProcessAckBlocks(
                 PathID->SkippedPacketNumber,
                 AckBlock->Low,
                 QuicRangeGetHigh(AckBlock));
-            QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
-            return;
+            Result = FALSE;
+            goto Exit;
         }
 
         //
@@ -1751,7 +1780,7 @@ CheckSentPackets:
         //
         // Nothing was acknowledged, so we can exit now.
         //
-        return;
+        goto Exit;
     }
 
     uint64_t LargestAckedPacketNum = 0;
@@ -1773,8 +1802,8 @@ CheckSentPackets:
                 "[conn][%p] ERROR, %s.",
                 Connection,
                 "Incorrect ACK encryption level");
-            *InvalidAckBlock = TRUE;
-            return;
+            Result = FALSE;
+            goto Exit;
         }
 
         uint64_t PacketRtt = CxPlatTimeDiff64(PacketMeta->SentTime, TimeNow);
@@ -1932,18 +1961,28 @@ CheckSentPackets:
 
     LossDetection->ProbeCount = 0;
 
+Exit:
+
+    if (!Result) {
+        //
+        // A protocol violation was detected; fail the connection.
+        //
+        QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+    }
+
     AckedPacketsIterator = AckedPackets;
     while (AckedPacketsIterator != NULL) {
         QUIC_SENT_PACKET_METADATA* PacketMeta = AckedPacketsIterator;
         AckedPacketsIterator = AckedPacketsIterator->Next;
         QuicSentPacketPoolReturnPacketMetadata(PacketMeta, Connection);
     }
-
     //
     // At least one packet was ACKed. If all packets were ACKed then we'll
     // cancel the timer; otherwise we'll reset the timer.
     //
     QuicLossDetectionUpdateTimer(LossDetection, FALSE);
+
+    return Result;
 }
 
 //
@@ -2079,13 +2118,46 @@ QuicLossDetectionProcessTimerOperation(
         // OldestPacket has been in the SentPackets list for at least
         // DisconnectTimeoutUs without an ACK for either OldestPacket or for any
         // packets sent more than the reordering threshold after it. Assume the
-        // path is dead and close the connection.
+        // path is dead.
         //
-        QuicConnCloseLocally(
-            Connection,
-            QUIC_CLOSE_INTERNAL_SILENT | QUIC_CLOSE_QUIC_STATUS,
-            (uint64_t)QUIC_STATUS_CONNECTION_TIMEOUT,
-            NULL);
+        // This loss detection belongs to one path ID, so with multipath a dead
+        // path is not a dead connection. Abandon the path instead and let the
+        // others carry the connection: QuicConnChoosePath stops selecting it
+        // the moment LocalClose is set, and the PATH_ABANDON frame rides out on
+        // whichever path is still alive. The connection only goes down with its
+        // last usable path.
+        //
+        //
+        // Looked up rather than taken from PathID->Path, which QuicPathRemove
+        // leaves behind when it detaches a path from a path ID that stays in
+        // the set -- a path validation timeout does exactly that.
+        //
+        QUIC_PATHID* PathID = QuicLossDetectionGetPathID(LossDetection);
+        QUIC_PATH* Path = QuicConnGetPathForPathID(Connection, PathID);
+        if (Path != NULL &&
+            QuicConnHasOtherUsablePath(Connection, Path)) {
+            //
+            // The packets stay outstanding on a path nothing comes back on, and
+            // this timer fires for every path ID of the connection, so this is
+            // reached again on every tick. Only the first one has work to do.
+            //
+            if (!Path->LocalClose) {
+                QuicTraceLogConnInfo(
+                    PathIDAbandonedOnTimeout,
+                    Connection,
+                    "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+                    Path->ID,
+                    PathID->ID);
+                QuicPathIDAbandonLocally(PathID);
+            }
+
+        } else {
+            QuicConnCloseLocally(
+                Connection,
+                QUIC_CLOSE_INTERNAL_SILENT | QUIC_CLOSE_QUIC_STATUS,
+                (uint64_t)QUIC_STATUS_CONNECTION_TIMEOUT,
+                NULL);
+        }
 
     } else {
 

@@ -828,6 +828,21 @@ tracepoint(CLOG_SETTINGS_C, SettingNetStatsEventEnabled , arg2);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for SettingPathValidatedEventEnabled
+// [sett] PathValidatedEvtEnabled= %hhu
+// QuicTraceLogVerbose(SettingPathValidatedEventEnabled,   "[sett] PathValidatedEvtEnabled= %hhu", Settings->PathValidatedEventEnabled);
+// arg2 = arg2 = Settings->PathValidatedEventEnabled = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_SettingPathValidatedEventEnabled
+#define _clog_3_ARGS_TRACE_SettingPathValidatedEventEnabled(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_SETTINGS_C, SettingPathValidatedEventEnabled , arg2);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for SettingServerMigrationEnabled
 // [sett] ServerMigrationEnabled = %hhu
 // QuicTraceLogVerbose(SettingServerMigrationEnabled,      "[sett] ServerMigrationEnabled = %hhu", Settings->ServerMigrationEnabled);

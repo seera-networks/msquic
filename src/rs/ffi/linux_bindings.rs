@@ -240,11 +240,11 @@ pub type QUIC_XDP_MAP_HANDLE = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct QUIC_ADDR_STR {
-    pub Address: [::std::os::raw::c_char; 64usize],
+    pub Address: [::std::os::raw::c_char; 65usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of QUIC_ADDR_STR"][::std::mem::size_of::<QUIC_ADDR_STR>() - 64usize];
+    ["Size of QUIC_ADDR_STR"][::std::mem::size_of::<QUIC_ADDR_STR>() - 65usize];
     ["Alignment of QUIC_ADDR_STR"][::std::mem::align_of::<QUIC_ADDR_STR>() - 1usize];
     ["Offset of field: QUIC_ADDR_STR::Address"]
         [::std::mem::offset_of!(QUIC_ADDR_STR, Address) - 0usize];
@@ -3879,14 +3879,47 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         }
     }
     #[inline]
+    pub fn PathValidatedEventEnabled(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(53usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_PathValidatedEventEnabled(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(53usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn PathValidatedEventEnabled_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                53usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_PathValidatedEventEnabled_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                53usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
     pub fn RESERVED(&self) -> u64 {
-        unsafe { ::std::mem::transmute(self._bitfield_1.get(53usize, 11u8) as u64) }
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(54usize, 10u8) as u64) }
     }
     #[inline]
     pub fn set_RESERVED(&mut self, val: u64) {
         unsafe {
             let val: u64 = ::std::mem::transmute(val);
-            self._bitfield_1.set(53usize, 11u8, val as u64)
+            self._bitfield_1.set(54usize, 10u8, val as u64)
         }
     }
     #[inline]
@@ -3894,8 +3927,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         unsafe {
             ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
                 ::std::ptr::addr_of!((*this)._bitfield_1),
-                53usize,
-                11u8,
+                54usize,
+                10u8,
             ) as u64)
         }
     }
@@ -3905,8 +3938,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
             let val: u64 = ::std::mem::transmute(val);
             <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
                 ::std::ptr::addr_of_mut!((*this)._bitfield_1),
-                53usize,
-                11u8,
+                54usize,
+                10u8,
                 val as u64,
             )
         }
@@ -3966,6 +3999,7 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         SendObservedAddressReports: u64,
         ReceiveObservedAddressReports: u64,
         PathKeepAliveIntervalMs: u64,
+        PathValidatedEventEnabled: u64,
         RESERVED: u64,
     ) -> __BindgenBitfieldUnit<[u8; 8usize]> {
         let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 8usize]> = Default::default();
@@ -4207,7 +4241,12 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
                 unsafe { ::std::mem::transmute(PathKeepAliveIntervalMs) };
             PathKeepAliveIntervalMs as u64
         });
-        __bindgen_bitfield_unit.set(53usize, 11u8, {
+        __bindgen_bitfield_unit.set(53usize, 1u8, {
+            let PathValidatedEventEnabled: u64 =
+                unsafe { ::std::mem::transmute(PathValidatedEventEnabled) };
+            PathValidatedEventEnabled as u64
+        });
+        __bindgen_bitfield_unit.set(54usize, 10u8, {
             let RESERVED: u64 = unsafe { ::std::mem::transmute(RESERVED) };
             RESERVED as u64
         });
@@ -4708,14 +4747,47 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
         }
     }
     #[inline]
+    pub fn PathValidatedEventEnabled(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_PathValidatedEventEnabled(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn PathValidatedEventEnabled_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_PathValidatedEventEnabled_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
     pub fn ReservedFlags(&self) -> u64 {
-        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 50u8) as u64) }
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(15usize, 49u8) as u64) }
     }
     #[inline]
     pub fn set_ReservedFlags(&mut self, val: u64) {
         unsafe {
             let val: u64 = ::std::mem::transmute(val);
-            self._bitfield_1.set(14usize, 50u8, val as u64)
+            self._bitfield_1.set(15usize, 49u8, val as u64)
         }
     }
     #[inline]
@@ -4723,8 +4795,8 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
         unsafe {
             ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
                 ::std::ptr::addr_of!((*this)._bitfield_1),
-                14usize,
-                50u8,
+                15usize,
+                49u8,
             ) as u64)
         }
     }
@@ -4734,8 +4806,8 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
             let val: u64 = ::std::mem::transmute(val);
             <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
                 ::std::ptr::addr_of_mut!((*this)._bitfield_1),
-                14usize,
-                50u8,
+                15usize,
+                49u8,
                 val as u64,
             )
         }
@@ -4756,6 +4828,7 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
         MultipathEnabled: u64,
         SendObservedAddressReports: u64,
         ReceiveObservedAddressReports: u64,
+        PathValidatedEventEnabled: u64,
         ReservedFlags: u64,
     ) -> __BindgenBitfieldUnit<[u8; 8usize]> {
         let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 8usize]> = Default::default();
@@ -4820,7 +4893,12 @@ impl QUIC_SETTINGS__bindgen_ty_2__bindgen_ty_1 {
                 unsafe { ::std::mem::transmute(ReceiveObservedAddressReports) };
             ReceiveObservedAddressReports as u64
         });
-        __bindgen_bitfield_unit.set(14usize, 50u8, {
+        __bindgen_bitfield_unit.set(14usize, 1u8, {
+            let PathValidatedEventEnabled: u64 =
+                unsafe { ::std::mem::transmute(PathValidatedEventEnabled) };
+            PathValidatedEventEnabled as u64
+        });
+        __bindgen_bitfield_unit.set(15usize, 49u8, {
             let ReservedFlags: u64 = unsafe { ::std::mem::transmute(ReservedFlags) };
             ReservedFlags as u64
         });

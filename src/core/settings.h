@@ -72,7 +72,8 @@ typedef struct QUIC_SETTINGS_INTERNAL {
             uint64_t SendObservedAddressReports             : 1;
             uint64_t ReceiveObservedAddressReports          : 1;
             uint64_t PathKeepAliveIntervalMs                : 1;
-            uint64_t RESERVED                               : 6;
+            uint64_t PathValidatedEventEnabled              : 1;
+            uint64_t RESERVED                               : 5;
         } IsSet;
     };
 
@@ -133,6 +134,7 @@ typedef struct QUIC_SETTINGS_INTERNAL {
     uint8_t MultipathEnabled                : 1;
     uint8_t SendObservedAddressReports      : 1;
     uint8_t ReceiveObservedAddressReports   : 1;
+    uint8_t PathValidatedEventEnabled       : 1;
     uint8_t MtuDiscoveryMissingProbeCount;
 } QUIC_SETTINGS_INTERNAL;
 

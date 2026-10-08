@@ -301,10 +301,17 @@ CxPlatSocketCreateUdp(
             Status = QUIC_STATUS_INVALID_STATE;
             goto Error;
         } else if (CibirRequested) {
+            //
+            // One string literal, not two. CLOG records the raw text between
+            // adjacent literals in the sidecar, newline included, so a message
+            // split across lines gets a signature that depends on the file's
+            // line endings: the entry written from an LF checkout stops
+            // matching when the same source is parsed with CRLF, and CLOG
+            // rejects it as a changed encoding string.
+            //
             QuicTraceLogWarning(
                 WarnNoXdpForCibirSockets,
-                "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. "
-                "Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation.");
+                "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation.");
         }
         break;
     }

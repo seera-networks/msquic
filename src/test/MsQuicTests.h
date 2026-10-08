@@ -683,6 +683,36 @@ QuicTestMultipath(
     );
 
 void
+QuicTestMultipathPathDeath(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestMultipathPathValidationFailed(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestMultipathPathValidationRetry(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestMultipathPathIdReclaimed(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestMultipathPathIdFreeAckState(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestMultipathRemovedPathAcks(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestPathKeepAlive(
     _In_ const FamilyArgs& Params
     );

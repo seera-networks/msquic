@@ -603,6 +603,12 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestServerProbePath);
     RegisterTestFunction(QuicTestServerMigration);
     RegisterTestFunction(QuicTestMultipath);
+    RegisterTestFunction(QuicTestMultipathPathDeath);
+    RegisterTestFunction(QuicTestMultipathPathValidationFailed);
+    RegisterTestFunction(QuicTestMultipathPathValidationRetry);
+    RegisterTestFunction(QuicTestMultipathPathIdReclaimed);
+    RegisterTestFunction(QuicTestMultipathPathIdFreeAckState);
+    RegisterTestFunction(QuicTestMultipathRemovedPathAcks);
     RegisterTestFunction(QuicTestPathKeepAlive);
     RegisterTestFunction(QuicTestPathStatistics);
     RegisterTestFunction(QuicTestPathRequiredDatagramLength);

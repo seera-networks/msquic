@@ -281,25 +281,73 @@ QuicSendWritePathAckFrames(
         return FALSE;
     }
 
-    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-        QUIC_PATHID* TempPathID = Connection->Paths[i].PathID;
-        if (TempPathID == NULL) {
-            continue;
-        }
-        if (!Connection->State.MultipathNegotiated && i > 0) {
+    //
+    // Over the path ID set, not Connection->Paths, so that this agrees with
+    // QuicSendHasAckElicitingPacketsToAcknowledge about which path IDs the
+    // connection's ACK state covers. That one walks the set; this walked the
+    // array, and a path ID can be in the set with no QUIC_PATH to be found
+    // through -- QuicPathRemove shifts the array down and decrements
+    // PathsCount, and PathID->Path is never cleared, which is #115.
+    //
+    // QuicPathIDReplaceRetiredCids leaves exactly that, for an unbounded time:
+    // a non-active path whose destination CID was retired with no unused one to
+    // replace it goes away while its path ID stays, not abandoned, keeping its
+    // packet number spaces. Its received packets then had nothing able to
+    // acknowledge them. The invalid-path removal after a failed route
+    // resolution leaves the same.
+    //
+    // An ACK_MP frame names the path ID it acknowledges, so
+    // draft-ietf-quic-multipath-21 section 3.4 lets it go out on whichever path
+    // this builder is targeting. That is what makes reaching a path-less path
+    // ID possible at all, and it is the same reason
+    // QuicPathIDSetWritePathAbandonFrame walks the set.
+    //
+    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+    QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
+
+    //
+    // The active path's ACKs first, as they were when this walked
+    // Connection->Paths from index zero: the enumeration order of the path ID
+    // set is arbitrary, and under room pressure the path the packet is going
+    // out on is the one whose ACKs are worth the space.
+    //
+    QUIC_PATHID* ActivePathID = Connection->Paths[0].PathID;
+    for (uint8_t i = 1; i < PathIDCount; ++i) {
+        if (PathIDs[i] == ActivePathID) {
+            QUIC_PATHID* Swap = PathIDs[0];
+            PathIDs[0] = PathIDs[i];
+            PathIDs[i] = Swap;
             break;
-        }
-        QUIC_PACKET_SPACE* Packets = TempPathID->Packets[Builder->EncryptLevel];
-        if (Packets != NULL && QuicAckTrackerHasPacketsToAck(&Packets->AckTracker)) {
-            if (QuicAckTrackerAckFrameEncode(&Packets->AckTracker, Builder)) {
-                *WroteFrames = TRUE;
-            } else if (StopOnRoomFailure) {
-                return TRUE;
-            }
         }
     }
 
-    return FALSE;
+    BOOLEAN RanOutOfRoom = FALSE;
+    for (uint8_t i = 0; i < PathIDCount; ++i) {
+        //
+        // Every path ID is released, including after room runs out, because
+        // QuicPathIDSetGetPathIDs took a reference on each.
+        //
+        if (!RanOutOfRoom &&
+            (Connection->State.MultipathNegotiated || PathIDs[i] == ActivePathID)) {
+            //
+            // Without multipath a plain ACK frame carries no path ID, so two of
+            // them in one packet would be two claims about one number space.
+            // Only the active path's are written, as before.
+            //
+            QUIC_PACKET_SPACE* Packets = PathIDs[i]->Packets[Builder->EncryptLevel];
+            if (Packets != NULL && QuicAckTrackerHasPacketsToAck(&Packets->AckTracker)) {
+                if (QuicAckTrackerAckFrameEncode(&Packets->AckTracker, Builder)) {
+                    *WroteFrames = TRUE;
+                } else if (StopOnRoomFailure) {
+                    RanOutOfRoom = TRUE;
+                }
+            }
+        }
+        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+    }
+
+    return RanOutOfRoom;
 }
 
 #if DEBUG
@@ -697,40 +745,28 @@ QuicSendWriteFrames(
     // `QuicSendPathResponses` (invoked from `QuicSendFlush`).
     //
 
+    //
+    // Over the path ID set, not Connection->Paths. A path ID with no QUIC_PATH
+    // bound is absent from that array, and it is the one that has to be able to
+    // answer an abandon -- see SendAbandon in pathid.h.
+    //
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_ABANDON) {
-
-        uint8_t i;
-        for (i = 0; i < Connection->PathsCount; ++i) {
-            QUIC_PATH* TempPath = &Connection->Paths[i];
-            if (!TempPath->SendAbandon) {
-                continue;
-            }
-
-            QUIC_PATH_ABANDON_EX Frame = { TempPath->PathID->ID, 0x00 };
-
-            if (QuicPathAbandonFrameEncode(
-                    &Frame,
-                    &Builder->DatagramLength,
-                    AvailableBufferLength,
-                    Builder->Datagram->Buffer)) {
-
-                TempPath->SendAbandon = FALSE;
-                Builder->Metadata->Frames[Builder->Metadata->FrameCount].PATH_ABANDON.PathID =
-                    (uint32_t)Frame.PathID;
-                if (QuicPacketBuilderAddFrame(Builder, QUIC_FRAME_PATH_ABANDON, TRUE)) {
-                    break;
-                }
-            } else {
-                RanOutOfRoom = TRUE;
-                break;
-            }
+        BOOLEAN HasMoreToSend = FALSE;
+        BOOLEAN MaxFrameLimitHit = FALSE;
+        if (!QuicPathIDSetWritePathAbandonFrame(
+                &Connection->PathIDs,
+                Builder,
+                AvailableBufferLength,
+                &HasMoreToSend,
+                &MaxFrameLimitHit)) {
+            RanOutOfRoom = TRUE;
         }
 
-        if (i == Connection->PathsCount) {
+        if (!HasMoreToSend) {
             Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_ABANDON;
         }
 
-        if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
+        if (MaxFrameLimitHit) {
             return TRUE;
         }
     }
@@ -1467,7 +1503,7 @@ QuicSendPathKeepAlives(
 
         QUIC_PATH* Path = &Connection->Paths[i];
         if (!Path->SendKeepAlive ||
-            Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
             continue;
         }
 
@@ -1566,7 +1602,7 @@ QuicSendPathMtuProbes(
         // search has finished. Without this the probe waits for some unrelated
         // path to raise the flag again.
         //
-        if (Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+        if (Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
             Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
             continue;
         }
@@ -1720,7 +1756,7 @@ QuicSendPathChallenges(
 
         QUIC_PATH* Path = &Connection->Paths[i];
         if (!Connection->Paths[i].SendChallenge ||
-            Connection->Paths[i].Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            Connection->Paths[i].Allowance < QuicPathGetMinSendAllowance(Path)) {
             continue;
         }
 
@@ -1773,7 +1809,15 @@ QuicSendPathChallenges(
                 AvailableBufferLength,
                 Builder.Datagram->Buffer);
 
-        CXPLAT_DBG_ASSERT(Result);
+        //
+        // No assert on Result. QuicPathGetMinSendAllowance keeps amplification
+        // protection from squeezing the datagram below this frame at the
+        // connection ID lengths msquic itself picks, but a peer may choose a
+        // longer one and leave no room. Nothing is framed in that case, and
+        // QuicPacketBuilderFinalize undoes the header it wrote and marks the
+        // path amplification blocked. SendChallenge stays set, so the challenge
+        // goes out once there is allowance for it.
+        //
         if (Result) {
             CxPlatCopyMemory(
                 Builder.Metadata->Frames[0].PATH_CHALLENGE.Data,
@@ -1832,7 +1876,7 @@ QuicSendPathResponses(
 
         QUIC_PATH* Path = &Connection->Paths[i];
         if (!Path->SendResponse ||
-            Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+            Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
             continue;
         }
 
@@ -1885,7 +1929,12 @@ QuicSendPathResponses(
                 AvailableBufferLength,
                 Builder.Datagram->Buffer);
 
-        CXPLAT_DBG_ASSERT(Result);
+        //
+        // No assert on Result, for the same reason as in
+        // QuicSendPathChallenges: a long peer connection ID can leave an
+        // amplification-limited datagram with no room for the frame.
+        // SendResponse stays set so the response is retried.
+        //
         if (Result) {
             CxPlatCopyMemory(
                 Builder.Metadata->Frames[Builder.Metadata->FrameCount].PATH_RESPONSE.Data,
@@ -2089,7 +2138,7 @@ QuicSendFlush(
     uint32_t StreamPacketCount = 0;
     do {
 
-        if (Path->Allowance < QUIC_MIN_SEND_ALLOWANCE) {
+        if (Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
             QuicTraceLogConnVerbose(
                 AmplificationProtectionBlocked,
                 Connection,

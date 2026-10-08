@@ -16,12 +16,25 @@ typedef union QUIC_PATHID_FLAGS {
         BOOLEAN InPathIDTable           : 1;    // The path id is currently in the connection's table.
         BOOLEAN InUse                   : 1;    // The path id is currently in use.
         BOOLEAN Abandoned               : 1;
+        //
+        // A PATH_ABANDON for this path ID needs to go out.
+        //
+        // On the path ID and not the path, because the path may not exist. A
+        // path ID the peer opened towards us and never got a packet through
+        // on has no QUIC_PATH bound, and that is exactly the case that has to
+        // be able to answer an abandon: without the answer the peer never
+        // sets its own Abandoned, never frees the path ID, and never gets its
+        // QUIC_PATH slot back.
+        //
+        BOOLEAN SendAbandon             : 1;
         BOOLEAN WaitClose               : 1;    
         BOOLEAN Closed                  : 1;    
         BOOLEAN Started                 : 1;    // The path id has started.
         BOOLEAN Freed                   : 1;    // The path id has been freed.
         BOOLEAN LocalBlocked            : 1;    // The path id is blocked by local restriction.
         BOOLEAN PeerBlocked             : 1;    // The path id is blocked by peer restriction.
+        BOOLEAN PathRemovedIndicated    : 1;    // PATH_REMOVED has been given to the application.
+        BOOLEAN RemovedAddressesValid   : 1;    // Removed*Address hold the detached path's addresses.
     };
 } QUIC_PATHID_FLAGS;
 
@@ -136,6 +149,14 @@ typedef struct QUIC_PATHID {
     uint64_t CloseTime;
 
     //
+    // The addresses the path had, captured by QuicPathRemove as it detaches
+    // the path, so a PATH_REMOVED indicated afterwards still reports the
+    // right one.
+    //
+    QUIC_ADDR RemovedLocalAddress;
+    QUIC_ADDR RemovedRemoteAddress;
+
+    //
     // Per-encryption level packet space information.
     //
     QUIC_PACKET_SPACE* Packets[QUIC_ENCRYPT_LEVEL_COUNT];
@@ -247,6 +268,30 @@ QuicPathIDFreeSourceCids(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathIDProcessPathCloseTimerOperation(
+    _Inout_ QUIC_PATHID* PathID
+    );
+
+//
+// Gives the application QUIC_CONNECTION_EVENT_PATH_REMOVED for this path ID,
+// at most once in its lifetime. One path going away reaches two places that
+// want to report it -- abandoning it, and the peer acknowledging our
+// PATH_ABANDON -- and an application that frees per-path state in that handler
+// must not be told twice.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicPathIDIndicatePathRemoved(
+    _Inout_ QUIC_PATHID* PathID
+    );
+
+//
+// Abandons this path ID on our own initiative: stops it being selected for
+// sending, queues a PATH_ABANDON frame for the peer, and starts the close
+// timer. Idempotent. Requires PathID->Path to be non-NULL.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicPathIDAbandonLocally(
     _Inout_ QUIC_PATHID* PathID
     );
 
@@ -439,6 +484,24 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicPathIDAssignCids(
     _In_ QUIC_PATHID* PathID
+    );
+
+//
+// Writes a PATH_ABANDON frame for this path ID, if it has one waiting.
+//
+// Takes the same shape as QuicPathIDWriteNewConnectionIDFrame below: every
+// path ID is visited even once the packet is full, so each can say it still
+// has something to send and the caller keeps the send flag raised.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
+QuicPathIDWritePathAbandonFrame(
+    _In_ QUIC_PATHID* PathID,
+    _Inout_ QUIC_PACKET_BUILDER* Builder,
+    _In_ uint16_t AvailableBufferLength,
+    _Inout_ BOOLEAN* HasMoreToSend,
+    _Inout_ BOOLEAN* MaxFrameLimitHit,
+    _In_ BOOLEAN NoRoom
     );
 
 _IRQL_requires_max_(DISPATCH_LEVEL)

@@ -9498,6 +9498,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "PathActiveFallbackNone": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] removed; no path to promote",
+      "UniqueId": "PathActiveFallbackNone",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "PathBbr": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p][pathid][%hhu] BBR: State=%u RState=%u CongestionWindow=%u BytesInFlight=%u BytesInFlightMax=%u MinRttEst=%lu EstBw=%lu AppLimited=%u",
@@ -9562,6 +9578,30 @@
         {
           "DefinationEncoding": "hu",
           "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "PathChallengeResend": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
+      "UniqueId": "PathChallengeResend",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg5"
         }
       ],
       "macroName": "QuicTraceLogConnInfo"
@@ -9681,6 +9721,26 @@
         }
       ],
       "macroName": "QuicTraceEvent"
+    },
+    "PathIDAbandonedOnTimeout": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+      "UniqueId": "PathIDAbandonedOnTimeout",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
     },
     "PathInFlowStats": {
       "ModuleProperites": {},
@@ -12649,6 +12709,18 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "SettingPathValidatedEventEnabled": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] PathValidatedEvtEnabled= %hhu",
+      "UniqueId": "SettingPathValidatedEventEnabled",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "SettingQTIPEnabled": {
       "ModuleProperites": {},
       "TraceString": "[sett] QTIPEnabled            = %hhu",
@@ -13874,7 +13946,7 @@
     },
     "WarnNoXdpForCibirSockets": {
       "ModuleProperites": {},
-      "TraceString": "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. \"\n                \"Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation.",
+      "TraceString": "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation.",
       "UniqueId": "WarnNoXdpForCibirSockets",
       "splitArgs": [],
       "macroName": "QuicTraceLogWarning"
@@ -17755,6 +17827,11 @@
         "EncodingString": "[conn][%p] Path[%hhu] removed; falling back to Path[%hhu]"
       },
       {
+        "UniquenessHash": "6b54ac2e-75de-681f-d15a-31fdcfd26c69",
+        "TraceID": "PathActiveFallbackNone",
+        "EncodingString": "[conn][%p] Path[%hhu] removed; no path to promote"
+      },
+      {
         "UniquenessHash": "327a7afe-ed73-6a7f-9a19-c69fcb4b2e0a",
         "TraceID": "PathBbr",
         "EncodingString": "[conn][%p][pathid][%hhu] BBR: State=%u RState=%u CongestionWindow=%u BytesInFlight=%u BytesInFlightMax=%u MinRttEst=%lu EstBw=%lu AppLimited=%u"
@@ -17763,6 +17840,11 @@
         "UniquenessHash": "d6335a41-258d-afb6-ebe8-8c57fbb88014",
         "TraceID": "PathBelowRequiredDatagramLength",
         "EncodingString": "[conn][%p] Path[%hhu] not activated: below the required datagram length %hu"
+      },
+      {
+        "UniquenessHash": "95ff69a6-fa4b-062d-a323-d8e079e8341a",
+        "TraceID": "PathChallengeResend",
+        "EncodingString": "[conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)"
       },
       {
         "UniquenessHash": "774db9aa-c37a-ad1e-6fae-d6b5d61f82f8",
@@ -17788,6 +17870,11 @@
         "UniquenessHash": "bdd8ce5d-e489-65db-7c1a-dc483295d1b0",
         "TraceID": "PathHyStartStateChange",
         "EncodingString": "[conn][%p][pathid][%u] HyStart: State=%u CongestionWindow=%u SlowStartThreshold=%u"
+      },
+      {
+        "UniquenessHash": "3f38bc82-ff15-134b-3886-3fbe978840c5",
+        "TraceID": "PathIDAbandonedOnTimeout",
+        "EncodingString": "[conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection"
       },
       {
         "UniquenessHash": "894e7ef6-f0d0-5ee0-bfd0-f63945bfa39a",
@@ -18760,6 +18847,11 @@
         "EncodingString": "[sett] OneWayDelayEnabled     = %hhu"
       },
       {
+        "UniquenessHash": "ee2b274e-8542-9c0a-a30e-6b886b1824b2",
+        "TraceID": "SettingPathValidatedEventEnabled",
+        "EncodingString": "[sett] PathValidatedEvtEnabled= %hhu"
+      },
+      {
         "UniquenessHash": "4b7db079-533f-22a0-d0d1-a19436940ebb",
         "TraceID": "SettingQTIPEnabled",
         "EncodingString": "[sett] QTIPEnabled            = %hhu"
@@ -19195,9 +19287,9 @@
         "EncodingString": "[sock] Warning: XDP successfully initialized but failed to plumb XDP rules. Falling back to using normal OS sockets."
       },
       {
-        "UniquenessHash": "d304c2a7-b78d-312e-c635-02deec55eb50",
+        "UniquenessHash": "fc2cdbac-6d54-7863-476f-f5bc76edea8c",
         "TraceID": "WarnNoXdpForCibirSockets",
-        "EncodingString": "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. \"\n                \"Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation."
+        "EncodingString": "[sock] Warning: app requested CIBIR but XDP not enabled/available/initialized. Falling back to normal OS sockets to allow for CIBIR transport parameter negotiation."
       },
       {
         "UniquenessHash": "09622250-6902-8f51-16a4-41a81d9cfc14",

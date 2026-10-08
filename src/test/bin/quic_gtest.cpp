@@ -959,6 +959,60 @@ TEST_P(WithFamilyArgs, Multipath) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathPathDeath) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathDeath", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathDeath), GetParam()));
+    } else {
+        QuicTestMultipathPathDeath(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, MultipathPathValidationFailed) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathValidationFailed", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathValidationFailed), GetParam()));
+    } else {
+        QuicTestMultipathPathValidationFailed(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, MultipathPathValidationRetry) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathValidationRetry", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathValidationRetry), GetParam()));
+    } else {
+        QuicTestMultipathPathValidationRetry(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, MultipathPathIdReclaimed) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathIdReclaimed", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathIdReclaimed), GetParam()));
+    } else {
+        QuicTestMultipathPathIdReclaimed(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, MultipathPathIdFreeAckState) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathIdFreeAckState", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathIdFreeAckState), GetParam()));
+    } else {
+        QuicTestMultipathPathIdFreeAckState(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, MultipathRemovedPathAcks) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathRemovedPathAcks", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathRemovedPathAcks), GetParam()));
+    } else {
+        QuicTestMultipathRemovedPathAcks(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, PathKeepAlive) {
     TestLoggerT<ParamType> Logger("QuicTestPathKeepAlive", GetParam());
     if (TestingKernelMode) {

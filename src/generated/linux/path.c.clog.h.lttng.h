@@ -5,11 +5,11 @@
 // Decoder Ring for PathActiveFallback
 // [conn][%p] Path[%hhu] removed; falling back to Path[%hhu]
 // QuicTraceLogConnInfo(
-            PathActiveFallback,
-            Connection,
-            "Path[%hhu] removed; falling back to Path[%hhu]",
-            Path->ID,
-            Connection->Paths[FallbackIndex].ID);
+                PathActiveFallback,
+                Connection,
+                "Path[%hhu] removed; falling back to Path[%hhu]",
+                Path->ID,
+                Connection->Paths[FallbackIndex].ID);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Path->ID = arg3
 // arg4 = arg4 = Connection->Paths[FallbackIndex].ID = arg4
@@ -105,9 +105,9 @@ TRACEPOINT_EVENT(CLOG_PATH_C, PathQeoDisabled,
 // Decoder Ring for IndicatePathValidated
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED
 // QuicTraceLogConnVerbose(
-        IndicatePathValidated,
-        Connection,
-        "Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED");
+            IndicatePathValidated,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_PATH_VALIDATED");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_PATH_C, IndicatePathValidated,
@@ -161,6 +161,29 @@ TRACEPOINT_EVENT(CLOG_PATH_C, ConnPathRemoved,
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg2, (uint64_t)arg2)
         ctf_integer(unsigned char, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ConnError
+// [conn][%p] ERROR, %s.
+// QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "No path to fall back to");
+// arg2 = arg2 = Connection = arg2
+// arg3 = arg3 = "No path to fall back to" = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_PATH_C, ConnError,
+    TP_ARGS(
+        const void *, arg2,
+        const char *, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg2, (uint64_t)arg2)
+        ctf_string(arg3, arg3)
     )
 )
 

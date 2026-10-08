@@ -1704,6 +1704,35 @@ QuicConnStart(
         }
     }
 
+    if (ServerName == NULL) {
+        //
+        // If a server name is not provided, use the IP address for server certificate validation.
+        //
+        QUIC_ADDR_STR RemoteAddressString;
+        if (!QuicAddrIpToString(&Path->Route.RemoteAddress, &RemoteAddressString)) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            QuicTraceEvent(
+                ConnError,
+                "[conn][%p] ERROR, %s.",
+                Connection,
+                "Failed to convert remote address to server name");
+            goto Exit;
+        }
+
+        const size_t ServerNameLength = strlen(RemoteAddressString.Address);
+        ServerName = CXPLAT_ALLOC_NONPAGED(ServerNameLength + 1, QUIC_POOL_SERVERNAME);
+        if (ServerName == NULL) {
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "Server name",
+                ServerNameLength + 1);
+            goto Exit;
+        }
+        CxPlatCopyMemory((char*)ServerName, RemoteAddressString.Address, ServerNameLength + 1);
+    }
+
     QuicAddrSetPort(&Path->Route.RemoteAddress, ServerPort);
     QuicTraceEvent(
         ConnRemoteAddrAdded,
@@ -2454,8 +2483,6 @@ QuicConnSetConfiguration(
         if (QUIC_FAILED(Status)) {
             goto Cleanup;
         }
-        Connection->Crypto.TlsState.ClientAlpnList = NULL;
-        Connection->Crypto.TlsState.ClientAlpnListLength = 0;
     }
 
     Status = QuicConnGenerateLocalTransportParameters(Connection, &LocalTP);
@@ -3894,10 +3921,18 @@ QuicConnRecvHeader(
     // don't actually know the length of the packet number so we assume maximum
     // (per spec) and start sampling 4 bytes after the start of the packet number.
     //
-    CxPlatCopyMemory(
-        Cipher,
-        Packet->AvailBuffer + Packet->HeaderLength + 4,
-        CXPLAT_HP_SAMPLE_LENGTH);
+    if (Packet->Encrypted && Connection->State.HeaderProtectionEnabled) {
+        CxPlatCopyMemory(
+            Cipher,
+            Packet->AvailBuffer + Packet->HeaderLength + 4,
+            CXPLAT_HP_SAMPLE_LENGTH);
+    } else {
+        //
+        // For unencrypted short header packets, no header protection mask will be computed,
+        // so avoid reading an HP sample that may extend beyond the packet.
+        //
+        CxPlatZeroMemory(Cipher, CXPLAT_HP_SAMPLE_LENGTH);
+    }
 
     return TRUE;
 }
@@ -5214,51 +5249,76 @@ QuicConnRecvFrames(
             }
             if (PathID->Path == NULL) {
                 //
-                // The peer referenced a path id whose QUIC_PATH is not (yet)
-                // bound (e.g. CIDs provisioned via PATH_NEW_CONNECTION_ID before
-                // QuicConnAssignPathIDs could attach a path). Ignore the frame.
+                // The peer referenced a path ID with no QUIC_PATH bound: its
+                // CIDs were provisioned by PATH_NEW_CONNECTION_ID but no packet
+                // ever arrived to attach a path, either because one has not yet
+                // or because one never will. Answer it anyway.
                 //
+                // Ignoring it was what stranded the peer. It needs our abandon
+                // to set its own Abandoned flag, and without that
+                // QuicPathIDSetTryFreePathID returns early for good,
+                // QuicPathRemove is never called, and one of its QUIC_PATH
+                // slots is spent for the life of the connection. A hole punch
+                // that fails produces exactly this, which makes it the common
+                // case rather than a corner.
+                //
+                // Nothing of RemoteClose, LocalClose or LocalCloseAcked can be
+                // recorded, because all three live on the QUIC_PATH there isn't
+                // one of. Abandoned is set here instead: it means both ends are
+                // done with the path ID, the peer has just said so, and this
+                // side holds no path to wind down.
+                //
+                PathID->Flags.Abandoned = TRUE;
+                PathID->Flags.SendAbandon = TRUE;
+                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
+                AckEliciting = TRUE;
+
+                //
+                // Still three PTO before the path ID goes, even though there is
+                // no path to drain. draft-ietf-quic-multipath-21 section 3.4
+                // asks for "knowledge of the connection IDs issued to the peer
+                // and of the state of the number space associated to the path"
+                // to "be retained for 3 PTO after the PATH_ABANDON frame has
+                // been received", and section 3.4.2 gives the reason: packets
+                // sent on the abandoned path can arrive after the CIDs are
+                // retired, and one that finds no match makes us answer with a
+                // stateless reset. A path ID with no path still has CIDs issued
+                // to the peer and still has packet number spaces, so the window
+                // applies to it as much as to any other.
+                //
+                // The PTO comes from the active path: this path ID has no RTT
+                // of its own, having never carried anything.
+                //
+                if (!PathID->Flags.WaitClose && !PathID->Flags.Closed) {
+                    const uint64_t ThreePto =
+                        QuicLossDetectionComputeProbeTimeout(
+                            &PathID->LossDetection,
+                            &Connection->Paths[0],
+                            3);
+                    const uint64_t TimeNow = CxPlatTimeUs64();
+                    PathID->Flags.WaitClose = TRUE;
+                    PathID->CloseTime = TimeNow + ThreePto;
+                    QuicConnTimerSetEx(
+                        Connection,
+                        QUIC_CONN_TIMER_PATH_CLOSE,
+                        ThreePto,
+                        TimeNow);
+                }
+
                 QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
                 break;
             }
 
             PathID->Path->RemoteClose = TRUE;
-            if (!PathID->Path->LocalClose) {
-                PathID->Path->LocalClose = TRUE;
-                PathID->Path->SendAbandon = TRUE;
-                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
 
-                QUIC_CONNECTION_EVENT Event;
-                Event.Type = QUIC_CONNECTION_EVENT_PATH_REMOVED;
-                Event.PATH_REMOVED.PeerAddress = &PathID->Path->Route.RemoteAddress;
-                Event.PATH_REMOVED.LocalAddress = &PathID->Path->Route.LocalAddress;
-                Event.PATH_REMOVED.PathId = PathID->ID;
-                QuicTraceLogConnVerbose(
-                    IndicatePathRemoved,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_REMOVED");
-                (void)QuicConnIndicateEvent(Connection, &Event);
-            }
-
+            //
+            // Read before abandoning, which does not touch LocalCloseAcked.
+            //
             if (PathID->Path->LocalCloseAcked) {
                 PathID->Flags.Abandoned = TRUE;
             }
 
-            if (!PathID->Flags.Closed) {
-                uint64_t ThreePto =
-                    QuicLossDetectionComputeProbeTimeout(
-                        &PathID->LossDetection,
-                        PathID->Path,
-                        3);
-                PathID->Flags.WaitClose = TRUE;
-                uint64_t TimeNow = CxPlatTimeUs64();
-                PathID->CloseTime = TimeNow + ThreePto;
-                QuicConnTimerSetEx(
-                    Connection,
-                    QUIC_CONN_TIMER_PATH_CLOSE,
-                    ThreePto,
-                    TimeNow);
-            }
+            QuicPathIDAbandonLocally(PathID);
 
             AckEliciting = TRUE;
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
@@ -5956,6 +6016,7 @@ QuicConnRecvPostProcessing(
             QuicPathValidate((*Path));
             (*Path)->SendChallenge = TRUE;
             (*Path)->PathValidationStartTime = CxPlatTimeUs64();
+            (*Path)->ChallengeCount = 1;
 
             //
             // NB: The path challenge payload is initialized here and reused
@@ -5974,6 +6035,7 @@ QuicConnRecvPostProcessing(
                     Connection->Paths[0].IsPeerValidated = FALSE;
                     Connection->Paths[0].SendChallenge = TRUE;
                     Connection->Paths[0].PathValidationStartTime = CxPlatTimeUs64();
+                    Connection->Paths[0].ChallengeCount = 1;
                     CxPlatRandom(sizeof(Connection->Paths[0].Challenge), Connection->Paths[0].Challenge);
                 }
             }
@@ -6422,15 +6484,22 @@ QuicConnRecvDatagrams(
         }
     }
     if (!Connection->State.UpdateWorker && Connection->State.Connected &&
-        !Connection->State.ShutdownComplete && RecvState.UpdatePartitionId) {
+        !Connection->State.ShutdownComplete && RecvState.UpdatePartitionId &&
+        RecvState.PartitionIndex != QuicPartitionIdGetIndex(Connection->PartitionID)) {
         //
         // Packets were received on a different partition than the one assigned to the connection.
         // Migrate the connection to a new worker. New CIDs must be generated since the partition
         // id is encoded in the CID.
         //
+        // The index has to be compared here and not merely asserted. Path->PartitionUpdated
+        // limits this to once per path, not once per chain, and QuicConnRecvPostProcessing can
+        // promote a newly created path to active in the middle of one. A chain that spans two
+        // paths can therefore pick a partition twice and land back on the one the connection
+        // already has, which would migrate it to the worker it is already on and regenerate
+        // every source CID for nothing.
+        //
         CXPLAT_DBG_ASSERT(Connection->Registration);
         CXPLAT_DBG_ASSERT(!Connection->Registration->NoPartitioning);
-        CXPLAT_DBG_ASSERT(RecvState.PartitionIndex != QuicPartitionIdGetIndex(Connection->PartitionID));
         Connection->PartitionID = QuicPartitionIdCreate(RecvState.PartitionIndex);
         QuicPathIDSetGenerateNewSourceCids(&Connection->PathIDs, TRUE);
         Connection->State.UpdateWorker = TRUE;
@@ -6803,6 +6872,61 @@ QuicConnPathValidationTimeoutUs(
                 MS_TO_US(Connection->Settings.InitialRttMs));
 }
 
+//
+// When the next thing is due for a validation in progress: either the boundary
+// at which another PATH_CHALLENGE should be queued, or the deadline at which
+// the path is given up on, whichever comes first.
+//
+// RFC 9000 section 8.2.1 permits the retries -- "An endpoint MAY send multiple
+// PATH_CHALLENGE frames to guard against packet loss" -- and section 8.2.2 puts
+// the obligation here rather than on the peer: "An endpoint MUST NOT send more
+// than one PATH_RESPONSE frame in response to one PATH_CHALLENGE frame [...]
+// The peer is expected to send more PATH_CHALLENGE frames as necessary to evoke
+// additional PATH_RESPONSE frames". Section 8.2.1 also caps the rate -- not
+// "more frequently than it would send an Initial packet" -- which a PTO-sized
+// interval satisfies.
+//
+//
+// How long between the PATH_CHALLENGEs of one validation. The timer handler and
+// the arming below must agree on this, or a re-arm could land on a boundary the
+// handler does not consider due and the timer would fire in a loop, so it lives
+// in one place.
+//
+// CXPLAT_MAX of one keeps a degenerate timeout from making this zero, for the
+// same reason.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint64_t
+QuicConnPathValidationIntervalUs(
+    _In_ uint64_t Timeout
+    )
+{
+    return CXPLAT_MAX(Timeout / QUIC_PATH_VALIDATION_PTO_COUNT, 1);
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint64_t
+QuicConnPathValidationNextEventTime(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path
+    )
+{
+    const uint64_t Timeout = QuicConnPathValidationTimeoutUs(Connection, Path);
+    const uint64_t Deadline = Path->PathValidationStartTime + Timeout;
+
+    if (Path->ChallengeCount >= QUIC_PATH_VALIDATION_PTO_COUNT) {
+        return Deadline;
+    }
+
+    return
+        CXPLAT_MIN(
+            Path->PathValidationStartTime +
+                (Path->ChallengeCount * QuicConnPathValidationIntervalUs(Timeout)),
+            Deadline);
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicConnPathValidationTimerUpdate(
@@ -6810,8 +6934,9 @@ QuicConnPathValidationTimerUpdate(
     )
 {
     //
-    // Find the earliest validation deadline across all paths that currently
-    // have a validation in progress and arm (or cancel) the timer accordingly.
+    // Find the earliest thing due across all paths that currently have a
+    // validation in progress -- a challenge to re-send or a deadline to give up
+    // at -- and arm (or cancel) the timer accordingly.
     //
     const uint64_t TimeNow = CxPlatTimeUs64();
     uint64_t EarliestDeadline = UINT64_MAX;
@@ -6821,8 +6946,7 @@ QuicConnPathValidationTimerUpdate(
         if (Path->IsPeerValidated || Path->PathValidationStartTime == 0) {
             continue;
         }
-        const uint64_t Deadline =
-            Path->PathValidationStartTime + QuicConnPathValidationTimeoutUs(Connection, Path);
+        const uint64_t Deadline = QuicConnPathValidationNextEventTime(Connection, Path);
         EarliestDeadline = CXPLAT_MIN(Deadline, EarliestDeadline);
     }
 
@@ -6847,7 +6971,8 @@ QuicConnProcessPathValidationTimerOperation(
     )
 {
     //
-    // Abandon any path whose validation timed-out.
+    // Re-send the challenge for any path still waiting, and abandon any whose
+    // validation timed out.
     //
     const uint64_t TimeNow = CxPlatTimeUs64();
     uint8_t i = 0;
@@ -6858,7 +6983,55 @@ QuicConnProcessPathValidationTimerOperation(
             continue;
         }
         const uint64_t Timeout = QuicConnPathValidationTimeoutUs(Connection, Path);
-        if (CxPlatTimeDiff64(Path->PathValidationStartTime, TimeNow) <= Timeout) {
+        const uint64_t Elapsed = CxPlatTimeDiff64(Path->PathValidationStartTime, TimeNow);
+        if (Elapsed <= Timeout) {
+            //
+            // Still within the deadline, so this is a retry boundary rather
+            // than the end. One PATH_CHALLENGE was queued when validation
+            // started and one more is queued at each boundary after it, up to
+            // QUIC_PATH_VALIDATION_PTO_COUNT in total.
+            //
+            // Nothing else re-sends it. The loss handler only re-arms when the
+            // packet carrying the challenge is itself declared lost, and a lost
+            // PATH_RESPONSE leaves that packet acknowledged, so without this a
+            // single lost response cost the path permanently.
+            //
+            // Path->Challenge is deliberately left alone, so a response to any
+            // copy still matches. RFC 9000 section 8.2.1 asks for unpredictable
+            // data in every PATH_CHALLENGE frame, which reusing one payload for
+            // the retries of a single validation does not do; the data is still
+            // unpredictable to anyone who has not seen it, so what is given up
+            // is only knowing which copy a response answers, which nothing here
+            // uses. That deviation already existed for the loss-handler re-send
+            // and is tracked separately.
+            //
+            // Which challenge the elapsed time says is due, rather than
+            // simply the next one. A timer that fires late -- a loaded machine,
+            // a busy worker -- therefore skips the boundaries it slept through
+            // instead of firing off their challenges back to back, which would
+            // breach the rate section 8.2.1 asks for. The cost is that a late
+            // timer spends fewer than QUIC_PATH_VALIDATION_PTO_COUNT probes;
+            // keeping the pacing is worth more than keeping the count, since
+            // the probes exist to cover loss and two spaced a PTO apart cover
+            // more than three bunched together.
+            //
+            const uint64_t Interval = QuicConnPathValidationIntervalUs(Timeout);
+            const uint8_t Due =
+                (uint8_t)CXPLAT_MIN(
+                    (Elapsed / Interval) + 1,
+                    QUIC_PATH_VALIDATION_PTO_COUNT);
+            if (Due > Path->ChallengeCount) {
+                Path->ChallengeCount = Due;
+                Path->SendChallenge = TRUE;
+                QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
+                QuicTraceLogConnInfo(
+                    PathChallengeResend,
+                    Connection,
+                    "Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
+                    Path->ID,
+                    Path->ChallengeCount,
+                    (uint32_t)QUIC_PATH_VALIDATION_PTO_COUNT);
+            }
             ++i;
             continue;
         }
@@ -6869,6 +7042,43 @@ QuicConnProcessPathValidationTimerOperation(
             Connection,
             Path->ID);
         QuicPerfCounterIncrement(Connection->Partition, QUIC_PERF_COUNTER_PATH_FAILURE);
+
+        //
+        // The path ID is spent whether the path came up or not, and
+        // draft-ietf-quic-multipath section 3.1 is explicit about what that
+        // obliges: "As the used path ID is consumed either way, the endpoint
+        // MUST explicitly close the path". Section 3.4 says the same from the
+        // other direction -- an endpoint abandoning a path MUST send a
+        // PATH_ABANDON frame, whatever prompted it -- and recommends sending it
+        // on a different path precisely when the one being abandoned looks
+        // broken, which is this case.
+        //
+        // Removing the path silently instead left the peer believing the path
+        // ID was still in use, with no way to learn otherwise, and left our own
+        // path ID in the set with no path attached to it, never freed and never
+        // put on the close timer. Abandoning tells the peer and leaves
+        // QuicPathIDSetTryFreePathID to take the path and its path ID away
+        // together once the close timer expires.
+        //
+        // Only under multipath, which is what PATH_ABANDON requires, and only
+        // while another usable path remains: there is nothing to carry the
+        // frame otherwise, and nothing to carry the connection either, so the
+        // last path still falls through to removal and closes the connection.
+        //
+        if (Connection->State.MultipathNegotiated &&
+            Connection->Paths[i].PathID != NULL &&
+            QuicConnHasOtherUsablePath(Connection, &Connection->Paths[i])) {
+            QuicPathIDAbandonLocally(Connection->Paths[i].PathID);
+            //
+            // Keeps this path out of the validation timer from here on: it is
+            // leaving on the close timer now, and QuicConnPathValidationTimerUpdate
+            // skips paths with no validation in progress.
+            //
+            Connection->Paths[i].PathValidationStartTime = 0;
+            ++i;
+            continue;
+        }
+
         //
         // Release the abandoned path's UDP binding before removing it, matching
         // the convention used by every other QuicPathRemove caller (QuicPathRemove
@@ -7203,6 +7413,7 @@ QuicConnOpenNewPath(
         QuicPathValidate(Path);
         Path->SendChallenge = TRUE;
         Path->PathValidationStartTime = CxPlatTimeUs64();
+        Path->ChallengeCount = 1;
 
         CxPlatRandom(sizeof(Path->Challenge), Path->Challenge);
 
@@ -8080,7 +8291,13 @@ QuicConnRemovePath(
                 }
             } else {
                 Path->LocalClose = TRUE;
-                Path->SendAbandon = TRUE;
+                //
+                // PathID can be NULL for a path that never finished opening;
+                // there is no abandon to send for a path ID it never got.
+                //
+                if (Path->PathID != NULL) {
+                    Path->PathID->Flags.SendAbandon = TRUE;
+                }
                 QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
             }
         }

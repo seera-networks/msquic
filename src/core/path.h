@@ -125,8 +125,6 @@ typedef struct QUIC_PATH {
     BOOLEAN LocalClose : 1;
     BOOLEAN LocalCloseAcked : 1;
 
-    BOOLEAN SendAbandon : 1;
-
     BOOLEAN RemoteClose : 1;
 
     //
@@ -245,6 +243,20 @@ typedef struct QUIC_PATH {
     uint64_t PathValidationStartTime;
 
     //
+    // How many PATH_CHALLENGE sends the validation currently in progress has
+    // queued, including the first. Paces the retries: the validation timeout is
+    // divided into QUIC_PATH_VALIDATION_PTO_COUNT intervals and one challenge
+    // is queued at each boundary, so the budget is spent probing rather than
+    // waiting on a single probe. Counted when queued rather than when framed,
+    // so that a send deferred by amplification protection does not make the
+    // timer re-arm on a boundary it has already passed.
+    //
+    // Not touched by the loss-detection re-arm in QuicLossDetectionOnPacketDiscarded,
+    // which is an extra challenge outside this schedule.
+    //
+    uint8_t ChallengeCount;
+
+    //
     // Time (in microseconds) the last datagram was sent on this path. Drives
     // the per-path keep alive, which cares about what this path carried rather
     // than about what the connection as a whole has been doing.
@@ -337,6 +349,22 @@ QuicPathGetDatagramPayloadSize(
             QuicAddrGetFamily(&Path->Route.RemoteAddress), Path->Mtu);
 }
 
+//
+// Returns the send allowance below which there is no point building a packet
+// for this path, because the IP and UDP headers would leave too little of it
+// for anything to be framed into.
+//
+QUIC_INLINE
+uint32_t
+QuicPathGetMinSendAllowance(
+    _In_ const QUIC_PATH* Path
+    )
+{
+    return
+        QUIC_MIN_SEND_ALLOWANCE_FOR_FAMILY(
+            QuicAddrGetFamily(&Path->Route.RemoteAddress));
+}
+
 typedef enum QUIC_PATH_VALID_REASON {
     QUIC_PATH_VALID_INITIAL_TOKEN,
     QUIC_PATH_VALID_HANDSHAKE_PACKET,
@@ -390,6 +418,46 @@ _Ret_notnull_
 QUIC_PATH*
 QuicConnChoosePath(
     _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Whether any path other than the excluded one is still something
+// QuicConnChoosePath would send on -- including the state it requires before
+// it distributes at all. Uses the same test, so a TRUE answer means the
+// connection has somewhere to go without the excluded path.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnHasOtherUsablePath(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* ExcludedPath
+    );
+
+//
+// Returns the path this path ID is currently attached to, or NULL if it has
+// none. QuicPathRemove clears the path's forward pointer to the path ID but
+// leaves PathID->Path behind, pointing at a slot that has since been shifted
+// or marked unused, so the forward pointers are the ones to trust.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Ret_maybenull_
+QUIC_PATH*
+QuicConnGetPathForPathID(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATHID* PathID
+    );
+
+//
+// Whether another path of this connection holds the same binding. An
+// unconnected binding is matched on local port alone, so paths to different
+// remote addresses can share one, and the connection's source connection IDs
+// registered on it are how those paths are still reached.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnIsBindingShared(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path
     );
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
