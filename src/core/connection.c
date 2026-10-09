@@ -5161,7 +5161,14 @@ QuicConnRecvFrames(
                         // has to be applied: there is no activation step for
                         // the application to be refused at.
                         //
-                        if (QuicConnPathMeetsRequiredDatagramLength(
+                        // Paths[0] is exempt, as it is in QuicConnActivatePath
+                        // and in the QUIC_PARAM_CONN_LOCAL_ADDRESS gate: it is
+                        // what QuicConnChoosePath falls back to whether or not
+                        // anything is active, so holding it back achieves
+                        // nothing.
+                        //
+                        if (TempPath == &Connection->Paths[0] ||
+                            QuicConnPathMeetsRequiredDatagramLength(
                                 Connection, TempPath)) {
                             QuicPathSetActive(Connection, TempPath);
                         } else {
@@ -5171,6 +5178,23 @@ QuicConnRecvFrames(
                                 "Path[%hhu] validated but left backup: below the required datagram length %hu",
                                 TempPath->ID,
                                 Connection->PathRequiredDatagramLength);
+                            //
+                            // Cleared rather than merely left alone, because it
+                            // may already be set: validation runs per direction
+                            // and the peer, having validated its own, can send
+                            // PATH_AVAILABLE before our PATH_RESPONSE arrives.
+                            // That handler sets IsActive on its own, so without
+                            // this the path stays in the send rotation at a size
+                            // the application said it would not send at -- the
+                            // one thing the requirement exists to prevent. It
+                            // also makes the PATH_BACKUP below sendable at all:
+                            // the writer skips paths that are IsActive, and
+                            // QuicSendPathStatusPending would then clear the
+                            // flag while leaving SendStatus set, which the
+                            // PATH_AVAILABLE writer later picks up and emits as
+                            // a report we never meant to make.
+                            //
+                            TempPath->IsActive = FALSE;
                             //
                             // Not activating it locally is not enough. The peer
                             // has just validated this path and will treat it as
@@ -7847,8 +7871,16 @@ Done:
 // The path's MTU is used as measured -- nothing here raises it, and setting a
 // requirement does not ask for any size to be reached. It does not stop the
 // path being measured either: QuicSendPathMtuProbes probes a validated path
-// that is being held back, so it goes on converging and is admitted once it
-// can carry the length. The requirement is a filter on what may be used.
+// that is being held back, so it goes on converging while out of the rotation.
+//
+// Converging is not admission, though. This is asked at three moments only --
+// a path completing validation, QUIC_PARAM_CONN_ACTIVATE_PATH, and the
+// QUIC_PARAM_CONN_LOCAL_ADDRESS gate -- and none of them is reached again by
+// an MTU that has merely grown. A path that becomes wide enough stays held
+// back until the application activates it, which is what the parameter's
+// documentation tells it to watch QUIC_PARAM_CONN_PATH_STATISTICS for.
+//
+// The requirement is a filter on what may be used.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static

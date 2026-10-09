@@ -2634,25 +2634,14 @@ QuicTestHeldBackPathIsMeasured(
     TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
     SecondLocalAddr.SetEphemeralPort();
 
-    PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
-    TEST_NOT_EQUAL(nullptr, ProbeHelper);
-    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
-    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
-    int Try = 0;
-    do {
-        Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
-        if (QUIC_FAILED(Status)) {
-            delete ProbeHelper;
-            SecondLocalAddr.SetEphemeralPort();
-            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
-        }
-    } while (QUIC_FAILED(Status) && ++Try <= 3);
-    TEST_QUIC_SUCCEEDED(Status);
-    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
-    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
-    delete ProbeHelper;
-    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
-    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    //
+    // Both are owned, because TEST_TRUE and friends return on failure and a
+    // hook left in the process-global DatapathHooks would go on matching an
+    // ephemeral port for every later test in the binary.
+    //
+    UniquePtr<PathProbeHelper> ProbeHelper(
+        new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort()));
+    TEST_NOT_EQUAL(nullptr, ProbeHelper.get());
 
     //
     // What this change adds is that the held-back path is probed at all. The
@@ -2661,14 +2650,47 @@ QuicTestHeldBackPathIsMeasured(
     // statistics report, it does not depend on when the peer's acknowledgement
     // lands or on where the search happens to stop.
     //
+    // Counting starts before the path is added, not after PATH_ADDED arrives.
+    // The probes are queued inside QuicPathSetValid, so on loopback the whole
+    // search can be over before the callback reaches this thread -- and
+    // QuicMtuDiscoveryCheckSearchCompleteTimeout skips paths that are not
+    // active, so nothing restarts it for a counter that arrives late.
+    //
     // Restricting probes to active paths again takes this to zero.
     //
-    PathLargeSendCounter Probes(SecondLocalAddr.GetPort(), QUIC_DPLPMTUD_MIN_MTU - 100);
-    for (uint32_t i = 0; i < 100 && Probes.Count == 0; ++i) {
+    UniquePtr<PathLargeSendCounter> Probes(
+        new(std::nothrow) PathLargeSendCounter(
+            SecondLocalAddr.GetPort(), QUIC_DPLPMTUD_MIN_MTU - 100));
+    TEST_NOT_EQUAL(nullptr, Probes.get());
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+        if (QUIC_SUCCEEDED(Status)) {
+            break;
+        }
+        SecondLocalAddr.SetEphemeralPort();
+        ProbeHelper.reset(new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort()));
+        TEST_NOT_EQUAL(nullptr, ProbeHelper.get());
+        Probes.reset(
+            new(std::nothrow) PathLargeSendCounter(
+                SecondLocalAddr.GetPort(), QUIC_DPLPMTUD_MIN_MTU - 100));
+        TEST_NOT_EQUAL(nullptr, Probes.get());
+    } while (++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    ProbeHelper.reset(nullptr);
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+
+    for (uint32_t i = 0; i < 100 && Probes->Count == 0; ++i) {
         CxPlatSleep(100);
     }
 
-    TEST_TRUE(Probes.Count > 0);
+    TEST_TRUE(Probes->Count > 0);
 }
 
 #endif

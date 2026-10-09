@@ -1602,7 +1602,15 @@ QuicSendPathMtuProbes(
         // search has finished. Without this the probe waits for some unrelated
         // path to raise the flag again.
         //
-        if (Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
+        // Measured against the probe, not against the floor a minimal packet
+        // needs. QuicPacketBuilderPrepare asserts !IsPathMtuDiscovery when the
+        // path's MTU exceeds its allowance, so any allowance between that floor
+        // and the probe size passes a check for the floor and then trips the
+        // assert. Unreachable today -- QuicPathSetValid sets the allowance to
+        // UINT32_MAX just before QuicMtuDiscoveryPeerValidated asks for a probe
+        // -- but the guard should rule out what it claims to.
+        //
+        if (Path->Allowance < Path->Mtu) {
             Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
             continue;
         }
@@ -1645,13 +1653,31 @@ QuicSendPathMtuProbes(
             continue;
         }
 
+        //
+        // Both of these put the flag back up, for the same reason the blocked
+        // branches above do: SendMtuProbe stays set but nothing else re-arms
+        // the flag. No packet was sent, so loss detection has nothing to
+        // discard, and QuicMtuDiscoveryCheckSearchCompleteTimeout only looks at
+        // paths that are active and whose search is complete -- neither true of
+        // a path being measured while held back. Without this a single
+        // transient failure here stops that path's discovery for good, and a
+        // path held back by a size requirement could then never qualify.
+        //
         QUIC_PACKET_BUILDER Builder = { 0 };
         if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
             continue;
         }
         _Analysis_assume_(Builder.Metadata != NULL);
 
         if (!QuicPacketBuilderPrepareForPathMtuDiscovery(&Builder)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            //
+            // Safe to clean up: QuicPacketBuilderPrepare frees its send data
+            // and nulls the field on every one of its own failure paths, so the
+            // assert in QuicPacketBuilderCleanup holds.
+            //
+            QuicPacketBuilderCleanup(&Builder);
             continue;
         }
 
@@ -1659,8 +1685,15 @@ QuicSendPathMtuProbes(
         // The datagram is allocated from the probe size, but that allocation is
         // capped by what the peer said it can receive. A probe that came back
         // smaller than intended would be acknowledged and read as proof of a
-        // size that was never sent, so leave the flag up and give up on this
-        // size rather than measure something false.
+        // size that was never sent, so give up on this size rather than
+        // measure something false.
+        //
+        // Giving up is the end of it for this path: SendMtuProbe is cleared and
+        // the flag is not put back, so the search stays where it is rather than
+        // retrying a size that cannot be sent. That is deliberate -- the cap is
+        // the peer's max_udp_payload_size and will not move -- and it should
+        // not be reachable anyway, QuicConnGetMaxMtuForPath already clamping
+        // the search by that same value.
         //
         const uint16_t Intended =
             MaxUdpPayloadSizeForFamily(
@@ -1733,6 +1766,18 @@ QuicSendPathMtuProbes(
                 (void)QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PING, TRUE);
                 Path->SendMtuProbe = FALSE;
             }
+        } else {
+            //
+            // No room for even one frame, so nothing here is ack-eliciting and
+            // the packet could never be read as a measurement. Dropped rather
+            // than sent, as the no-room case above is. Not expected to be
+            // reachable: the datagram is allocated from the probe size and only
+            // a header has been written.
+            //
+            Path->SendMtuProbe = FALSE;
+            QuicPacketBuilderFinalize(&Builder, TRUE);
+            QuicPacketBuilderCleanup(&Builder);
+            continue;
         }
 
         QuicPacketBuilderFinalize(&Builder, TRUE);
@@ -2000,12 +2045,13 @@ QuicSendFlush(
     QuicMtuDiscoveryCheckSearchCompleteTimeout(Connection, TimeNow);
 
     //
-    // If path is active without being peer validated, disable MTU flag if set.
+    // The DPLPMTUD flag used to be judged here against the one path a flush
+    // chose, which was sound while a probe could only go on that path. It is
+    // consumed per path now, by QuicSendPathMtuProbes, which asks about
+    // IsPeerValidated for each path it visits -- so clearing the flag because
+    // the chosen path happens to be mid-validation threw away a probe queued
+    // for a different one, with SendMtuProbe left set and nothing to re-arm it.
     //
-    if (!Path->IsPeerValidated) {
-        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_DPLPMTUD;
-    }
-
     if (Send->SendFlags == 0 && CxPlatListIsEmpty(&Send->SendStreams)) {
         return TRUE;
     }
