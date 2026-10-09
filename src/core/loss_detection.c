@@ -1000,8 +1000,27 @@ QuicLossDetectionRetransmitFrames(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             if (PathID != NULL) {
-                if (!PathID->Path->IsActive &&
+                //
+                // The path can be gone while a frame describing it is still in
+                // flight -- a QUIC_PATHID outlives its QUIC_PATH. Looked up
+                // forwards rather than through PathID->Path, which is never
+                // cleared when QuicPathRemove takes the path away (#115), so a
+                // NULL check alone would still let this write SendStatus onto a
+                // slot that is out of the live array or belongs to another
+                // path. The PATH_ABANDON case above settled on the same helper
+                // for the same reason.
+                //
+                QUIC_PATH* StatusPath = QuicConnGetPathForPathID(Connection, PathID);
+                if (StatusPath != NULL &&
+                    !StatusPath->IsActive &&
                     Packet->Frames[i].PATH_BACKUP.Sequence + 1 == PathID->StatusSendSeq) {
+                    //
+                    // The flag on its own is not enough. QuicSendWriteFrames
+                    // picks the path to write from SendStatus, so raising the
+                    // flag without it builds a packet the writer then has
+                    // nothing to put in, and it asserts having framed nothing.
+                    //
+                    StatusPath->SendStatus = TRUE;
                     QuicSendSetSendFlag(
                         &Connection->Send,
                         QUIC_CONN_SEND_FLAG_PATH_BACKUP);
@@ -1019,8 +1038,27 @@ QuicLossDetectionRetransmitFrames(
                 &FatalError);
             CXPLAT_DBG_ASSERT(!FatalError);
             if (PathID != NULL) {
-                if (PathID->Path->IsActive &&
+                //
+                // The path can be gone while a frame describing it is still in
+                // flight -- a QUIC_PATHID outlives its QUIC_PATH. Looked up
+                // forwards rather than through PathID->Path, which is never
+                // cleared when QuicPathRemove takes the path away (#115), so a
+                // NULL check alone would still let this write SendStatus onto a
+                // slot that is out of the live array or belongs to another
+                // path. The PATH_ABANDON case above settled on the same helper
+                // for the same reason.
+                //
+                QUIC_PATH* StatusPath = QuicConnGetPathForPathID(Connection, PathID);
+                if (StatusPath != NULL &&
+                    StatusPath->IsActive &&
                     Packet->Frames[i].PATH_AVAILABLE.Sequence + 1 == PathID->StatusSendSeq) {
+                    //
+                    // The flag on its own is not enough. QuicSendWriteFrames
+                    // picks the path to write from SendStatus, so raising the
+                    // flag without it builds a packet the writer then has
+                    // nothing to put in, and it asserts having framed nothing.
+                    //
+                    StatusPath->SendStatus = TRUE;
                     QuicSendSetSendFlag(
                         &Connection->Send,
                         QUIC_CONN_SEND_FLAG_PATH_AVAILABLE);
