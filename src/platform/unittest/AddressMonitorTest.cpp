@@ -37,7 +37,7 @@ struct AddressMonitorTest : public ::testing::Test
     {
         CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS Entry;
         CxPlatZeroMemory(&Entry, sizeof(Entry));
-        EXPECT_TRUE(QuicAddr4FromString(Address, &Entry.Address.Address));
+        EXPECT_TRUE(QuicAddrFromString(Address, 0, &Entry.Address.Address));
         Entry.Address.InterfaceIndex = InterfaceIndex;
         Entry.Address.InterfaceType = 6;
         Entry.Address.Flags = Flags;
@@ -54,7 +54,7 @@ struct AddressMonitorTest : public ::testing::Test
     {
         CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS Entry;
         CxPlatZeroMemory(&Entry, sizeof(Entry));
-        EXPECT_TRUE(QuicAddr6FromString(Address, &Entry.Address.Address));
+        EXPECT_TRUE(QuicAddrFromString(Address, 0, &Entry.Address.Address));
         Entry.Address.Address.Ipv6.sin6_scope_id = ScopeId;
         Entry.Address.InterfaceIndex = InterfaceIndex;
         Entry.Address.InterfaceType = 6;
@@ -107,13 +107,13 @@ TEST_F(AddressMonitorTest, FilterDropsTentativeAndDownAndNonSource)
 
     ASSERT_EQ(1u, Count);
     //
-    // Zeroed first: QuicAddr4FromString sets only what it parses, so the port
-    // of a bare local is whatever was on the stack -- and QuicAddrCompare
-    // compares ports.
+    // Zeroed first: QuicAddrFromString sets only what it parses, so the port of
+    // a bare local is whatever was on the stack -- and QuicAddrCompare compares
+    // ports.
     //
     QUIC_ADDR Expected;
     CxPlatZeroMemory(&Expected, sizeof(Expected));
-    ASSERT_TRUE(QuicAddr4FromString("192.0.2.10", &Expected));
+    ASSERT_TRUE(QuicAddrFromString("192.0.2.10", 0, &Expected));
     ASSERT_TRUE(QuicAddrCompare(&Expected, &Out[0].Address));
 }
 
@@ -155,7 +155,7 @@ TEST_F(AddressMonitorTest, FilterInPlace)
     ASSERT_EQ(2u, Count);
     QUIC_ADDR Expected;
     CxPlatZeroMemory(&Expected, sizeof(Expected));
-    ASSERT_TRUE(QuicAddr4FromString("192.0.2.11", &Expected));
+    ASSERT_TRUE(QuicAddrFromString("192.0.2.11", 0, &Expected));
     ASSERT_TRUE(QuicAddrCompare(&Expected, &((CXPLAT_LOCAL_ADDRESS*)Raw)[0].Address));
 }
 
@@ -398,7 +398,7 @@ TEST_F(AddressMonitorTest, LoopbackReportsIanaIfType)
     for (uint32_t i = 0; i < Count; ++i) {
         QUIC_ADDR Loopback4;
         CxPlatZeroMemory(&Loopback4, sizeof(Loopback4));
-        ASSERT_TRUE(QuicAddr4FromString("127.0.0.1", &Loopback4));
+        ASSERT_TRUE(QuicAddrFromString("127.0.0.1", 0, &Loopback4));
         if (QuicAddrGetFamily(&Addresses[i].Address) == QUIC_ADDRESS_FAMILY_INET &&
             QuicAddrCompareIp(&Loopback4, &Addresses[i].Address)) {
             SawLoopbackAddress = true;
@@ -514,7 +514,7 @@ struct AddressMonitorRealTest : public ::testing::Test
     {
         QUIC_ADDR Wanted;
         CxPlatZeroMemory(&Wanted, sizeof(Wanted));
-        if (!QuicAddr4FromString(Address, &Wanted)) {
+        if (!QuicAddrFromString(Address, 0, &Wanted)) {
             return false;
         }
 
@@ -592,7 +592,7 @@ TEST_F(AddressMonitorRealTest, NotifiesOnAddressAddAndRemove)
 
     QUIC_ADDR Added;
     CxPlatZeroMemory(&Added, sizeof(Added));
-    ASSERT_TRUE(QuicAddr4FromString("192.0.2.77", &Added));
+    ASSERT_TRUE(QuicAddrFromString("192.0.2.77", 0, &Added));
     bool FoundInSnapshot = false;
     for (uint32_t i = 0; i < AfterCount; ++i) {
         if (QuicAddrCompare(&Added, &After[i].Address)) {
