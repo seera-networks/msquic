@@ -34,16 +34,31 @@ Abstract:
 #include <linux/if_arp.h>
 
 //
-// The kernel's own ceiling on a netlink message, which is what a dump reply is
-// chunked into.
+// Larger than the kernel's usual dump chunk. The first chunk of a dump is sized
+// from NLMSG_GOODSIZE, which follows the page size, so on a 64K-page kernel it
+// can exceed the 8192 that is plenty elsewhere -- and a short read would lose
+// the tail of a reply silently, or lose NLMSG_DONE and turn the dump into a
+// timeout. MSG_TRUNC below turns any remaining case into an error rather than
+// missing addresses.
 //
-#define CXPLAT_NETLINK_BUFFER_SIZE 8192
+#define CXPLAT_NETLINK_BUFFER_SIZE 32768
 
 //
-// The dump is bounded so a kernel that never sends NLMSG_DONE cannot hang the
-// thread. Far above any real host's address or interface count.
+// A backstop against a kernel that streams a dump without ever sending
+// NLMSG_DONE. The poll timeout below is the real termination guarantee -- a
+// kernel that stops talking is caught there -- so this only has to be above
+// any host that exists: 4096 was not, since thousands of /32 service addresses
+// on lo or a dummy interface is an ordinary load balancer. At this bound the
+// address array peaks around six megabytes.
 //
-#define CXPLAT_NETLINK_MAX_DUMP_MESSAGES 4096
+#define CXPLAT_NETLINK_MAX_DUMP_MESSAGES 65536
+
+//
+// Ceiling on the retry backoff after a failed enumeration. Long enough not to
+// spin against whatever is wrong, short enough that a host which recovers is
+// noticed without waiting for the next address change.
+//
+#define CXPLAT_ADDRESS_MONITOR_MAX_RETRY_MS 5000
 
 typedef struct CXPLAT_ADDRESS_MONITOR_OS {
     int NetlinkFd;      // Subscription, read by the thread
@@ -66,6 +81,14 @@ typedef struct CXPLAT_INTERFACE_TABLE {
     CXPLAT_INTERFACE_STATE* Entries;
     uint32_t Count;
     uint32_t Capacity;
+    //
+    // An interface that could not be recorded would leave every address on it
+    // looking like it was on a down interface, so the filter would drop them
+    // all and the resync would report each as removed -- the very answer
+    // CxPlatAddressMonitorResync refuses to give when an enumeration fails.
+    // Failing the enumeration instead is the honest outcome.
+    //
+    BOOLEAN AllocFailed;
 } CXPLAT_INTERFACE_TABLE;
 
 static
@@ -184,12 +207,26 @@ CxPlatNetlinkDump(
             break;
         }
 
-        const ssize_t Received = recv(Fd, Buffer, CXPLAT_NETLINK_BUFFER_SIZE, 0);
+        //
+        // MSG_TRUNC makes recv report the datagram's real length rather than
+        // what fitted, so a buffer that was too small is an error here instead
+        // of silently dropped addresses.
+        //
+        const ssize_t Received = recv(Fd, Buffer, CXPLAT_NETLINK_BUFFER_SIZE, MSG_TRUNC);
         if (Received < 0) {
             if (errno == EINTR || errno == EAGAIN) {
                 continue;
             }
             Status = (QUIC_STATUS)errno;
+            break;
+        }
+        if ((size_t)Received > CXPLAT_NETLINK_BUFFER_SIZE) {
+            QuicTraceEvent(
+                LibraryErrorStatus,
+                "[ lib] ERROR, %u, %s.",
+                (uint32_t)Received,
+                "netlink dump reply larger than the read buffer");
+            Status = QUIC_STATUS_INTERNAL_ERROR;
             break;
         }
 
@@ -241,7 +278,13 @@ CxPlatInterfaceTableAdd(
             CXPLAT_ALLOC_NONPAGED(
                 NewCapacity * sizeof(CXPLAT_INTERFACE_STATE), QUIC_POOL_PLATFORM_TMP_ALLOC);
         if (NewEntries == NULL) {
-            return; // Dropped; the address lands with InterfaceUp FALSE and is filtered.
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "address monitor interface table",
+                NewCapacity * sizeof(CXPLAT_INTERFACE_STATE));
+            Table->AllocFailed = TRUE;
+            return;
         }
         if (Table->Entries != NULL) {
             CxPlatCopyMemory(
@@ -454,7 +497,14 @@ CxPlatNetlinkOnAddressMessage(
 
     Entry->Tentative = (Flags & (IFA_F_TENTATIVE | IFA_F_DADFAILED)) != 0;
 
-    if (Flags & IFA_F_TEMPORARY) {
+    //
+    // Only for IPv6. IFA_F_TEMPORARY and IFA_F_SECONDARY are the same bit, so
+    // over IPv4 this is set for any alias in a subnet the interface already
+    // has -- and the flag is defined as an RFC 8981 privacy address, which core
+    // will deprioritise. Reading every IPv4 secondary as one would be wrong in
+    // the direction that quietly loses a perfectly good address.
+    //
+    if (Message->ifa_family == AF_INET6 && (Flags & IFA_F_TEMPORARY)) {
         Entry->Address.Flags |= CXPLAT_ADDRESS_FLAG_TEMPORARY;
     }
     if (Flags & IFA_F_DEPRECATED) {
@@ -490,6 +540,10 @@ CxPlatAddressMonitorOsEnumerate(
         CxPlatNetlinkDump(
             RTM_GETLINK, AF_UNSPEC, CxPlatNetlinkOnLinkMessage, &Interfaces);
     if (QUIC_FAILED(Status)) {
+        goto Exit;
+    }
+    if (Interfaces.AllocFailed) {
+        Status = QUIC_STATUS_OUT_OF_MEMORY;
         goto Exit;
     }
 
@@ -583,6 +637,7 @@ static CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
     BOOLEAN DebouncePending = FALSE;
     BOOLEAN RouteChanged = FALSE;
     uint64_t DebounceDeadline = 0;
+    uint32_t RetryMs = 0;
 
     for (;;) {
         //
@@ -595,9 +650,15 @@ static CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
         int Timeout = -1;
         if (DebouncePending) {
             const uint64_t Now = CxPlatTimeUs64();
+            //
+            // Rounded up, not down. Truncating left poll with a timeout of zero
+            // for the last sub-millisecond of every window, which returns
+            // immediately while the deadline check below still says not yet --
+            // a tight loop until the microseconds ran out.
+            //
             Timeout =
                 CxPlatTimeAtOrBefore64(DebounceDeadline, Now) ?
-                    0 : (int)US_TO_MS(DebounceDeadline - Now);
+                    0 : (int)US_TO_MS_CEIL(DebounceDeadline - Now);
         }
 
         struct pollfd PollFds[2];
@@ -640,10 +701,29 @@ static CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
         }
 
         if (DebouncePending && CxPlatTimeAtOrBefore64(DebounceDeadline, CxPlatTimeUs64())) {
-            const BOOLEAN Routes = RouteChanged;
-            DebouncePending = FALSE;
-            RouteChanged = FALSE;
-            CxPlatAddressMonitorResync(Monitor, Monitor->WatchRoutes && Routes);
+            if (CxPlatAddressMonitorResync(
+                    Monitor, Monitor->WatchRoutes && RouteChanged)) {
+                DebouncePending = FALSE;
+                RouteChanged = FALSE;
+                RetryMs = 0;
+            } else {
+                //
+                // The enumeration failed -- ENOBUFS pressure, a dump that
+                // timed out under load, a host past the message bound. The
+                // window stays armed and backs off rather than being cleared:
+                // there may be no further notification to retry on, and an
+                // address that appeared during the failure would otherwise stay
+                // invisible to the consumer for the life of the process.
+                //
+                // RouteChanged is deliberately kept too, so a route change is
+                // not lost to a failed address enumeration.
+                //
+                RetryMs = RetryMs == 0 ? Monitor->DebounceMs : RetryMs * 2;
+                if (RetryMs > CXPLAT_ADDRESS_MONITOR_MAX_RETRY_MS) {
+                    RetryMs = CXPLAT_ADDRESS_MONITOR_MAX_RETRY_MS;
+                }
+                DebounceDeadline = CxPlatTimeUs64() + MS_TO_US(RetryMs);
+            }
         }
     }
 

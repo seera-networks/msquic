@@ -68,6 +68,11 @@ CxPlatAddressMonitorFilter(
 // not on interface index or flags, so that an address moving interface or
 // changing flags reads as UPDATED rather than as a remove and an add.
 //
+// Because that key is not unique -- the same global address can sit on two
+// interfaces -- this pairs entries rather than testing membership, and needs
+// Consumed as scratch, one BOOLEAN per Old entry. Its contents on return say
+// which Old entries were paired and are of no use to the caller.
+//
 // Writes at most OldCount + NewCount changes.
 //
 void
@@ -76,6 +81,7 @@ CxPlatAddressMonitorDiff(
     _In_ uint32_t OldCount,
     _In_reads_(NewCount) const CXPLAT_LOCAL_ADDRESS* New,
     _In_ uint32_t NewCount,
+    _Out_writes_all_(OldCount) BOOLEAN* Consumed,
     _Out_writes_to_(OldCount + NewCount, *ChangeCount) CXPLAT_ADDRESS_CHANGE* Changes,
     _Out_ uint32_t* ChangeCount
     );
@@ -133,10 +139,13 @@ CxPlatAddressMonitorOsEnumerate(
 // Called by the backend once its debounce window has closed. Re-enumerates,
 // filters, diffs against the stored snapshot and, if anything changed or a
 // route change is pending, replaces the snapshot, bumps the generation and
-// makes the callback. Does nothing if the enumeration fails -- the stored
-// snapshot stays, and the next notification tries again.
+// makes the callback.
 //
-void
+// FALSE when the enumeration failed, in which case the stored snapshot is left
+// alone and nothing was reported. The backend is expected to try again rather
+// than wait for another notification, which on a quiet host may never come.
+//
+BOOLEAN
 CxPlatAddressMonitorResync(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
     _In_ BOOLEAN RouteChanged

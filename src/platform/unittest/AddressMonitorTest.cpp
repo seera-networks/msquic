@@ -166,7 +166,8 @@ TEST_F(AddressMonitorTest, DiffAddAndRemove)
 
     CXPLAT_ADDRESS_CHANGE Changes[2];
     uint32_t Count = 0;
-    CxPlatAddressMonitorDiff(Old, 1, New, 1, Changes, &Count);
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Old, 1, New, 1, Consumed, Changes, &Count);
 
     ASSERT_EQ(2u, Count);
     ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_ADDED, Changes[0].Type);
@@ -181,7 +182,8 @@ TEST_F(AddressMonitorTest, DiffNoChange)
     };
     CXPLAT_ADDRESS_CHANGE Changes[4];
     uint32_t Count = 0;
-    CxPlatAddressMonitorDiff(Both, 2, Both, 2, Changes, &Count);
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Both, 2, Both, 2, Consumed, Changes, &Count);
     ASSERT_EQ(0u, Count);
 }
 
@@ -200,7 +202,8 @@ TEST_F(AddressMonitorTest, DiffReordered)
 
     CXPLAT_ADDRESS_CHANGE Changes[4];
     uint32_t Count = 0;
-    CxPlatAddressMonitorDiff(Old, 2, New, 2, Changes, &Count);
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Old, 2, New, 2, Consumed, Changes, &Count);
     ASSERT_EQ(0u, Count);
 }
 
@@ -218,7 +221,8 @@ TEST_F(AddressMonitorTest, DiffFlagChangeIsUpdateNotRemoveAndAdd)
 
     CXPLAT_ADDRESS_CHANGE Changes[2];
     uint32_t Count = 0;
-    CxPlatAddressMonitorDiff(Old, 1, New, 1, Changes, &Count);
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Old, 1, New, 1, Consumed, Changes, &Count);
 
     ASSERT_EQ(1u, Count);
     ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_UPDATED, Changes[0].Type);
@@ -231,7 +235,8 @@ TEST_F(AddressMonitorTest, DiffInterfaceChangeIsUpdate)
 
     CXPLAT_ADDRESS_CHANGE Changes[2];
     uint32_t Count = 0;
-    CxPlatAddressMonitorDiff(Old, 1, New, 1, Changes, &Count);
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Old, 1, New, 1, Consumed, Changes, &Count);
 
     ASSERT_EQ(1u, Count);
     ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_UPDATED, Changes[0].Type);
@@ -250,7 +255,8 @@ TEST_F(AddressMonitorTest, DiffScopeIdSeparatesLinkLocals)
 
     CXPLAT_ADDRESS_CHANGE Changes[2];
     uint32_t Count = 0;
-    CxPlatAddressMonitorDiff(Old, 1, New, 1, Changes, &Count);
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Old, 1, New, 1, Consumed, Changes, &Count);
 
     ASSERT_EQ(2u, Count);
     ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_ADDED, Changes[0].Type);
@@ -281,9 +287,76 @@ TEST_F(AddressMonitorTest, DiffDadCompletion)
 
     CXPLAT_ADDRESS_CHANGE Changes[1];
     uint32_t Count = 0;
-    CxPlatAddressMonitorDiff(Before, BeforeCount, After, AfterCount, Changes, &Count);
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Before, BeforeCount, After, AfterCount, Consumed, Changes, &Count);
     ASSERT_EQ(1u, Count);
     ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_ADDED, Changes[0].Type);
+}
+
+TEST_F(AddressMonitorTest, DiffDuplicateIdentityRemoval)
+{
+    //
+    // The same global address on two interfaces is two entries sharing one
+    // identity key, since identity excludes the interface index on purpose and
+    // the scope ID is only set for IPv6 link-local. An anycast /32 on lo
+    // alongside a real interface is the ordinary way to get here.
+    //
+    // Matching first-found made deleting one copy produce no change at all,
+    // and CxPlatAddressMonitorResync then discarded the new snapshot and never
+    // moved the generation again -- so the monitor reported an address on an
+    // interface that no longer had it, for the life of the process.
+    //
+    CXPLAT_LOCAL_ADDRESS Old[2] = {
+        Filtered(MakeV4("192.0.2.99", 2)),
+        Filtered(MakeV4("192.0.2.99", 3)),
+    };
+    CXPLAT_LOCAL_ADDRESS New[1] = { Old[0] };
+
+    CXPLAT_ADDRESS_CHANGE Changes[3];
+    uint32_t Count = 0;
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Old, 2, New, 1, Consumed, Changes, &Count);
+
+    ASSERT_EQ(1u, Count);
+    ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_REMOVED, Changes[0].Type);
+    ASSERT_EQ(3u, Changes[0].Address.InterfaceIndex);
+}
+
+TEST_F(AddressMonitorTest, DiffDuplicateIdentityAddition)
+{
+    CXPLAT_LOCAL_ADDRESS Old[1] = { Filtered(MakeV4("192.0.2.99", 2)) };
+    CXPLAT_LOCAL_ADDRESS New[2] = {
+        Old[0],
+        Filtered(MakeV4("192.0.2.99", 3)),
+    };
+
+    CXPLAT_ADDRESS_CHANGE Changes[3];
+    uint32_t Count = 0;
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Old, 1, New, 2, Consumed, Changes, &Count);
+
+    ASSERT_EQ(1u, Count);
+    ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_ADDED, Changes[0].Type);
+    ASSERT_EQ(3u, Changes[0].Address.InterfaceIndex);
+}
+
+TEST_F(AddressMonitorTest, DiffDuplicateIdentityUnchanged)
+{
+    //
+    // Two copies staying two copies is not a change, whichever order the dump
+    // lists them in.
+    //
+    CXPLAT_LOCAL_ADDRESS Old[2] = {
+        Filtered(MakeV4("192.0.2.99", 2)),
+        Filtered(MakeV4("192.0.2.99", 3)),
+    };
+    CXPLAT_LOCAL_ADDRESS New[2] = { Old[1], Old[0] };
+
+    CXPLAT_ADDRESS_CHANGE Changes[4];
+    uint32_t Count = 0;
+    BOOLEAN Consumed[8] = {0};
+    CxPlatAddressMonitorDiff(Old, 2, New, 2, Consumed, Changes, &Count);
+    ASSERT_EQ(0u, Count);
 }
 
 TEST_F(AddressMonitorTest, DiffEmptySnapshots)
@@ -292,15 +365,17 @@ TEST_F(AddressMonitorTest, DiffEmptySnapshots)
     CXPLAT_ADDRESS_CHANGE Changes[2];
     uint32_t Count = 0;
 
-    CxPlatAddressMonitorDiff(NULL, 0, One, 1, Changes, &Count);
+    BOOLEAN Consumed[8] = {0};
+
+    CxPlatAddressMonitorDiff(NULL, 0, One, 1, Consumed, Changes, &Count);
     ASSERT_EQ(1u, Count);
     ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_ADDED, Changes[0].Type);
 
-    CxPlatAddressMonitorDiff(One, 1, NULL, 0, Changes, &Count);
+    CxPlatAddressMonitorDiff(One, 1, NULL, 0, Consumed, Changes, &Count);
     ASSERT_EQ(1u, Count);
     ASSERT_EQ(CXPLAT_ADDRESS_CHANGE_REMOVED, Changes[0].Type);
 
-    CxPlatAddressMonitorDiff(NULL, 0, NULL, 0, Changes, &Count);
+    CxPlatAddressMonitorDiff(NULL, 0, NULL, 0, Consumed, Changes, &Count);
     ASSERT_EQ(0u, Count);
 }
 
@@ -665,6 +740,52 @@ TEST_F(AddressMonitorRealTest, DebounceCollapsesABurst)
 
     CxPlatAddressMonitorUninitialize(Monitor);
     Run("ip link del qmonburst >/dev/null 2>&1");
+}
+
+//
+// IFA_F_TEMPORARY and IFA_F_SECONDARY are the same bit in linux/if_addr.h, so
+// reading it without checking the family marks every IPv4 alias as an RFC 8981
+// privacy address -- which core will deprioritise, quietly avoiding a perfectly
+// good address.
+//
+TEST_F(AddressMonitorRealTest, Ipv4SecondaryIsNotTemporary)
+{
+    if (!CanCreateInterface()) {
+        GTEST_SKIP() << "needs a network namespace; run under `unshare -rn`";
+    }
+
+    ASSERT_TRUE(Run("ip link add qmonsec type dummy"));
+    ASSERT_TRUE(Run("ip link set qmonsec up"));
+    ASSERT_TRUE(Run("ip addr add 10.1.1.1/24 dev qmonsec"));
+    //
+    // Same subnet, so the kernel marks it IFA_F_SECONDARY.
+    //
+    ASSERT_TRUE(Run("ip addr add 10.1.1.2/24 dev qmonsec"));
+
+    CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS* Raw = NULL;
+    uint32_t RawCount = 0;
+    ASSERT_TRUE(QUIC_SUCCEEDED(CxPlatAddressMonitorOsEnumerate(NULL, &Raw, &RawCount)));
+
+    QUIC_ADDR Secondary;
+    CxPlatZeroMemory(&Secondary, sizeof(Secondary));
+    ASSERT_TRUE(QuicAddrFromString("10.1.1.2", 0, &Secondary));
+
+    bool Found = false;
+    for (uint32_t i = 0; i < RawCount; ++i) {
+        if (QuicAddrGetFamily(&Raw[i].Address.Address) == QUIC_ADDRESS_FAMILY_INET &&
+            QuicAddrCompareIp(&Secondary, &Raw[i].Address.Address)) {
+            Found = true;
+            ASSERT_EQ(
+                0u,
+                (uint32_t)(Raw[i].Address.Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY));
+        }
+    }
+
+    if (Raw != NULL) {
+        CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    Run("ip link del qmonsec >/dev/null 2>&1");
+    ASSERT_TRUE(Found);
 }
 
 #endif

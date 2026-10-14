@@ -80,22 +80,6 @@ CxPlatLocalAddressAttributesEqual(
         A->Flags == B->Flags;
 }
 
-static
-const CXPLAT_LOCAL_ADDRESS*
-CxPlatLocalAddressFind(
-    _In_reads_(Count) const CXPLAT_LOCAL_ADDRESS* Addresses,
-    _In_ uint32_t Count,
-    _In_ const CXPLAT_LOCAL_ADDRESS* Address
-    )
-{
-    for (uint32_t i = 0; i < Count; ++i) {
-        if (CxPlatLocalAddressEqual(&Addresses[i], Address)) {
-            return &Addresses[i];
-        }
-    }
-    return NULL;
-}
-
 void
 CxPlatAddressMonitorFilter(
     _In_reads_(RawCount) const CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS* Raw,
@@ -146,28 +130,84 @@ CxPlatAddressMonitorDiff(
     _In_ uint32_t OldCount,
     _In_reads_(NewCount) const CXPLAT_LOCAL_ADDRESS* New,
     _In_ uint32_t NewCount,
+    _Out_writes_all_(OldCount) BOOLEAN* Consumed,
     _Out_writes_to_(OldCount + NewCount, *ChangeCount) CXPLAT_ADDRESS_CHANGE* Changes,
     _Out_ uint32_t* ChangeCount
     )
 {
     uint32_t Count = 0;
 
+    //
+    // Pairing, not set membership. Identity excludes the interface index on
+    // purpose, so the same global address on two interfaces -- an anycast /32
+    // on lo alongside a real one -- is two entries under one key. Answering
+    // "is this key present" meant deleting one copy produced no change at all,
+    // and the caller then discarded the new snapshot and stopped moving the
+    // generation, reporting an address on an interface that no longer had it
+    // for as long as the process lived.
+    //
+    // Each Old entry is therefore consumed by at most one New entry, tracked in
+    // Consumed. Exact matches -- identity and attributes both -- are paired
+    // first, in a pass of their own, so that a dump listing two copies in the
+    // other order pairs them with each other and reports nothing, rather than
+    // pairing them crosswise and reporting two updates that did not happen.
+    //
+    for (uint32_t i = 0; i < OldCount; ++i) {
+        Consumed[i] = FALSE;
+    }
+
     for (uint32_t i = 0; i < NewCount; ++i) {
-        const CXPLAT_LOCAL_ADDRESS* Previous =
-            CxPlatLocalAddressFind(Old, OldCount, &New[i]);
-        if (Previous == NULL) {
-            Changes[Count].Type = CXPLAT_ADDRESS_CHANGE_ADDED;
-            Changes[Count].Address = New[i];
-            ++Count;
-        } else if (!CxPlatLocalAddressAttributesEqual(Previous, &New[i])) {
-            Changes[Count].Type = CXPLAT_ADDRESS_CHANGE_UPDATED;
-            Changes[Count].Address = New[i];
-            ++Count;
+        for (uint32_t j = 0; j < OldCount; ++j) {
+            if (!Consumed[j] &&
+                CxPlatLocalAddressEqual(&Old[j], &New[i]) &&
+                CxPlatLocalAddressAttributesEqual(&Old[j], &New[i])) {
+                Consumed[j] = TRUE;
+                goto NextExact;
+            }
         }
+        continue;
+    NextExact:
+        ;
+    }
+
+    for (uint32_t i = 0; i < NewCount; ++i) {
+        //
+        // Already paired exactly in the pass above, so nothing to report.
+        //
+        BOOLEAN Exact = FALSE;
+        for (uint32_t j = 0; j < OldCount; ++j) {
+            if (Consumed[j] &&
+                CxPlatLocalAddressEqual(&Old[j], &New[i]) &&
+                CxPlatLocalAddressAttributesEqual(&Old[j], &New[i])) {
+                Exact = TRUE;
+                break;
+            }
+        }
+        if (Exact) {
+            continue;
+        }
+
+        //
+        // Otherwise it pairs with a leftover of the same identity, which is an
+        // address whose flags or interface changed, or it is new.
+        //
+        BOOLEAN Updated = FALSE;
+        for (uint32_t j = 0; j < OldCount; ++j) {
+            if (!Consumed[j] && CxPlatLocalAddressEqual(&Old[j], &New[i])) {
+                Consumed[j] = TRUE;
+                Updated = TRUE;
+                break;
+            }
+        }
+
+        Changes[Count].Type =
+            Updated ? CXPLAT_ADDRESS_CHANGE_UPDATED : CXPLAT_ADDRESS_CHANGE_ADDED;
+        Changes[Count].Address = New[i];
+        ++Count;
     }
 
     for (uint32_t i = 0; i < OldCount; ++i) {
-        if (CxPlatLocalAddressFind(New, NewCount, &Old[i]) == NULL) {
+        if (!Consumed[i]) {
             Changes[Count].Type = CXPLAT_ADDRESS_CHANGE_REMOVED;
             Changes[Count].Address = Old[i];
             ++Count;
@@ -179,7 +219,7 @@ CxPlatAddressMonitorDiff(
 
 #if defined(CXPLAT_ADDRESS_MONITOR_SUPPORTED)
 
-void
+BOOLEAN
 CxPlatAddressMonitorResync(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
     _In_ BOOLEAN RouteChanged
@@ -192,10 +232,14 @@ CxPlatAddressMonitorResync(
         //
         // The stored snapshot is left alone rather than emptied. An enumeration
         // that fails says nothing about the host's addresses, and reporting them
-        // all as removed would be a worse answer than reporting nothing: the
-        // next notification enumerates again.
+        // all as removed would be a worse answer than reporting nothing.
         //
-        return;
+        // FALSE, so the backend can try again. It used to say "the next
+        // notification enumerates again", which is only true if there is one --
+        // on a quiet host an address that appeared during a failed enumeration
+        // would have stayed invisible for good.
+        //
+        return FALSE;
     }
 
     CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
@@ -212,7 +256,7 @@ CxPlatAddressMonitorResync(
                 "address monitor snapshot",
                 RawCount * sizeof(CXPLAT_LOCAL_ADDRESS));
             CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
-            return;
+            return FALSE;
         }
         CxPlatAddressMonitorFilter(Raw, RawCount, Addresses, &AddressCount);
     }
@@ -224,31 +268,45 @@ CxPlatAddressMonitorResync(
     const uint32_t MaxChanges = Monitor->AddressCount + AddressCount;
 
     if (MaxChanges != 0) {
+        //
+        // The change list and the diff's pairing scratch in one allocation, the
+        // scratch after the changes.
+        //
+        const size_t ChangesSize = MaxChanges * sizeof(CXPLAT_ADDRESS_CHANGE);
+        const size_t ScratchSize = Monitor->AddressCount * sizeof(BOOLEAN);
         Changes =
             CXPLAT_ALLOC_NONPAGED(
-                MaxChanges * sizeof(CXPLAT_ADDRESS_CHANGE), QUIC_POOL_DATAPATH_ADDRESSES);
+                ChangesSize + ScratchSize, QUIC_POOL_DATAPATH_ADDRESSES);
         if (Changes == NULL) {
             QuicTraceEvent(
                 AllocFailure,
                 "Allocation of '%s' failed. (%llu bytes)",
                 "address monitor changes",
-                MaxChanges * sizeof(CXPLAT_ADDRESS_CHANGE));
+                (uint64_t)(ChangesSize + ScratchSize));
             if (Addresses != NULL) {
                 CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
             }
-            return;
+            return FALSE;
         }
         CxPlatAddressMonitorDiff(
             Monitor->Addresses, Monitor->AddressCount,
             Addresses, AddressCount,
+            (BOOLEAN*)((uint8_t*)Changes + ChangesSize),
             Changes, &ChangeCount);
     }
 
-    if (ChangeCount == 0 && !RouteChanged) {
+    if (ChangeCount == 0 && !RouteChanged &&
+        AddressCount == Monitor->AddressCount) {
         //
         // The resync found nothing. This is the common case: most of the OS
         // notifications that reach a backend are about something the snapshot
         // does not record.
+        //
+        // The count is compared as well as the diff, so that a snapshot which
+        // changed size can never be discarded here however the diff behaved.
+        // Publishing a change nobody needs costs a consumer one reconciliation
+        // that finds nothing; discarding one it needs leaves it wrong until
+        // something else happens to change, which on a quiet host is never.
         //
         if (Changes != NULL) {
             CXPLAT_FREE(Changes, QUIC_POOL_DATAPATH_ADDRESSES);
@@ -256,7 +314,7 @@ CxPlatAddressMonitorResync(
         if (Addresses != NULL) {
             CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
         }
-        return;
+        return TRUE;
     }
 
     CXPLAT_LOCAL_ADDRESS* Previous;
@@ -289,6 +347,8 @@ CxPlatAddressMonitorResync(
     if (Changes != NULL) {
         CXPLAT_FREE(Changes, QUIC_POOL_DATAPATH_ADDRESSES);
     }
+
+    return TRUE;
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
