@@ -101,6 +101,15 @@ typedef struct QUIC_PATH {
     //
     BOOLEAN SendChallenge : 1;
 
+
+    //
+    // An MTU probe for this path needs to be sent out. Per path because the
+    // probe has to leave on the path it is measuring: the acknowledgement is
+    // matched against that path's own ProbeSize, so a probe emitted elsewhere
+    // is discarded as out of order and the path is never measured at all.
+    //
+    BOOLEAN SendMtuProbe : 1;
+
     //
     // The current path response needs to be sent out.
     //

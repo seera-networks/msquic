@@ -1022,6 +1022,15 @@ TEST_P(WithFamilyArgs, PathKeepAlive) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathPathsAreMeasured) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathsAreMeasured", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathsAreMeasured), GetParam()));
+    } else {
+        QuicTestMultipathPathsAreMeasured(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, PathStatistics) {
     TestLoggerT<ParamType> Logger("QuicTestPathStatistics", GetParam());
     if (TestingKernelMode) {

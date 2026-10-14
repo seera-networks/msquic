@@ -611,6 +611,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestMultipathRemovedPathAcks);
     RegisterTestFunction(QuicTestPathKeepAlive);
     RegisterTestFunction(QuicTestPathStatistics);
+    RegisterTestFunction(QuicTestMultipathPathsAreMeasured);
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 #endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
     RegisterTestFunction(QuicTestChangeMaxStreamID);
