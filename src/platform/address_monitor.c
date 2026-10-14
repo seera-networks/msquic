@@ -1,0 +1,446 @@
+/*++
+
+    Copyright (c) Microsoft Corporation.
+    Licensed under the MIT License.
+
+Abstract:
+
+    Local address monitor: snapshot, filter and diff.
+
+    Nothing here calls the OS. A backend subscribes to notifications, waits out
+    its debounce window and calls CxPlatAddressMonitorResync; everything from
+    the re-enumeration onwards happens here, the same way on every platform.
+
+--*/
+
+#include "platform_internal.h"
+#include "address_monitor.h"
+
+#ifdef QUIC_CLOG
+#include "address_monitor.c.clog.h"
+#endif
+
+static
+BOOLEAN
+CxPlatLocalAddressEqual(
+    _In_ const CXPLAT_LOCAL_ADDRESS* A,
+    _In_ const CXPLAT_LOCAL_ADDRESS* B
+    )
+{
+    //
+    // Identity is family, address bytes and scope ID. Interface index and flags
+    // are deliberately not part of it: an address that moves interface or has
+    // its flags change is the same address, and reporting it as one UPDATED
+    // rather than a REMOVED and an ADDED is what stops a consumer tearing down
+    // and rebuilding state it could have kept.
+    //
+    // QuicAddrCompare covers family, port and address bytes but not the scope
+    // ID, which has to be compared here: the same link-local address on two
+    // interfaces is two addresses. Both sides come from the filter, which zeroes
+    // the port, so the port half of that comparison is always equal.
+    //
+    if (!QuicAddrCompare(&A->Address, &B->Address)) {
+        return FALSE;
+    }
+    if (QuicAddrGetFamily(&A->Address) == QUIC_ADDRESS_FAMILY_INET6 &&
+        A->Address.Ipv6.sin6_scope_id != B->Address.Ipv6.sin6_scope_id) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+//
+// No platform helper for this, and it is not the same question as
+// QuicAddrIsWildCard: 224.0.0.0/4 over IPv4, ff00::/8 over IPv6.
+//
+static
+BOOLEAN
+CxPlatLocalAddressIsMulticast(
+    _In_ const QUIC_ADDR* Addr
+    )
+{
+    if (QuicAddrGetFamily(Addr) == QUIC_ADDRESS_FAMILY_INET) {
+        const uint8_t* Bytes = (const uint8_t*)&Addr->Ipv4.sin_addr;
+        return (Bytes[0] & 0xF0) == 0xE0;
+    }
+    const uint8_t* Bytes = (const uint8_t*)&Addr->Ipv6.sin6_addr;
+    return Bytes[0] == 0xFF;
+}
+
+static
+BOOLEAN
+CxPlatLocalAddressAttributesEqual(
+    _In_ const CXPLAT_LOCAL_ADDRESS* A,
+    _In_ const CXPLAT_LOCAL_ADDRESS* B
+    )
+{
+    return
+        A->InterfaceIndex == B->InterfaceIndex &&
+        A->InterfaceType == B->InterfaceType &&
+        A->Flags == B->Flags;
+}
+
+static
+const CXPLAT_LOCAL_ADDRESS*
+CxPlatLocalAddressFind(
+    _In_reads_(Count) const CXPLAT_LOCAL_ADDRESS* Addresses,
+    _In_ uint32_t Count,
+    _In_ const CXPLAT_LOCAL_ADDRESS* Address
+    )
+{
+    for (uint32_t i = 0; i < Count; ++i) {
+        if (CxPlatLocalAddressEqual(&Addresses[i], Address)) {
+            return &Addresses[i];
+        }
+    }
+    return NULL;
+}
+
+void
+CxPlatAddressMonitorFilter(
+    _In_reads_(RawCount) const CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS* Raw,
+    _In_ uint32_t RawCount,
+    _Out_writes_to_(RawCount, *Count) CXPLAT_LOCAL_ADDRESS* Addresses,
+    _Out_ uint32_t* Count
+    )
+{
+    uint32_t Kept = 0;
+    for (uint32_t i = 0; i < RawCount; ++i) {
+        const CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS* Entry = &Raw[i];
+
+        if (Entry->Tentative || !Entry->InterfaceUp) {
+            continue;
+        }
+
+        const QUIC_ADDRESS_FAMILY Family = QuicAddrGetFamily(&Entry->Address.Address);
+        if (Family != QUIC_ADDRESS_FAMILY_INET &&
+            Family != QUIC_ADDRESS_FAMILY_INET6) {
+            continue;
+        }
+
+        //
+        // Not a source address: the unspecified address, and anything
+        // multicast. Anycast is not distinguishable from the address alone and
+        // is left to the backend, which has the OS's own flag for it.
+        //
+        if (QuicAddrIsWildCard(&Entry->Address.Address) ||
+            CxPlatLocalAddressIsMulticast(&Entry->Address.Address)) {
+            continue;
+        }
+
+        //
+        // Written in order, and the caller is allowed to pass the same storage
+        // it read from, so Kept <= i has to hold -- it does, since Kept only
+        // advances on an entry that is kept.
+        //
+        Addresses[Kept] = Entry->Address;
+        QuicAddrSetPort(&Addresses[Kept].Address, 0);
+        ++Kept;
+    }
+    *Count = Kept;
+}
+
+void
+CxPlatAddressMonitorDiff(
+    _In_reads_(OldCount) const CXPLAT_LOCAL_ADDRESS* Old,
+    _In_ uint32_t OldCount,
+    _In_reads_(NewCount) const CXPLAT_LOCAL_ADDRESS* New,
+    _In_ uint32_t NewCount,
+    _Out_writes_to_(OldCount + NewCount, *ChangeCount) CXPLAT_ADDRESS_CHANGE* Changes,
+    _Out_ uint32_t* ChangeCount
+    )
+{
+    uint32_t Count = 0;
+
+    for (uint32_t i = 0; i < NewCount; ++i) {
+        const CXPLAT_LOCAL_ADDRESS* Previous =
+            CxPlatLocalAddressFind(Old, OldCount, &New[i]);
+        if (Previous == NULL) {
+            Changes[Count].Type = CXPLAT_ADDRESS_CHANGE_ADDED;
+            Changes[Count].Address = New[i];
+            ++Count;
+        } else if (!CxPlatLocalAddressAttributesEqual(Previous, &New[i])) {
+            Changes[Count].Type = CXPLAT_ADDRESS_CHANGE_UPDATED;
+            Changes[Count].Address = New[i];
+            ++Count;
+        }
+    }
+
+    for (uint32_t i = 0; i < OldCount; ++i) {
+        if (CxPlatLocalAddressFind(New, NewCount, &Old[i]) == NULL) {
+            Changes[Count].Type = CXPLAT_ADDRESS_CHANGE_REMOVED;
+            Changes[Count].Address = Old[i];
+            ++Count;
+        }
+    }
+
+    *ChangeCount = Count;
+}
+
+#if defined(CXPLAT_ADDRESS_MONITOR_SUPPORTED)
+
+void
+CxPlatAddressMonitorResync(
+    _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _In_ BOOLEAN RouteChanged
+    )
+{
+    CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS* Raw = NULL;
+    uint32_t RawCount = 0;
+
+    if (QUIC_FAILED(CxPlatAddressMonitorOsEnumerate(Monitor, &Raw, &RawCount))) {
+        //
+        // The stored snapshot is left alone rather than emptied. An enumeration
+        // that fails says nothing about the host's addresses, and reporting them
+        // all as removed would be a worse answer than reporting nothing: the
+        // next notification enumerates again.
+        //
+        return;
+    }
+
+    CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
+    uint32_t AddressCount = 0;
+
+    if (RawCount != 0) {
+        Addresses =
+            CXPLAT_ALLOC_NONPAGED(
+                RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
+        if (Addresses == NULL) {
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "address monitor snapshot",
+                RawCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+            CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+            return;
+        }
+        CxPlatAddressMonitorFilter(Raw, RawCount, Addresses, &AddressCount);
+    }
+
+    CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+
+    CXPLAT_ADDRESS_CHANGE* Changes = NULL;
+    uint32_t ChangeCount = 0;
+    const uint32_t MaxChanges = Monitor->AddressCount + AddressCount;
+
+    if (MaxChanges != 0) {
+        Changes =
+            CXPLAT_ALLOC_NONPAGED(
+                MaxChanges * sizeof(CXPLAT_ADDRESS_CHANGE), QUIC_POOL_DATAPATH_ADDRESSES);
+        if (Changes == NULL) {
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "address monitor changes",
+                MaxChanges * sizeof(CXPLAT_ADDRESS_CHANGE));
+            if (Addresses != NULL) {
+                CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+            }
+            return;
+        }
+        CxPlatAddressMonitorDiff(
+            Monitor->Addresses, Monitor->AddressCount,
+            Addresses, AddressCount,
+            Changes, &ChangeCount);
+    }
+
+    if (ChangeCount == 0 && !RouteChanged) {
+        //
+        // The resync found nothing. This is the common case: most of the OS
+        // notifications that reach a backend are about something the snapshot
+        // does not record.
+        //
+        if (Changes != NULL) {
+            CXPLAT_FREE(Changes, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+        if (Addresses != NULL) {
+            CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+        return;
+    }
+
+    CXPLAT_LOCAL_ADDRESS* Previous;
+    CXPLAT_ADDRESS_CHANGE_SET ChangeSet;
+
+    CxPlatDispatchLockAcquire(&Monitor->Lock);
+    Previous = Monitor->Addresses;
+    Monitor->Addresses = Addresses;
+    Monitor->AddressCount = AddressCount;
+    ChangeSet.Generation = ++Monitor->Generation;
+    CxPlatDispatchLockRelease(&Monitor->Lock);
+
+    if (Previous != NULL) {
+        CXPLAT_FREE(Previous, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+
+    ChangeSet.RouteChanged = RouteChanged;
+    ChangeSet.ChangeCount = ChangeCount;
+    ChangeSet.Changes = Changes;
+    ChangeSet.AddressCount = AddressCount;
+    ChangeSet.Addresses = Addresses;
+
+    //
+    // Outside the lock. The callback is not allowed to block, but it is allowed
+    // to call back in for a snapshot, and holding the lock across it would make
+    // that a deadlock.
+    //
+    Monitor->Callback(Monitor->Context, &ChangeSet);
+
+    if (Changes != NULL) {
+        CXPLAT_FREE(Changes, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorInitialize(
+    _In_ CXPLAT_DATAPATH* Datapath,
+    _In_ const CXPLAT_ADDRESS_MONITOR_CONFIG* Config,
+    _Outptr_ CXPLAT_ADDRESS_MONITOR** NewMonitor
+    )
+{
+    CXPLAT_DBG_ASSERT(Config->Callback != NULL);
+
+    CXPLAT_ADDRESS_MONITOR* Monitor =
+        CXPLAT_ALLOC_NONPAGED(sizeof(CXPLAT_ADDRESS_MONITOR), QUIC_POOL_DATAPATH_ADDRESSES);
+    if (Monitor == NULL) {
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "CXPLAT_ADDRESS_MONITOR",
+            sizeof(CXPLAT_ADDRESS_MONITOR));
+        return QUIC_STATUS_OUT_OF_MEMORY;
+    }
+
+    CxPlatZeroMemory(Monitor, sizeof(*Monitor));
+    Monitor->Callback = Config->Callback;
+    Monitor->Context = Config->Context;
+    Monitor->DebounceMs =
+        Config->DebounceMs != 0 ?
+            Config->DebounceMs : CXPLAT_ADDRESS_MONITOR_DEFAULT_DEBOUNCE_MS;
+    Monitor->WatchRoutes = Config->WatchRoutes;
+    CxPlatDispatchLockInitialize(&Monitor->Lock);
+
+    QUIC_STATUS Status = CxPlatAddressMonitorOsInitialize(Datapath, Monitor);
+    if (QUIC_FAILED(Status)) {
+        CxPlatDispatchLockUninitialize(&Monitor->Lock);
+        CXPLAT_FREE(Monitor, QUIC_POOL_DATAPATH_ADDRESSES);
+        return Status;
+    }
+
+    *NewMonitor = Monitor;
+    return QUIC_STATUS_SUCCESS;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+CxPlatAddressMonitorUninitialize(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor
+    )
+{
+    //
+    // The backend stops delivery and waits for a callback already running, so
+    // nothing below races one.
+    //
+    CxPlatAddressMonitorOsUninitialize(Monitor);
+
+    if (Monitor->Addresses != NULL) {
+        CXPLAT_FREE(Monitor->Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    CxPlatDispatchLockUninitialize(&Monitor->Lock);
+    CXPLAT_FREE(Monitor, QUIC_POOL_DATAPATH_ADDRESSES);
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Success_(QUIC_SUCCEEDED(return))
+QUIC_STATUS
+CxPlatAddressMonitorGetSnapshot(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Out_ uint32_t* Count,
+    _Out_ uint64_t* Generation
+    )
+{
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    CXPLAT_LOCAL_ADDRESS* Copy = NULL;
+
+    CxPlatDispatchLockAcquire(&Monitor->Lock);
+
+    if (Monitor->AddressCount != 0) {
+        Copy =
+            CXPLAT_ALLOC_NONPAGED(
+                Monitor->AddressCount * sizeof(CXPLAT_LOCAL_ADDRESS),
+                QUIC_POOL_DATAPATH_ADDRESSES);
+        if (Copy == NULL) {
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            goto Exit;
+        }
+        CxPlatCopyMemory(
+            Copy,
+            Monitor->Addresses,
+            Monitor->AddressCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+    }
+
+    *Addresses = Copy;
+    *Count = Monitor->AddressCount;
+    *Generation = Monitor->Generation;
+
+Exit:
+
+    CxPlatDispatchLockRelease(&Monitor->Lock);
+
+    if (QUIC_FAILED(Status)) {
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "address monitor snapshot copy",
+            (uint64_t)Monitor->AddressCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+    }
+
+    return Status;
+}
+
+#else // CXPLAT_ADDRESS_MONITOR_SUPPORTED
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorInitialize(
+    _In_ CXPLAT_DATAPATH* Datapath,
+    _In_ const CXPLAT_ADDRESS_MONITOR_CONFIG* Config,
+    _Outptr_ CXPLAT_ADDRESS_MONITOR** Monitor
+    )
+{
+    UNREFERENCED_PARAMETER(Datapath);
+    UNREFERENCED_PARAMETER(Config);
+    UNREFERENCED_PARAMETER(Monitor);
+    return QUIC_STATUS_NOT_SUPPORTED;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+CxPlatAddressMonitorUninitialize(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor
+    )
+{
+    UNREFERENCED_PARAMETER(Monitor);
+    CXPLAT_DBG_ASSERT(FALSE); // Initialize never succeeded, so there is nothing to free.
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Success_(QUIC_SUCCEEDED(return))
+QUIC_STATUS
+CxPlatAddressMonitorGetSnapshot(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Out_ uint32_t* Count,
+    _Out_ uint64_t* Generation
+    )
+{
+    UNREFERENCED_PARAMETER(Monitor);
+    UNREFERENCED_PARAMETER(Addresses);
+    UNREFERENCED_PARAMETER(Count);
+    UNREFERENCED_PARAMETER(Generation);
+    return QUIC_STATUS_NOT_SUPPORTED;
+}
+
+#endif // CXPLAT_ADDRESS_MONITOR_SUPPORTED

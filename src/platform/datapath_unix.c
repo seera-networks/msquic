@@ -10,6 +10,7 @@ Abstract:
 --*/
 
 #include "platform_internal.h"
+#include "address_monitor.h"
 
 #ifdef QUIC_CLOG
 #include "datapath_unix.c.clog.h"
@@ -31,10 +32,77 @@ CxPlatDataPathGetLocalAddresses(
     _Out_ uint32_t* AddressesCount
     )
 {
+#if defined(CXPLAT_ADDRESS_MONITOR_SUPPORTED)
+    //
+    // Answered from the address monitor's own enumeration rather than a second
+    // implementation of the same thing. The monitor is not required to be
+    // running: the enumeration does not depend on a subscription, so this works
+    // whether or not anything has asked to be notified.
+    //
+    UNREFERENCED_PARAMETER(Datapath);
+
+    *Addresses = NULL;
+    *AddressesCount = 0;
+
+    CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS* Raw = NULL;
+    uint32_t RawCount = 0;
+    QUIC_STATUS Status = CxPlatAddressMonitorOsEnumerate(NULL, &Raw, &RawCount);
+    if (QUIC_FAILED(Status)) {
+        return Status;
+    }
+
+    if (RawCount == 0) {
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    CXPLAT_LOCAL_ADDRESS* Filtered =
+        CXPLAT_ALLOC_NONPAGED(
+            RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
+    if (Filtered == NULL) {
+        CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+        return QUIC_STATUS_OUT_OF_MEMORY;
+    }
+
+    uint32_t Count = 0;
+    CxPlatAddressMonitorFilter(Raw, RawCount, Filtered, &Count);
+    CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+
+    if (Count == 0) {
+        CXPLAT_FREE(Filtered, QUIC_POOL_DATAPATH_ADDRESSES);
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    CXPLAT_ADAPTER_ADDRESS* Result =
+        CXPLAT_ALLOC_NONPAGED(
+            Count * sizeof(CXPLAT_ADAPTER_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
+    if (Result == NULL) {
+        CXPLAT_FREE(Filtered, QUIC_POOL_DATAPATH_ADDRESSES);
+        return QUIC_STATUS_OUT_OF_MEMORY;
+    }
+
+    for (uint32_t i = 0; i < Count; ++i) {
+        CxPlatZeroMemory(&Result[i], sizeof(Result[i]));
+        Result[i].Address = Filtered[i].Address;
+        Result[i].InterfaceIndex = Filtered[i].InterfaceIndex;
+        Result[i].InterfaceType = Filtered[i].InterfaceType;
+        //
+        // The filter already dropped everything on an interface that is not
+        // operationally up, so what is left is up by construction.
+        //
+        Result[i].OperationStatus = CXPLAT_OPERATION_STATUS_UP;
+    }
+
+    CXPLAT_FREE(Filtered, QUIC_POOL_DATAPATH_ADDRESSES);
+
+    *Addresses = Result;
+    *AddressesCount = Count;
+    return QUIC_STATUS_SUCCESS;
+#else
     UNREFERENCED_PARAMETER(Datapath);
     *Addresses = NULL;
     *AddressesCount = 0;
     return QUIC_STATUS_NOT_SUPPORTED;
+#endif
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)

@@ -12,7 +12,7 @@ endif()
 set(SOURCES crypt.c hashtable.c pcp.c platform_worker.c toeplitz.c)
 
 if("${CX_PLATFORM}" STREQUAL "windows")
-    set(SOURCES ${SOURCES} platform_winuser.c storage_winuser.c datapath_win.c datapath_winuser.c datapath_xplat.c)
+    set(SOURCES ${SOURCES} platform_winuser.c storage_winuser.c datapath_win.c datapath_winuser.c datapath_xplat.c address_monitor.c)
     if(QUIC_UWP_BUILD OR
        QUIC_GAMECORE_BUILD OR
        ${SYSTEM_PROCESSOR} STREQUAL "arm" OR
@@ -23,9 +23,9 @@ if("${CX_PLATFORM}" STREQUAL "windows")
         set(SOURCES ${SOURCES} datapath_raw.c datapath_raw_win.c datapath_raw_socket.c datapath_raw_socket_win.c datapath_raw_xdp_win.c)
     endif()
 else()
-    set(SOURCES ${SOURCES} platform_posix.c storage_posix.c cgroup.c datapath_unix.c)
+    set(SOURCES ${SOURCES} platform_posix.c storage_posix.c cgroup.c datapath_unix.c address_monitor.c)
     if(CX_PLATFORM STREQUAL "linux" AND NOT CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-        set(SOURCES ${SOURCES} datapath_linux.c)
+        set(SOURCES ${SOURCES} datapath_linux.c address_monitor_linux.c)
         if (QUIC_LINUX_IOURING_ENABLED)
             set(SOURCES ${SOURCES} datapath_iouring.c)
         else()

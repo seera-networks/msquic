@@ -4352,6 +4352,24 @@ QuicTestInterfaceBinding(
         return; // Not supported
     }
 
+#ifndef _WIN32
+    //
+    // The assertion below -- that binding to a non-loopback interface stops a
+    // loopback handshake -- needs the datapath to apply the interface index to
+    // the socket, and the POSIX datapath does not: there is no SO_BINDTODEVICE
+    // or IP_UNICAST_IF anywhere in it, so QUIC_PARAM_CONN_LOCAL_INTERFACE is
+    // accepted by core and then ignored, the connection goes out over loopback
+    // anyway, and the handshake completes.
+    //
+    // This used to be unreachable for an unrelated reason:
+    // CxPlatDataPathGetLocalAddresses was unimplemented on POSIX, so
+    // GetTestInterfaceIndices returned false above and the test returned early.
+    // Implementing it exposed this, so the skip is stated here rather than left
+    // to be rediscovered.
+    //
+    return;
+#endif
+
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
 
