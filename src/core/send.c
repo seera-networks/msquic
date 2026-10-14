@@ -1552,18 +1552,13 @@ QuicSendPathKeepAlives(
 }
 
 //
-// This function sends a path challenge frame out on all paths that currently
-// need one sent.
-//
-//
 // Sends an MTU probe out on every path that has one waiting.
 //
 // The probe has to leave on the path it is measuring. Acknowledgements are
 // matched against the sending path's own ProbeSize, so a probe emitted on a
 // different path is discarded as out of order and the path that asked for it is
-// never measured -- which, for a path being kept out of the send rotation until
-// it proves a size, means it can never qualify. Like path challenges, these
-// cannot ride the packet built for whichever path was chosen for this flush.
+// never measured at all. Like path challenges, these cannot ride the packet
+// built for whichever path was chosen for this flush.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
@@ -1603,14 +1598,18 @@ QuicSendPathMtuProbes(
         // path to raise the flag again.
         //
         // Measured against the probe, not against the floor a minimal packet
-        // needs. QuicPacketBuilderPrepare asserts !IsPathMtuDiscovery when the
-        // path's MTU exceeds its allowance, so any allowance between that floor
-        // and the probe size passes a check for the floor and then trips the
-        // assert. Unreachable today -- QuicPathSetValid sets the allowance to
-        // UINT32_MAX just before QuicMtuDiscoveryPeerValidated asks for a probe
-        // -- but the guard should rule out what it claims to.
+        // needs and not against the path's current MTU. QuicPacketBuilderPrepare
+        // asserts !IsPathMtuDiscovery when the MTU exceeds the allowance, but
+        // the datagram it then allocates is ProbeSize, which is larger -- so
+        // comparing against the MTU lets a probe overshoot the remaining
+        // allowance by the difference. Unreachable today, QuicPathSetValid
+        // setting the allowance to UINT32_MAX just before
+        // QuicMtuDiscoveryPeerValidated asks for a probe, but the guard should
+        // rule out what it claims to.
         //
-        if (Path->Allowance < Path->Mtu) {
+        const uint16_t ProbeTarget =
+            Path->MtuDiscovery.ProbeSize != 0 ? Path->MtuDiscovery.ProbeSize : Path->Mtu;
+        if (Path->Allowance < ProbeTarget) {
             Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
             continue;
         }
@@ -1624,8 +1623,34 @@ QuicSendPathMtuProbes(
         // deliberately kept out of use needs a padded PATH_CHALLENGE instead,
         // which is a probing frame and carries no such meaning.
         //
+        // The request is kept rather than discarded, and the flag deliberately
+        // not raised. A path can be validated while not yet active -- the
+        // server builds one from a packet on a new address with IsActive clear,
+        // and QuicPathSetValid arms the probe without consulting it -- and
+        // nothing else would ever re-arm discovery for it: its search is not
+        // complete, so QuicMtuDiscoveryCheckSearchCompleteTimeout passes it
+        // over. Dropping the request left such a path at MinimumMtu for the
+        // life of the connection. QuicSendFlush raises the flag again once the
+        // path is in the rotation.
+        //
         if (!Path->IsActive) {
-            Path->SendMtuProbe = FALSE;
+            continue;
+        }
+
+        //
+        // Nor to an address this side has not validated. The challenge branch
+        // above covers most of that window, but it closes as soon as the
+        // challenge is framed, leaving the wait for the response uncovered --
+        // and a probe is full size, so sending one to an address that has not
+        // answered yet is the reflection case amplification protection exists
+        // for. The allowance check below does not catch it: the only place that
+        // clears IsPeerValidated for a peer migration leaves Allowance at
+        // UINT32_MAX, and QuicPacketBuilderPrepare's own assert reads
+        // "PMTUD always happens after source addr validation", which is the
+        // invariant being kept here.
+        //
+        if (!Path->IsPeerValidated) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
             continue;
         }
 
@@ -1723,7 +1748,6 @@ QuicSendPathMtuProbes(
             // sending it.
             //
             Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
-            Builder.Metadata->Frames[Builder.Metadata->FrameCount].Type = QUIC_FRAME_PING;
             (void)QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PING, TRUE);
             Path->SendMtuProbe = FALSE;
         } else {
@@ -1745,6 +1769,10 @@ QuicSendPathMtuProbes(
     }
 }
 
+//
+// This function sends a path challenge frame out on all paths that currently
+// need one sent.
+//
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicSendPathChallenges(
@@ -2005,12 +2033,12 @@ QuicSendFlush(
     QuicMtuDiscoveryCheckSearchCompleteTimeout(Connection, TimeNow);
 
     //
-    // The DPLPMTUD flag used to be judged here against the one path a flush
-    // chose, which was sound while a probe could only go on that path. It is
-    // consumed per path now, by QuicSendPathMtuProbes, which asks about
-    // IsPeerValidated for each path it visits -- so clearing the flag because
-    // the chosen path happens to be mid-validation threw away a probe queued
-    // for a different one, with SendMtuProbe left set and nothing to re-arm it.
+    // The DPLPMTUD flag used to be cleared here whenever the path a flush chose
+    // was not peer validated, which was sound while a probe could only go on
+    // that path. It is consumed per path now, by QuicSendPathMtuProbes, which
+    // makes that judgement for each path it visits -- so clearing it here threw
+    // away a probe queued for a different path, with SendMtuProbe left set and
+    // nothing to re-arm it.
     //
     if (Send->SendFlags == 0 && CxPlatListIsEmpty(&Send->SendStreams)) {
         return TRUE;
@@ -2078,6 +2106,20 @@ QuicSendFlush(
     // Validating a path also matters more than measuring one: a challenge that
     // goes unsent long enough removes the path outright.
     //
+    //
+    // A probe kept from while its path was not active is picked up here, once
+    // the path is in the rotation. One place rather than at each of the several
+    // sites that set IsActive, and it cannot spin: it only fires for a path
+    // QuicSendPathMtuProbes will then send on and clear, or will itself re-raise
+    // the flag for.
+    //
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].SendMtuProbe && Connection->Paths[i].IsActive) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_DPLPMTUD;
+            break;
+        }
+    }
+
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD) {
         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_DPLPMTUD;
         QuicSendPathMtuProbes(Send);
