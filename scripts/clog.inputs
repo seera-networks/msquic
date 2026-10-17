@@ -17,6 +17,8 @@
 ../src/platform/datapath_winuser.c
 ../src/platform/datapath_linux.c
 ../src/platform/datapath_unix.c
+../src/platform/address_monitor.c
+../src/platform/address_monitor_linux.c
 ../src/platform/datapath_xplat.c
 ../src/platform/datapath_raw_socket.c
 ../src/platform/datapath_raw_socket_win.c
@@ -123,6 +125,7 @@
 ../src/core/unittest/PartitionTest.cpp
 ../src/platform/unittest/TlsTest.cpp
 ../src/platform/unittest/PlatformTest.cpp
+../src/platform/unittest/AddressMonitorTest.cpp
 ../src/platform/unittest/CryptTest.cpp
 ../src/platform/unittest/DataPathTest.cpp
 ../src/platform/unittest/ToeplitzTest.cpp

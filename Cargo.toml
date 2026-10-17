@@ -67,11 +67,25 @@ include = [
     "/scripts/build.rs",
     "/src/**/*.rs",
     "/src/bin",
-    "/src/core",
+    #
+    # Narrowed rather than naming the directories, so that the unit tests under
+    # them stay out of the crate. QUIC_BUILD_TEST is OFF by default and
+    # scripts/build.rs never turns it on, so nothing the crate builds reaches
+    # them -- and the crate was within a few kilobytes of the 10MB crates.io
+    # limit this workflow enforces, so a phase that adds files to either
+    # directory tips it over. These two patterns give back about 760KB.
+    #
+    "/src/core/*.c",
+    "/src/core/*.h",
+    "/src/core/*.vcxproj",
+    "/src/core/CMakeLists.txt",
     "/src/inc",
     "/src/generated",
     "/src/manifest",
-    "/src/platform",
+    "/src/platform/*.c",
+    "/src/platform/*.h",
+    "/src/platform/*.vcxproj",
+    "/src/platform/CMakeLists.txt",
     "/THIRD-PARTY-NOTICES",
 ]
 

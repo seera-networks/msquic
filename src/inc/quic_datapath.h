@@ -583,6 +583,121 @@ typedef struct CXPLAT_ADAPTER_ADDRESS {
 } CXPLAT_ADAPTER_ADDRESS;
 
 //
+// Local address monitoring.
+//
+// The monitor keeps a filtered snapshot of the host's usable local unicast
+// addresses and reports changes to it. Changes are reported level-triggered: a
+// callback carries the whole snapshot alongside the diff, and the snapshot is
+// re-enumerated from the OS on every notification rather than being advanced by
+// the OS's individual add and delete messages. Lost, coalesced and out-of-order
+// notifications therefore cannot leave a consumer holding a wrong view -- the
+// next notification corrects it -- which is what lets a consumer reconcile its
+// own state against the snapshot instead of replaying deltas.
+//
+
+typedef enum CXPLAT_ADDRESS_FLAGS {
+    CXPLAT_ADDRESS_FLAG_NONE        = 0x0000,
+    CXPLAT_ADDRESS_FLAG_TEMPORARY   = 0x0001, // IPv6 privacy address (RFC 8981)
+    CXPLAT_ADDRESS_FLAG_DEPRECATED  = 0x0002, // Preferred lifetime expired
+    CXPLAT_ADDRESS_FLAG_LINK_LOCAL  = 0x0004,
+    CXPLAT_ADDRESS_FLAG_LOOPBACK    = 0x0008,
+} CXPLAT_ADDRESS_FLAGS;
+
+typedef struct CXPLAT_LOCAL_ADDRESS {
+    QUIC_ADDR Address;          // Port is always 0. Scope ID set for link-local.
+    uint32_t InterfaceIndex;
+    uint16_t InterfaceType;     // IANA ifType, as in CXPLAT_ADAPTER_ADDRESS
+    CXPLAT_ADDRESS_FLAGS Flags;
+} CXPLAT_LOCAL_ADDRESS;
+
+typedef enum CXPLAT_ADDRESS_CHANGE_TYPE {
+    CXPLAT_ADDRESS_CHANGE_ADDED,
+    CXPLAT_ADDRESS_CHANGE_REMOVED,
+    CXPLAT_ADDRESS_CHANGE_UPDATED, // Same address, different flags or interface
+} CXPLAT_ADDRESS_CHANGE_TYPE;
+
+typedef struct CXPLAT_ADDRESS_CHANGE {
+    CXPLAT_ADDRESS_CHANGE_TYPE Type;
+    CXPLAT_LOCAL_ADDRESS Address;
+} CXPLAT_ADDRESS_CHANGE;
+
+typedef struct CXPLAT_ADDRESS_CHANGE_SET {
+    uint64_t Generation;        // Monotonic, bumped once per callback
+    BOOLEAN RouteChanged;       // The routing table changed
+    uint32_t ChangeCount;
+    const CXPLAT_ADDRESS_CHANGE* Changes;
+    uint32_t AddressCount;      // The full snapshot, with Changes applied
+    const CXPLAT_LOCAL_ADDRESS* Addresses;
+} CXPLAT_ADDRESS_CHANGE_SET;
+
+//
+// Callbacks are serialized -- never concurrent -- and must not block. The
+// change set is valid only for the duration of the call.
+//
+typedef
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(CXPLAT_ADDRESS_CHANGE_CALLBACK)
+void
+(CXPLAT_ADDRESS_CHANGE_CALLBACK)(
+    _In_opt_ void* Context,
+    _In_ const CXPLAT_ADDRESS_CHANGE_SET* ChangeSet
+    );
+
+typedef struct CXPLAT_ADDRESS_MONITOR CXPLAT_ADDRESS_MONITOR;
+
+typedef struct CXPLAT_ADDRESS_MONITOR_CONFIG {
+    CXPLAT_ADDRESS_CHANGE_CALLBACK* Callback;
+    void* Context;
+    //
+    // How long to wait for the OS to stop talking before re-enumerating. One
+    // interface transition produces several notifications -- link, address,
+    // routes, duplicate address detection -- and collapsing them into one
+    // resync is the difference between one callback and a handful.
+    //
+    uint32_t DebounceMs;        // 0 selects CXPLAT_ADDRESS_MONITOR_DEFAULT_DEBOUNCE_MS
+    BOOLEAN WatchRoutes;        // Also report routing table changes
+} CXPLAT_ADDRESS_MONITOR_CONFIG;
+
+#define CXPLAT_ADDRESS_MONITOR_DEFAULT_DEBOUNCE_MS 100
+
+//
+// Enumerates synchronously, so the first snapshot is available on return and no
+// callback is made for it. Returns QUIC_STATUS_NOT_SUPPORTED where no backend
+// exists, which callers are expected to treat as "no monitoring", not an error.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorInitialize(
+    _In_ CXPLAT_DATAPATH* Datapath,
+    _In_ const CXPLAT_ADDRESS_MONITOR_CONFIG* Config,
+    _Outptr_ CXPLAT_ADDRESS_MONITOR** Monitor
+    );
+
+//
+// Blocks until no callback is in flight, after which none is delivered. Must
+// not be called from inside the callback.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+CxPlatAddressMonitorUninitialize(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor
+    );
+
+//
+// Copies the current snapshot. The caller frees Addresses with CXPLAT_FREE
+// using QUIC_POOL_DATAPATH_ADDRESSES.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Success_(QUIC_SUCCEEDED(return))
+QUIC_STATUS
+CxPlatAddressMonitorGetSnapshot(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Out_ uint32_t* Count,
+    _Out_ uint64_t* Generation
+    );
+
+//
 // Gets info on the list of local IP addresses.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
