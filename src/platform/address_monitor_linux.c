@@ -98,6 +98,21 @@ typedef struct CXPLAT_INTERFACE_TABLE {
     BOOLEAN AllocFailed;
 } CXPLAT_INTERFACE_TABLE;
 
+//
+// errno as a status that is never success. QUIC_STATUS_SUCCESS is 0 on POSIX,
+// so returning errno straight through would report a failed syscall as a
+// success in the one case where errno had not been set -- and a caller acting
+// on that would go on to use a descriptor that was never opened.
+//
+static
+QUIC_STATUS
+CxPlatAddressMonitorStatusFromErrno(
+    void
+    )
+{
+    return errno != 0 ? (QUIC_STATUS)errno : QUIC_STATUS_INTERNAL_ERROR;
+}
+
 static
 QUIC_STATUS
 CxPlatNetlinkOpen(
@@ -105,6 +120,12 @@ CxPlatNetlinkOpen(
     _Out_ int* Fd
     )
 {
+    //
+    // Set before anything can fail, so a caller that ignores the status still
+    // sees an invalid descriptor rather than whatever was in the variable.
+    //
+    *Fd = -1;
+
     const int NetlinkFd =
         socket(AF_NETLINK, SOCK_RAW | SOCK_NONBLOCK | SOCK_CLOEXEC, NETLINK_ROUTE);
     if (NetlinkFd == -1) {
@@ -113,7 +134,7 @@ CxPlatNetlinkOpen(
             "[ lib] ERROR, %u, %s.",
             errno,
             "socket(AF_NETLINK, NETLINK_ROUTE) failed");
-        return (QUIC_STATUS)errno;
+        return CxPlatAddressMonitorStatusFromErrno();
     }
 
     struct sockaddr_nl Address;
@@ -128,7 +149,7 @@ CxPlatNetlinkOpen(
             errno,
             "bind(AF_NETLINK) failed");
         close(NetlinkFd);
-        return (QUIC_STATUS)errno;
+        return CxPlatAddressMonitorStatusFromErrno();
     }
 
     *Fd = NetlinkFd;
@@ -150,8 +171,8 @@ CxPlatNetlinkDump(
 {
     int Fd = -1;
     QUIC_STATUS Status = CxPlatNetlinkOpen(0, &Fd);
-    if (QUIC_FAILED(Status)) {
-        return Status;
+    if (QUIC_FAILED(Status) || Fd < 0) {
+        return QUIC_FAILED(Status) ? Status : QUIC_STATUS_INTERNAL_ERROR;
     }
 
     struct {
@@ -171,7 +192,7 @@ CxPlatNetlinkDump(
             "[ lib] ERROR, %u, %s.",
             errno,
             "send(netlink dump request) failed");
-        Status = (QUIC_STATUS)errno;
+        Status = CxPlatAddressMonitorStatusFromErrno();
         goto Exit;
     }
 
@@ -201,7 +222,7 @@ CxPlatNetlinkDump(
             if (errno == EINTR) {
                 continue;
             }
-            Status = (QUIC_STATUS)errno;
+            Status = CxPlatAddressMonitorStatusFromErrno();
             break;
         }
         if (Ready == 0) {
@@ -224,7 +245,7 @@ CxPlatNetlinkDump(
             if (errno == EINTR || errno == EAGAIN) {
                 continue;
             }
-            Status = (QUIC_STATUS)errno;
+            Status = CxPlatAddressMonitorStatusFromErrno();
             break;
         }
         if ((size_t)Received > CXPLAT_NETLINK_BUFFER_SIZE) {
@@ -779,7 +800,8 @@ CxPlatAddressMonitorOsInitialize(
     // landing between the two is still reported. The other order can lose one.
     //
     Status = CxPlatNetlinkOpen(Groups, &Os->NetlinkFd);
-    if (QUIC_FAILED(Status)) {
+    if (QUIC_FAILED(Status) || Os->NetlinkFd < 0) {
+        Status = QUIC_FAILED(Status) ? Status : QUIC_STATUS_INTERNAL_ERROR;
         goto Error;
     }
 
@@ -790,7 +812,7 @@ CxPlatAddressMonitorOsInitialize(
             "[ lib] ERROR, %u, %s.",
             errno,
             "eventfd(address monitor) failed");
-        Status = (QUIC_STATUS)errno;
+        Status = CxPlatAddressMonitorStatusFromErrno();
         goto Error;
     }
 
