@@ -26,12 +26,19 @@ Abstract:
 #include "address_monitor_linux.c.clog.h"
 #endif
 
+//
+// linux/if.h rather than net/if.h, for IFF_RUNNING. The two define the IFF_
+// values differently, and including the glibc one alongside linux/if_arp.h --
+// which brings the kernel definitions with it -- is a redeclaration error
+// whichever comes second. Staying entirely on the kernel headers also lets
+// these stay in the sorted order clang-tidy asks for.
+//
+#include <linux/if.h>
+#include <linux/if_arp.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
-#include <sys/eventfd.h>
 #include <poll.h>
-#include <net/if.h>
-#include <linux/if_arp.h>
+#include <sys/eventfd.h>
 
 //
 // Larger than the kernel's usual dump chunk. The first chunk of a dump is sized
@@ -330,17 +337,23 @@ CxPlatInterfaceTypeFromArpHrd(
     )
 {
     switch (ArpHrd) {
-    case ARPHRD_LOOPBACK:   return 24;  // softwareLoopback
-    case ARPHRD_ETHER:      return 6;   // ethernetCsmacd
-    case ARPHRD_IEEE802:    return 6;   // ethernetCsmacd, token-ring framing
-    case ARPHRD_IEEE80211:  return 71;  // ieee80211
-    case ARPHRD_PPP:        return 23;  // ppp
+    case ARPHRD_LOOPBACK:
+        return 24;  // softwareLoopback
+    case ARPHRD_ETHER:
+    case ARPHRD_IEEE802:    // token-ring framing, still ethernetCsmacd here
+        return 6;   // ethernetCsmacd
+    case ARPHRD_IEEE80211:
+        return 71;  // ieee80211
+    case ARPHRD_PPP:
+        return 23;  // ppp
     case ARPHRD_TUNNEL:
     case ARPHRD_TUNNEL6:
     case ARPHRD_SIT:
-    case ARPHRD_IPGRE:      return 131; // tunnel
-    case ARPHRD_NONE:       return 131; // tun, which presents as a tunnel
-    default:                return 1;   // other
+    case ARPHRD_IPGRE:
+    case ARPHRD_NONE:       // tun, which presents as a tunnel
+        return 131; // tunnel
+    default:
+        return 1;   // other
     }
 }
 
