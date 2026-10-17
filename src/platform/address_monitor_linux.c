@@ -99,18 +99,24 @@ typedef struct CXPLAT_INTERFACE_TABLE {
 } CXPLAT_INTERFACE_TABLE;
 
 //
-// errno as a status that is never success. QUIC_STATUS_SUCCESS is 0 on POSIX,
-// so returning errno straight through would report a failed syscall as a
-// success in the one case where errno had not been set -- and a caller acting
-// on that would go on to use a descriptor that was never opened.
+// A failed syscall's errno as a status that is never success.
+// QUIC_STATUS_SUCCESS is 0 on POSIX, so returning errno straight through would
+// report a failure as a success in the one case where errno had not been set --
+// and a caller acting on that would go on to use a descriptor that was never
+// opened.
+//
+// The value is passed in rather than read here. errno is only defined to hold
+// anything after a call that failed, so reading it in a function with no call
+// in it is reading it out of that context -- which is what
+// clang-analyzer-unix.Errno objects to, and it is right to.
 //
 static
 QUIC_STATUS
-CxPlatAddressMonitorStatusFromErrno(
-    void
+CxPlatAddressMonitorStatusFromError(
+    _In_ int Error
     )
 {
-    return errno != 0 ? (QUIC_STATUS)errno : QUIC_STATUS_INTERNAL_ERROR;
+    return Error != 0 ? (QUIC_STATUS)Error : QUIC_STATUS_INTERNAL_ERROR;
 }
 
 static
@@ -129,12 +135,13 @@ CxPlatNetlinkOpen(
     const int NetlinkFd =
         socket(AF_NETLINK, SOCK_RAW | SOCK_NONBLOCK | SOCK_CLOEXEC, NETLINK_ROUTE);
     if (NetlinkFd == -1) {
+        const int Error = errno;
         QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            errno,
+            Error,
             "socket(AF_NETLINK, NETLINK_ROUTE) failed");
-        return CxPlatAddressMonitorStatusFromErrno();
+        return CxPlatAddressMonitorStatusFromError(Error);
     }
 
     struct sockaddr_nl Address;
@@ -143,13 +150,14 @@ CxPlatNetlinkOpen(
     Address.nl_groups = Groups;
 
     if (bind(NetlinkFd, (struct sockaddr*)&Address, sizeof(Address)) != 0) {
+        const int Error = errno;
         QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            errno,
+            Error,
             "bind(AF_NETLINK) failed");
         close(NetlinkFd);
-        return CxPlatAddressMonitorStatusFromErrno();
+        return CxPlatAddressMonitorStatusFromError(Error);
     }
 
     *Fd = NetlinkFd;
@@ -187,12 +195,13 @@ CxPlatNetlinkDump(
     Request.Message.rtgen_family = Family;
 
     if (send(Fd, &Request, Request.Header.nlmsg_len, 0) == -1) {
+        const int Error = errno;
         QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            errno,
+            Error,
             "send(netlink dump request) failed");
-        Status = CxPlatAddressMonitorStatusFromErrno();
+        Status = CxPlatAddressMonitorStatusFromError(Error);
         goto Exit;
     }
 
@@ -219,10 +228,11 @@ CxPlatNetlinkDump(
         struct pollfd PollFd = { .fd = Fd, .events = POLLIN };
         const int Ready = poll(&PollFd, 1, 1000);
         if (Ready < 0) {
-            if (errno == EINTR) {
+            const int Error = errno;
+            if (Error == EINTR) {
                 continue;
             }
-            Status = CxPlatAddressMonitorStatusFromErrno();
+            Status = CxPlatAddressMonitorStatusFromError(Error);
             break;
         }
         if (Ready == 0) {
@@ -242,10 +252,11 @@ CxPlatNetlinkDump(
         //
         const ssize_t Received = recv(Fd, Buffer, CXPLAT_NETLINK_BUFFER_SIZE, MSG_TRUNC);
         if (Received < 0) {
-            if (errno == EINTR || errno == EAGAIN) {
+            const int Error = errno;
+            if (Error == EINTR || Error == EAGAIN) {
                 continue;
             }
-            Status = CxPlatAddressMonitorStatusFromErrno();
+            Status = CxPlatAddressMonitorStatusFromError(Error);
             break;
         }
         if ((size_t)Received > CXPLAT_NETLINK_BUFFER_SIZE) {
@@ -807,12 +818,13 @@ CxPlatAddressMonitorOsInitialize(
 
     Os->ShutdownFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     if (Os->ShutdownFd == -1) {
+        const int Error = errno;
         QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            errno,
+            Error,
             "eventfd(address monitor) failed");
-        Status = CxPlatAddressMonitorStatusFromErrno();
+        Status = CxPlatAddressMonitorStatusFromError(Error);
         goto Error;
     }
 
