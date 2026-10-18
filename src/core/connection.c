@@ -688,6 +688,18 @@ QuicConnProcessLocalAddressChange(
         return;
     }
 
+    //
+    // The getter may hand back NULL with a zero count, which its annotation
+    // now says out loud. Normalized here so that every loop below is bounded
+    // by a count that matches a pointer the analyzers can see is valid.
+    //
+    if (Addresses == NULL) {
+        AddressCount = 0;
+    }
+    if (Removed == NULL) {
+        RemovedCount = 0;
+    }
+
     if (Generation == Connection->LastAddressGeneration) {
         //
         // Already reconciled against this one. Two operations can reach here

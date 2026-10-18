@@ -1186,9 +1186,9 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 _Success_(QUIC_SUCCEEDED(return))
 QUIC_STATUS
 QuicLibraryGetLocalAddresses(
-    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Outptr_result_buffer_maybenull_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
     _Out_ uint32_t* Count,
-    _Outptr_result_buffer_(*RemovedCount) CXPLAT_LOCAL_ADDRESS** Removed,
+    _Outptr_result_buffer_maybenull_(*RemovedCount) CXPLAT_LOCAL_ADDRESS** Removed,
     _Out_ uint32_t* RemovedCount,
     _Out_ uint64_t* Generation
     )
@@ -1464,6 +1464,76 @@ QuicLibXdpMapConfigFromPlat(
         Dest[i].InterfaceIndex = Src[i].InterfaceIndex;
         Dest[i].MapHandle = Src[i].MapHandle;
     }
+}
+
+//
+// Element copies between QUIC_ADDR and the platform's richer entry. Separate
+// functions for the same reason QuicLibXdpMapConfigFromPlat is one: MSVC
+// /analyze cannot tie a loop bound back to the size an allocation or an
+// _In_reads_bytes_ buffer was given, but it will check a helper against its
+// own annotations and take them at the call site.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicLibLocalAddressesFromAddrs(
+    _Out_writes_(Count) CXPLAT_LOCAL_ADDRESS* Dest,
+    _In_reads_(Count) const QUIC_ADDR* Src,
+    _In_ uint32_t Count
+    )
+{
+    for (uint32_t i = 0; i < Count; i++) {
+        CxPlatZeroMemory(&Dest[i], sizeof(Dest[i]));
+        Dest[i].Address = Src[i];
+        QuicAddrSetPort(&Dest[i].Address, 0);
+    }
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicLibAddrsFromLocalAddresses(
+    _Out_writes_(Count) QUIC_ADDR* Dest,
+    _In_reads_(Count) const CXPLAT_LOCAL_ADDRESS* Src,
+    _In_ uint32_t Count
+    )
+{
+    for (uint32_t i = 0; i < Count; i++) {
+        Dest[i] = Src[i].Address;
+    }
+}
+
+//
+// Collects the entries of Old that Current no longer has, as REMOVED changes.
+// Returns how many it wrote.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint32_t
+QuicLibCollectRemovedAddresses(
+    _Out_writes_to_(OldCount, return) CXPLAT_ADDRESS_CHANGE* Changes,
+    _In_reads_(OldCount) const CXPLAT_LOCAL_ADDRESS* Old,
+    _In_ uint32_t OldCount,
+    _In_reads_(CurrentCount) const CXPLAT_LOCAL_ADDRESS* Current,
+    _In_ uint32_t CurrentCount
+    )
+{
+    uint32_t ChangeCount = 0;
+    for (uint32_t i = 0; i < OldCount; i++) {
+        BOOLEAN Still = FALSE;
+        for (uint32_t j = 0; j < CurrentCount; j++) {
+            if (QuicAddrCompare(&Old[i].Address, &Current[j].Address)) {
+                Still = TRUE;
+                break;
+            }
+        }
+        if (!Still) {
+            Changes[ChangeCount].Type = CXPLAT_ADDRESS_CHANGE_REMOVED;
+            Changes[ChangeCount].Address = Old[i];
+            ChangeCount++;
+        }
+    }
+    return ChangeCount;
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -1792,11 +1862,9 @@ QuicLibrarySetGlobalParam(
                 Status = QUIC_STATUS_OUT_OF_MEMORY;
                 break;
             }
-            CxPlatZeroMemory(Addresses, Count * sizeof(CXPLAT_LOCAL_ADDRESS));
-            for (uint32_t i = 0; i < Count; ++i) {
-                Addresses[i].Address = ((const QUIC_ADDR*)Buffer)[i];
-                QuicAddrSetPort(&Addresses[i].Address, 0);
-            }
+            CXPLAT_ANALYSIS_ASSUME(Count * sizeof(QUIC_ADDR) <= BufferLength);
+            QuicLibLocalAddressesFromAddrs(
+                Addresses, (const QUIC_ADDR*)Buffer, Count);
         }
 
         //
@@ -1818,22 +1886,13 @@ QuicLibrarySetGlobalParam(
                     OldCount * sizeof(CXPLAT_ADDRESS_CHANGE),
                     QUIC_POOL_DATAPATH_ADDRESSES);
             if (Changes != NULL) {
-                for (uint32_t i = 0; i < OldCount; ++i) {
-                    BOOLEAN Still = FALSE;
-                    for (uint32_t j = 0; j < Count; ++j) {
-                        if (QuicAddrCompare(
-                                &MsQuicLib.LocalAddresses[i].Address,
-                                &Addresses[j].Address)) {
-                            Still = TRUE;
-                            break;
-                        }
-                    }
-                    if (!Still) {
-                        Changes[ChangeCount].Type = CXPLAT_ADDRESS_CHANGE_REMOVED;
-                        Changes[ChangeCount].Address = MsQuicLib.LocalAddresses[i];
-                        ChangeCount++;
-                    }
-                }
+                ChangeCount =
+                    QuicLibCollectRemovedAddresses(
+                        Changes,
+                        MsQuicLib.LocalAddresses,
+                        OldCount,
+                        Addresses,
+                        Count);
             }
         }
         CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
@@ -2430,9 +2489,8 @@ QuicLibraryGetGlobalParam(
             Status = QUIC_STATUS_BUFFER_TOO_SMALL;
         } else {
             if (Addresses != NULL) {
-                for (uint32_t i = 0; i < Count; ++i) {
-                    ((QUIC_ADDR*)Buffer)[i] = Addresses[i].Address;
-                }
+                CXPLAT_ANALYSIS_ASSUME(Count * sizeof(QUIC_ADDR) <= *BufferLength);
+                QuicLibAddrsFromLocalAddresses((QUIC_ADDR*)Buffer, Addresses, Count);
             }
             *BufferLength = RequiredLength;
             Status = QUIC_STATUS_SUCCESS;

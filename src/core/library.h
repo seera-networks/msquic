@@ -574,9 +574,9 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 _Success_(QUIC_SUCCEEDED(return))
 QUIC_STATUS
 QuicLibraryGetLocalAddresses(
-    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Outptr_result_buffer_maybenull_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
     _Out_ uint32_t* Count,
-    _Outptr_result_buffer_(*RemovedCount) CXPLAT_LOCAL_ADDRESS** Removed,
+    _Outptr_result_buffer_maybenull_(*RemovedCount) CXPLAT_LOCAL_ADDRESS** Removed,
     _Out_ uint32_t* RemovedCount,
     _Out_ uint64_t* Generation
     );
