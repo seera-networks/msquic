@@ -200,6 +200,14 @@ CxPlatAddressMonitorDiff(
             }
         }
 
+        //
+        // At most one change per New entry here and one per leftover Old entry
+        // below, which is the OldCount + NewCount the annotation promises.
+        // Spelled out because it is spread over three loops, and a static
+        // analyzer will not carry the bound across them.
+        //
+        CXPLAT_DBG_ASSERT(Count < OldCount + NewCount);
+        CXPLAT_ANALYSIS_ASSUME(Count < OldCount + NewCount);
         Changes[Count].Type =
             Updated ? CXPLAT_ADDRESS_CHANGE_UPDATED : CXPLAT_ADDRESS_CHANGE_ADDED;
         Changes[Count].Address = New[i];
@@ -208,6 +216,8 @@ CxPlatAddressMonitorDiff(
 
     for (uint32_t i = 0; i < OldCount; ++i) {
         if (!Consumed[i]) {
+            CXPLAT_DBG_ASSERT(Count < OldCount + NewCount);
+            CXPLAT_ANALYSIS_ASSUME(Count < OldCount + NewCount);
             Changes[Count].Type = CXPLAT_ADDRESS_CHANGE_REMOVED;
             Changes[Count].Address = Old[i];
             ++Count;
