@@ -1473,6 +1473,10 @@ QuicLibXdpMapConfigFromPlat(
 // _In_reads_bytes_ buffer was given, but it will check a helper against its
 // own annotations and take them at the call site.
 //
+#if DEBUG
+//
+// Only the debug-only injection parameter needs these two.
+//
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
 void
@@ -1489,19 +1493,6 @@ QuicLibLocalAddressesFromAddrs(
     }
 }
 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-void
-QuicLibAddrsFromLocalAddresses(
-    _Out_writes_(Count) QUIC_ADDR* Dest,
-    _In_reads_(Count) const CXPLAT_LOCAL_ADDRESS* Src,
-    _In_ uint32_t Count
-    )
-{
-    for (uint32_t i = 0; i < Count; i++) {
-        Dest[i] = Src[i].Address;
-    }
-}
 
 //
 // Collects the entries of Old that Current no longer has, as REMOVED changes.
@@ -1534,6 +1525,21 @@ QuicLibCollectRemovedAddresses(
         }
     }
     return ChangeCount;
+}
+#endif // DEBUG
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicLibAddrsFromLocalAddresses(
+    _Out_writes_(Count) QUIC_ADDR* Dest,
+    _In_reads_(Count) const CXPLAT_LOCAL_ADDRESS* Src,
+    _In_ uint32_t Count
+    )
+{
+    for (uint32_t i = 0; i < Count; i++) {
+        Dest[i] = Src[i].Address;
+    }
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
