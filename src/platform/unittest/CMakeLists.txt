@@ -3,6 +3,7 @@
 
 set(SOURCES
     main.cpp
+    AddressMonitorTest.cpp
     AllocTest.cpp
     CryptTest.cpp
     DataPathTest.cpp
@@ -14,7 +15,7 @@ set(SOURCES
 
 add_executable(msquicplatformtest ${SOURCES})
 
-target_include_directories(msquicplatformtest PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
+target_include_directories(msquicplatformtest PRIVATE ${PROJECT_SOURCE_DIR}/src/core ${PROJECT_SOURCE_DIR}/src/platform)
 
 set_property(TARGET msquicplatformtest PROPERTY FOLDER "${QUIC_FOLDER_PREFIX}tests")
 set_property(TARGET msquicplatformtest APPEND PROPERTY BUILD_RPATH "$ORIGIN")
