@@ -425,6 +425,12 @@ QuicConnFree(
     if (Connection->CloseReasonPhrase != NULL) {
         CXPLAT_FREE(Connection->CloseReasonPhrase, QUIC_POOL_CLOSE_REASON);
     }
+    //
+    // Should already be gone: QuicConnOnShutdownComplete releases it, at
+    // PASSIVE_LEVEL where the monitor's teardown belongs. Kept as a net so a
+    // path that somehow reaches free still returns the reference.
+    //
+    CXPLAT_DBG_ASSERT(!Connection->AddressMonitorRef);
     if (Connection->AddressMonitorRef) {
         Connection->AddressMonitorRef = FALSE;
         QuicLibraryReleaseAddressMonitor();
@@ -668,6 +674,14 @@ QuicConnProcessLocalAddressChange(
     CXPLAT_LOCAL_ADDRESS* Removed = NULL;
     uint32_t RemovedCount = 0;
     uint64_t Generation = 0;
+    //
+    // Declared up here, before the first goto, so that every path to Exit
+    // sees them initialized.
+    //
+    QUIC_ADDR* Added = NULL;
+    QUIC_ADDR* RemovedAddrs = NULL;
+    uint32_t AddedCount = 0;
+
     if (QUIC_FAILED(
             QuicLibraryGetLocalAddresses(
                 &Addresses, &AddressCount, &Removed, &RemovedCount, &Generation))) {
@@ -727,12 +741,44 @@ QuicConnProcessLocalAddressChange(
     // know is which addresses it could open a path on now, and that is a
     // question about the present, not about what changed.
     //
-    QUIC_ADDR Added[QUIC_MAX_LOCAL_ADDRESS_COUNT];
-    uint32_t AddedCount = 0;
+    //
+    // On the heap, not the stack: QUIC_MAX_LOCAL_ADDRESS_COUNT entries of
+    // QUIC_ADDR twice over is several kilobytes, and this runs synchronously
+    // from crypto frame processing, which is already deep in the receive path.
+    // One allocation covers both lists.
+    //
+    //
+    // At least one entry even when both lists are empty, so that the arrays
+    // are never NULL past this point. The degenerate case is a generation
+    // that empties the snapshot and removes nothing, which still has lost
+    // paths worth reporting.
+    //
+    const uint32_t ListCount = CXPLAT_MAX(AddressCount + RemovedCount, 1);
+    Added =
+        CXPLAT_ALLOC_NONPAGED(
+            ListCount * sizeof(QUIC_ADDR),
+            QUIC_POOL_DATAPATH_ADDRESSES);
+    if (Added == NULL) {
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "local address change event lists",
+            ListCount * sizeof(QUIC_ADDR));
+        goto Exit;
+    }
+    RemovedAddrs = Added + AddressCount;
 
-    for (uint32_t j = 0; j < AddressCount && AddedCount < ARRAYSIZE(Added); ++j) {
+    for (uint32_t j = 0; j < AddressCount; ++j) {
         BOOLEAN InUse = FALSE;
         for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+            if (Connection->Paths[i].Binding == NULL) {
+                //
+                // Same skip as the loop above. A torn-down path keeps a stale
+                // local address, and counting it as in use would hide an
+                // address the application could open a path on.
+                //
+                continue;
+            }
             QUIC_ADDR Local = Connection->Paths[i].Route.LocalAddress;
             QuicAddrSetPort(&Local, 0);
             if (QuicAddrCompare(&Local, &Addresses[j].Address)) {
@@ -753,10 +799,6 @@ QuicConnProcessLocalAddressChange(
     // Flattened for the event, which speaks in QUIC_ADDR rather than in the
     // platform's richer entry.
     //
-    QUIC_ADDR RemovedAddrs[QUIC_MAX_LOCAL_ADDRESS_COUNT];
-    if (RemovedCount > ARRAYSIZE(RemovedAddrs)) {
-        RemovedCount = ARRAYSIZE(RemovedAddrs);
-    }
     for (uint32_t i = 0; i < RemovedCount; ++i) {
         RemovedAddrs[i] = Removed[i].Address;
     }
@@ -794,6 +836,9 @@ Exit:
     }
     if (Removed != NULL) {
         CXPLAT_FREE(Removed, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    if (Added != NULL) {
+        CXPLAT_FREE(Added, QUIC_POOL_DATAPATH_ADDRESSES);
     }
 }
 
@@ -1346,6 +1391,16 @@ QuicConnOnShutdownComplete(
     }
     Connection->State.ShutdownComplete = TRUE;
     Connection->State.UpdateWorker = FALSE;
+
+    if (Connection->AddressMonitorRef) {
+        //
+        // Released here rather than at free: tearing the monitor down joins
+        // the backend's thread, which is PASSIVE_LEVEL work, and QuicConnFree
+        // runs at DISPATCH_LEVEL.
+        //
+        Connection->AddressMonitorRef = FALSE;
+        QuicLibraryReleaseAddressMonitor();
+    }
 
     QuicTraceEvent(
         ConnShutdownComplete,
@@ -10499,8 +10554,24 @@ QuicConnApplyNewSettings(
     }
 #endif
 
-    if (Connection->Settings.LocalAddressChangeMode != QUIC_LOCAL_ADDRESS_CHANGE_DISABLED &&
-        !Connection->AddressMonitorRef) {
+    //
+    // Tested against the modes that do something rather than against
+    // DISABLED, so that a value outside the enum -- which nothing on the API
+    // path rejects -- cannot start the monitor for a connection that will
+    // never be told anything.
+    //
+    const BOOLEAN WantsAddressChanges =
+        Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY ||
+        Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_AUTO;
+
+    if (!WantsAddressChanges && Connection->AddressMonitorRef) {
+        //
+        // Turned back off. Give the reference back rather than holding the
+        // monitor up until the connection closes.
+        //
+        Connection->AddressMonitorRef = FALSE;
+        QuicLibraryReleaseAddressMonitor();
+    } else if (WantsAddressChanges && !Connection->AddressMonitorRef) {
         //
         // The monitor is started on demand and stopped when the last interested
         // connection goes away, so an application that never asks for this pays

@@ -952,9 +952,15 @@ typedef struct QUIC_SETTINGS {
     uint32_t StreamRecvWindowBidiRemoteDefault;
     uint32_t StreamRecvWindowUnidiDefault;
     uint8_t AddAddressMode;                     // QUIC_ADD_ADDRESS_MODE
+    uint32_t PathKeepAliveIntervalMs;
+    //
+    // N.B. Appended, not inserted. The size-based versioning in
+    // CXPLAT_STRUCT_HAS_FIELD only detects a field that was added at the end;
+    // moving an existing one leaves sizeof(QUIC_SETTINGS) unchanged and makes
+    // an older application silently read the wrong offset.
+    //
     uint8_t LocalAddressChangeMode;             // QUIC_LOCAL_ADDRESS_CHANGE_MODE
     uint32_t AutoMigrationHoldDownMs;
-    uint32_t PathKeepAliveIntervalMs;
 
 } QUIC_SETTINGS;
 

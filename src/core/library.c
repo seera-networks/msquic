@@ -95,6 +95,22 @@ MsQuicLibraryUnload(
         QuicLibraryUninitializeDbg();
 #endif
         CxPlatDispatchLockUninitialize(&MsQuicLib.DatapathLock);
+        //
+        // Normally released with the last monitor reference, but the test
+        // injection parameter can populate the cache without one, so this is
+        // the backstop that keeps the allocation from outliving the library.
+        //
+        if (MsQuicLib.LocalAddresses != NULL) {
+            CXPLAT_FREE(MsQuicLib.LocalAddresses, QUIC_POOL_DATAPATH_ADDRESSES);
+            MsQuicLib.LocalAddresses = NULL;
+            MsQuicLib.LocalAddressesCount = 0;
+        }
+        if (MsQuicLib.LocalAddressesRemoved != NULL) {
+            CXPLAT_FREE(MsQuicLib.LocalAddressesRemoved, QUIC_POOL_DATAPATH_ADDRESSES);
+            MsQuicLib.LocalAddressesRemoved = NULL;
+            MsQuicLib.LocalAddressesRemovedCount = 0;
+        }
+        MsQuicLib.LocalAddressesGeneration = 0;
         CxPlatDispatchLockUninitialize(&MsQuicLib.LocalAddressesLock);
         CxPlatLockUninitialize(&MsQuicLib.Lock);
         CxPlatSystemUnload();
@@ -980,6 +996,13 @@ QuicLibraryOnLocalAddressChange(
     // which is the order QuicRegistrationTraceRundown uses, and
     // LocalAddressesLock above is released before either is taken.
     //
+    // This walks every connection in the process, including the ones that
+    // never asked for this. It is only reached while some connection has the
+    // monitor running, and the per-connection work is a settings test, but an
+    // interface that flaps hard enough will serialize the library behind this
+    // thread. A per-registration list of interested connections is the fix if
+    // that ever shows up in a profile.
+    //
     CxPlatLockAcquire(&MsQuicLib.Lock);
 
     for (CXPLAT_LIST_ENTRY* Link = MsQuicLib.Registrations.Flink;
@@ -1058,24 +1081,40 @@ QuicLibraryAddRefAddressMonitor(
     uint64_t Generation = 0;
     if (QUIC_SUCCEEDED(
             CxPlatAddressMonitorGetSnapshot(Monitor, &Addresses, &Count, &Generation))) {
+        CXPLAT_LOCAL_ADDRESS* Stale = NULL;
+        CXPLAT_LOCAL_ADDRESS* StaleRemoved = NULL;
+
         CxPlatDispatchLockAcquire(&MsQuicLib.LocalAddressesLock);
-        //
-        // A test can have injected a snapshot while no monitor was running, so
-        // this is a replace rather than a first write.
-        //
-        CXPLAT_LOCAL_ADDRESS* Stale = MsQuicLib.LocalAddresses;
-        CXPLAT_LOCAL_ADDRESS* StaleRemoved = MsQuicLib.LocalAddressesRemoved;
-        MsQuicLib.LocalAddressesRemoved = NULL;
-        MsQuicLib.LocalAddresses = Addresses;
-        MsQuicLib.LocalAddressesCount = Count;
-        MsQuicLib.LocalAddressesRemovedCount = 0;
-        MsQuicLib.LocalAddressesGeneration = Generation;
+        if (Generation > MsQuicLib.LocalAddressesGeneration) {
+            //
+            // Initialize starts the backend's thread before it returns, so a
+            // resync can have landed between that and this seed. Taking only
+            // a newer generation keeps this from overwriting it -- and a test
+            // can have injected a snapshot with no monitor running, so this is
+            // a replace rather than a first write.
+            //
+            Stale = MsQuicLib.LocalAddresses;
+            StaleRemoved = MsQuicLib.LocalAddressesRemoved;
+            MsQuicLib.LocalAddresses = Addresses;
+            MsQuicLib.LocalAddressesCount = Count;
+            MsQuicLib.LocalAddressesRemoved = NULL;
+            MsQuicLib.LocalAddressesRemovedCount = 0;
+            MsQuicLib.LocalAddressesGeneration = Generation;
+            Addresses = NULL;
+        }
         CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
+
         if (Stale != NULL) {
             CXPLAT_FREE(Stale, QUIC_POOL_DATAPATH_ADDRESSES);
         }
         if (StaleRemoved != NULL) {
             CXPLAT_FREE(StaleRemoved, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+        if (Addresses != NULL) {
+            //
+            // A newer snapshot won.
+            //
+            CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
         }
     }
 
@@ -1127,6 +1166,12 @@ QuicLibraryReleaseAddressMonitor(
     MsQuicLib.LocalAddressesCount = 0;
     MsQuicLib.LocalAddressesRemoved = NULL;
     MsQuicLib.LocalAddressesRemovedCount = 0;
+    //
+    // Reset too, so that an empty cache reads as "nothing known" rather than
+    // as "the host has no addresses at all" -- which, with a generation left
+    // behind, would have a connection report every one of its paths as lost.
+    //
+    MsQuicLib.LocalAddressesGeneration = 0;
     CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
 
     if (Addresses != NULL) {

@@ -75,6 +75,8 @@ struct AddressChangeContext {
     }
 };
 
+#if DEBUG
+
 static
 QUIC_STATUS
 InjectAddresses(
@@ -107,17 +109,7 @@ SyntheticAddress(
     QuicAddrSetPort(Addr, 0);
 }
 
-struct AddressChangeTestSetup {
-    MsQuicRegistration Registration {true};
-    MsQuicSettings Settings;
-    MsQuicConfiguration ServerConfiguration;
-    MsQuicConfiguration ClientConfiguration;
-
-    AddressChangeTestSetup() :
-        ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig),
-        ClientConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, MsQuicCredentialConfig{})
-    { }
-};
+#endif // DEBUG
 
 //
 // Brings up a loopback connection whose client is in the given mode, and hands
@@ -131,6 +123,15 @@ RunAddressChangeTest(
     _In_ bool ExpectEventOnLoss
     )
 {
+#if !DEBUG
+    //
+    // QUIC_PARAM_GLOBAL_TEST_INJECT_ADDRESS_CHANGE only exists in debug
+    // builds, so there is no way to drive an address change from here.
+    //
+    UNREFERENCED_PARAMETER(Family);
+    UNREFERENCED_PARAMETER(Mode);
+    UNREFERENCED_PARAMETER(ExpectEventOnLoss);
+#else
     MsQuicRegistration Registration {true};
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
 
@@ -214,6 +215,7 @@ RunAddressChangeTest(
     // -- it was in the baseline -- so it is still reported as available.
     //
     TEST_TRUE(Context.Last.AddedCount >= 1);
+#endif // !DEBUG
 }
 
 void
@@ -261,10 +263,23 @@ QuicTestGetLocalAddressesParam(
     TEST_TRUE(Length >= sizeof(QUIC_ADDR));
     TEST_EQUAL(0u, Length % sizeof(QUIC_ADDR));
 
-    UniquePtr<uint8_t[]> Buffer(new(std::nothrow) uint8_t[Length]);
-    TEST_TRUE(Buffer.get() != nullptr);
-    TEST_QUIC_SUCCEEDED(
-        MsQuic->GetParam(nullptr, QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES, &Length, Buffer.get()));
+    //
+    // Allowing for the set to have grown between the two calls. The monitor is
+    // created for the length of each call when nothing else holds it, so the
+    // second one re-enumerates, and a host that gains an address in between
+    // legitimately needs a bigger buffer.
+    //
+    UniquePtr<uint8_t[]> Buffer;
+    for (uint32_t Attempt = 0; Attempt < 3; ++Attempt) {
+        Buffer.reset(new(std::nothrow) uint8_t[Length]);
+        TEST_TRUE(Buffer.get() != nullptr);
+        Status =
+            MsQuic->GetParam(nullptr, QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES, &Length, Buffer.get());
+        if (Status != QUIC_STATUS_BUFFER_TOO_SMALL) {
+            break;
+        }
+    }
+    TEST_QUIC_SUCCEEDED(Status);
 
     const QUIC_ADDR* Addresses = (const QUIC_ADDR*)Buffer.get();
     const uint32_t Count = Length / (uint32_t)sizeof(QUIC_ADDR);

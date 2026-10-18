@@ -2108,9 +2108,9 @@ pub struct QUIC_SETTINGS {
     pub StreamRecvWindowBidiRemoteDefault: u32,
     pub StreamRecvWindowUnidiDefault: u32,
     pub AddAddressMode: u8,
+    pub PathKeepAliveIntervalMs: u32,
     pub LocalAddressChangeMode: u8,
     pub AutoMigrationHoldDownMs: u32,
-    pub PathKeepAliveIntervalMs: u32,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -4998,7 +4998,7 @@ const _: () = {
 };
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of QUIC_SETTINGS"][::std::mem::size_of::<QUIC_SETTINGS>() - 152usize];
+    ["Size of QUIC_SETTINGS"][::std::mem::size_of::<QUIC_SETTINGS>() - 160usize];
     ["Alignment of QUIC_SETTINGS"][::std::mem::align_of::<QUIC_SETTINGS>() - 8usize];
     ["Offset of field: QUIC_SETTINGS::MaxBytesPerKey"]
         [::std::mem::offset_of!(QUIC_SETTINGS, MaxBytesPerKey) - 8usize];
@@ -5062,12 +5062,12 @@ const _: () = {
         [::std::mem::offset_of!(QUIC_SETTINGS, StreamRecvWindowUnidiDefault) - 136usize];
     ["Offset of field: QUIC_SETTINGS::AddAddressMode"]
         [::std::mem::offset_of!(QUIC_SETTINGS, AddAddressMode) - 140usize];
-    ["Offset of field: QUIC_SETTINGS::LocalAddressChangeMode"]
-        [::std::mem::offset_of!(QUIC_SETTINGS, LocalAddressChangeMode) - 141usize];
-    ["Offset of field: QUIC_SETTINGS::AutoMigrationHoldDownMs"]
-        [::std::mem::offset_of!(QUIC_SETTINGS, AutoMigrationHoldDownMs) - 144usize];
     ["Offset of field: QUIC_SETTINGS::PathKeepAliveIntervalMs"]
-        [::std::mem::offset_of!(QUIC_SETTINGS, PathKeepAliveIntervalMs) - 148usize];
+        [::std::mem::offset_of!(QUIC_SETTINGS, PathKeepAliveIntervalMs) - 144usize];
+    ["Offset of field: QUIC_SETTINGS::LocalAddressChangeMode"]
+        [::std::mem::offset_of!(QUIC_SETTINGS, LocalAddressChangeMode) - 148usize];
+    ["Offset of field: QUIC_SETTINGS::AutoMigrationHoldDownMs"]
+        [::std::mem::offset_of!(QUIC_SETTINGS, AutoMigrationHoldDownMs) - 152usize];
 };
 impl QUIC_SETTINGS {
     #[inline]
