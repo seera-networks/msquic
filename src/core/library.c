@@ -95,22 +95,6 @@ MsQuicLibraryUnload(
         QuicLibraryUninitializeDbg();
 #endif
         CxPlatDispatchLockUninitialize(&MsQuicLib.DatapathLock);
-        //
-        // Normally released with the last monitor reference, but the test
-        // injection parameter can populate the cache without one, so this is
-        // the backstop that keeps the allocation from outliving the library.
-        //
-        if (MsQuicLib.LocalAddresses != NULL) {
-            CXPLAT_FREE(MsQuicLib.LocalAddresses, QUIC_POOL_DATAPATH_ADDRESSES);
-            MsQuicLib.LocalAddresses = NULL;
-            MsQuicLib.LocalAddressesCount = 0;
-        }
-        if (MsQuicLib.LocalAddressesRemoved != NULL) {
-            CXPLAT_FREE(MsQuicLib.LocalAddressesRemoved, QUIC_POOL_DATAPATH_ADDRESSES);
-            MsQuicLib.LocalAddressesRemoved = NULL;
-            MsQuicLib.LocalAddressesRemovedCount = 0;
-        }
-        MsQuicLib.LocalAddressesGeneration = 0;
         CxPlatDispatchLockUninitialize(&MsQuicLib.LocalAddressesLock);
         CxPlatLockUninitialize(&MsQuicLib.Lock);
         CxPlatSystemUnload();
@@ -782,6 +766,24 @@ MsQuicLibraryUninitialize(
         MsQuicLib.XdpMapConfigs = NULL;
         MsQuicLib.XdpMapConfigCount = 0;
     }
+
+    //
+    // Normally released with the last monitor reference, but the test
+    // injection parameter can populate the cache without taking one. Freed
+    // here rather than in MsQuicLibraryUnload, which on Windows runs inside
+    // DllMain's process-detach -- not a place to be touching the heap.
+    //
+    if (MsQuicLib.LocalAddresses != NULL) {
+        CXPLAT_FREE(MsQuicLib.LocalAddresses, QUIC_POOL_DATAPATH_ADDRESSES);
+        MsQuicLib.LocalAddresses = NULL;
+    }
+    MsQuicLib.LocalAddressesCount = 0;
+    if (MsQuicLib.LocalAddressesRemoved != NULL) {
+        CXPLAT_FREE(MsQuicLib.LocalAddressesRemoved, QUIC_POOL_DATAPATH_ADDRESSES);
+        MsQuicLib.LocalAddressesRemoved = NULL;
+    }
+    MsQuicLib.LocalAddressesRemovedCount = 0;
+    MsQuicLib.LocalAddressesGeneration = 0;
 
 #ifndef _KERNEL_MODE
     CxPlatWorkerPoolDelete(MsQuicLib.WorkerPool, CXPLAT_WORKER_POOL_REF_LIBRARY);
@@ -1498,7 +1500,11 @@ QuicLibLocalAddressesFromAddrs(
 // Collects the entries of Old that Current no longer has, as REMOVED changes.
 // Returns how many it wrote.
 //
-_IRQL_requires_max_(PASSIVE_LEVEL)
+//
+// DISPATCH_LEVEL, not PASSIVE: this runs under LocalAddressesLock, which is a
+// dispatch lock. It only reads memory and compares addresses.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
 static
 uint32_t
 QuicLibCollectRemovedAddresses(
