@@ -720,6 +720,9 @@ QuicConnProcessLocalAddressChange(
     QUIC_ADDR LostRemote[QUIC_MAX_PATH_COUNT];
     uint32_t LostCount = 0;
 
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    CXPLAT_ANALYSIS_ASSUME(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+
     for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
         const QUIC_PATH* Path = &Connection->Paths[i];
         if (Path->Binding == NULL) {
@@ -799,6 +802,12 @@ QuicConnProcessLocalAddressChange(
             }
         }
         if (!InUse) {
+            //
+            // Bounded by the loop: one entry per snapshot address at most, and
+            // the allocation holds AddressCount of them plus the removals.
+            //
+            CXPLAT_DBG_ASSERT(AddedCount < ListCount);
+            CXPLAT_ANALYSIS_ASSUME(AddedCount < ListCount);
             Added[AddedCount++] = Addresses[j].Address;
         }
     }
@@ -811,6 +820,7 @@ QuicConnProcessLocalAddressChange(
     // Flattened for the event, which speaks in QUIC_ADDR rather than in the
     // platform's richer entry.
     //
+    CXPLAT_ANALYSIS_ASSUME(AddressCount + RemovedCount <= ListCount);
     for (uint32_t i = 0; i < RemovedCount; ++i) {
         RemovedAddrs[i] = Removed[i].Address;
     }

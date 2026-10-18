@@ -2489,16 +2489,32 @@ QuicLibraryGetGlobalParam(
             break;
         }
 
+        //
+        // A NULL snapshot means a count of zero, which the getter's annotation
+        // now says is possible. Tying the two together here keeps every path
+        // below consistent about how many bytes it claims to have written.
+        //
+        if (Addresses == NULL) {
+            Count = 0;
+        }
+
+        //
+        // Shaped like QUIC_PARAM_GLOBAL_XDP_MAP_CONFIG above: the empty case
+        // leaves first, so that the copy is only reached with a non-zero
+        // length and a buffer that is known not to be NULL.
+        //
         const uint32_t RequiredLength = Count * (uint32_t)sizeof(QUIC_ADDR);
-        if (*BufferLength < RequiredLength || (RequiredLength != 0 && Buffer == NULL)) {
+        if (RequiredLength == 0) {
+            *BufferLength = 0;
+            Status = QUIC_STATUS_SUCCESS;
+        } else if (*BufferLength < RequiredLength || Buffer == NULL) {
             *BufferLength = RequiredLength;
             Status = QUIC_STATUS_BUFFER_TOO_SMALL;
         } else {
-            if (Addresses != NULL) {
-                CXPLAT_ANALYSIS_ASSUME(Count * sizeof(QUIC_ADDR) <= *BufferLength);
-                QuicLibAddrsFromLocalAddresses((QUIC_ADDR*)Buffer, Addresses, Count);
-            }
             *BufferLength = RequiredLength;
+            CXPLAT_ANALYSIS_ASSUME(Addresses != NULL);
+            CXPLAT_ANALYSIS_ASSUME(Count * sizeof(QUIC_ADDR) <= *BufferLength);
+            QuicLibAddrsFromLocalAddresses((QUIC_ADDR*)Buffer, Addresses, Count);
             Status = QUIC_STATUS_SUCCESS;
         }
 
