@@ -176,6 +176,7 @@ pub const QUIC_PARAM_GLOBAL_STATELESS_RESET_KEY: u32 = 16777227;
 pub const QUIC_PARAM_GLOBAL_STATISTICS_V2_SIZES: u32 = 16777228;
 pub const QUIC_PARAM_GLOBAL_STATELESS_RETRY_CONFIG: u32 = 16777229;
 pub const QUIC_PARAM_GLOBAL_XDP_MAP_CONFIG: u32 = 16777230;
+pub const QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES: u32 = 16777231;
 pub const QUIC_PARAM_CONFIGURATION_SETTINGS: u32 = 50331648;
 pub const QUIC_PARAM_CONFIGURATION_TICKET_KEYS: u32 = 50331649;
 pub const QUIC_PARAM_CONFIGURATION_VERSION_SETTINGS: u32 = 50331650;
@@ -293,6 +294,15 @@ pub const QUIC_ADD_ADDRESS_MODE_QUIC_ADD_ADDRESS_MANUAL: QUIC_ADD_ADDRESS_MODE =
 pub const QUIC_ADD_ADDRESS_MODE_QUIC_ADD_ADDRESS_NAT_TRAVERSAL: QUIC_ADD_ADDRESS_MODE = 2;
 pub const QUIC_ADD_ADDRESS_MODE_QUIC_ADD_ADDRESS_COUNT: QUIC_ADD_ADDRESS_MODE = 3;
 pub type QUIC_ADD_ADDRESS_MODE = ::std::os::raw::c_uint;
+pub const QUIC_LOCAL_ADDRESS_CHANGE_MODE_QUIC_LOCAL_ADDRESS_CHANGE_DISABLED:
+    QUIC_LOCAL_ADDRESS_CHANGE_MODE = 0;
+pub const QUIC_LOCAL_ADDRESS_CHANGE_MODE_QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY:
+    QUIC_LOCAL_ADDRESS_CHANGE_MODE = 1;
+pub const QUIC_LOCAL_ADDRESS_CHANGE_MODE_QUIC_LOCAL_ADDRESS_CHANGE_AUTO:
+    QUIC_LOCAL_ADDRESS_CHANGE_MODE = 2;
+pub const QUIC_LOCAL_ADDRESS_CHANGE_MODE_QUIC_LOCAL_ADDRESS_CHANGE_COUNT:
+    QUIC_LOCAL_ADDRESS_CHANGE_MODE = 3;
+pub type QUIC_LOCAL_ADDRESS_CHANGE_MODE = ::std::os::raw::c_uint;
 pub const QUIC_TLS_ALERT_CODES_QUIC_TLS_ALERT_CODE_SUCCESS: QUIC_TLS_ALERT_CODES = 65535;
 pub const QUIC_TLS_ALERT_CODES_QUIC_TLS_ALERT_CODE_UNEXPECTED_MESSAGE: QUIC_TLS_ALERT_CODES = 10;
 pub const QUIC_TLS_ALERT_CODES_QUIC_TLS_ALERT_CODE_BAD_CERTIFICATE: QUIC_TLS_ALERT_CODES = 42;
@@ -2105,6 +2115,8 @@ pub struct QUIC_SETTINGS {
     pub StreamRecvWindowBidiRemoteDefault: u32,
     pub StreamRecvWindowUnidiDefault: u32,
     pub AddAddressMode: u8,
+    pub LocalAddressChangeMode: u8,
+    pub AutoMigrationHoldDownMs: u32,
     pub PathKeepAliveIntervalMs: u32,
 }
 #[repr(C)]
@@ -2117,7 +2129,7 @@ pub union QUIC_SETTINGS__bindgen_ty_1 {
 #[repr(align(8))]
 #[derive(Debug, Copy, Clone)]
 pub struct QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
-    pub _bitfield_align_1: [u16; 0],
+    pub _bitfield_align_1: [u8; 0],
     pub _bitfield_1: __BindgenBitfieldUnit<[u8; 8usize]>,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
@@ -3911,14 +3923,80 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         }
     }
     #[inline]
+    pub fn LocalAddressChangeMode(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(54usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_LocalAddressChangeMode(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(54usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn LocalAddressChangeMode_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                54usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_LocalAddressChangeMode_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                54usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn AutoMigrationHoldDownMs(&self) -> u64 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(55usize, 1u8) as u64) }
+    }
+    #[inline]
+    pub fn set_AutoMigrationHoldDownMs(&mut self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            self._bitfield_1.set(55usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn AutoMigrationHoldDownMs_raw(this: *const Self) -> u64 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                55usize,
+                1u8,
+            ) as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_AutoMigrationHoldDownMs_raw(this: *mut Self, val: u64) {
+        unsafe {
+            let val: u64 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                55usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
     pub fn RESERVED(&self) -> u64 {
-        unsafe { ::std::mem::transmute(self._bitfield_1.get(54usize, 10u8) as u64) }
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(56usize, 8u8) as u64) }
     }
     #[inline]
     pub fn set_RESERVED(&mut self, val: u64) {
         unsafe {
             let val: u64 = ::std::mem::transmute(val);
-            self._bitfield_1.set(54usize, 10u8, val as u64)
+            self._bitfield_1.set(56usize, 8u8, val as u64)
         }
     }
     #[inline]
@@ -3926,8 +4004,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         unsafe {
             ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 8usize]>>::raw_get(
                 ::std::ptr::addr_of!((*this)._bitfield_1),
-                54usize,
-                10u8,
+                56usize,
+                8u8,
             ) as u64)
         }
     }
@@ -3937,8 +4015,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
             let val: u64 = ::std::mem::transmute(val);
             <__BindgenBitfieldUnit<[u8; 8usize]>>::raw_set(
                 ::std::ptr::addr_of_mut!((*this)._bitfield_1),
-                54usize,
-                10u8,
+                56usize,
+                8u8,
                 val as u64,
             )
         }
@@ -3999,6 +4077,8 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
         ReceiveObservedAddressReports: u64,
         PathKeepAliveIntervalMs: u64,
         PathValidatedEventEnabled: u64,
+        LocalAddressChangeMode: u64,
+        AutoMigrationHoldDownMs: u64,
         RESERVED: u64,
     ) -> __BindgenBitfieldUnit<[u8; 8usize]> {
         let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 8usize]> = Default::default();
@@ -4245,7 +4325,17 @@ impl QUIC_SETTINGS__bindgen_ty_1__bindgen_ty_1 {
                 unsafe { ::std::mem::transmute(PathValidatedEventEnabled) };
             PathValidatedEventEnabled as u64
         });
-        __bindgen_bitfield_unit.set(54usize, 10u8, {
+        __bindgen_bitfield_unit.set(54usize, 1u8, {
+            let LocalAddressChangeMode: u64 =
+                unsafe { ::std::mem::transmute(LocalAddressChangeMode) };
+            LocalAddressChangeMode as u64
+        });
+        __bindgen_bitfield_unit.set(55usize, 1u8, {
+            let AutoMigrationHoldDownMs: u64 =
+                unsafe { ::std::mem::transmute(AutoMigrationHoldDownMs) };
+            AutoMigrationHoldDownMs as u64
+        });
+        __bindgen_bitfield_unit.set(56usize, 8u8, {
             let RESERVED: u64 = unsafe { ::std::mem::transmute(RESERVED) };
             RESERVED as u64
         });
@@ -4979,8 +5069,12 @@ const _: () = {
         [::std::mem::offset_of!(QUIC_SETTINGS, StreamRecvWindowUnidiDefault) - 136usize];
     ["Offset of field: QUIC_SETTINGS::AddAddressMode"]
         [::std::mem::offset_of!(QUIC_SETTINGS, AddAddressMode) - 140usize];
+    ["Offset of field: QUIC_SETTINGS::LocalAddressChangeMode"]
+        [::std::mem::offset_of!(QUIC_SETTINGS, LocalAddressChangeMode) - 141usize];
+    ["Offset of field: QUIC_SETTINGS::AutoMigrationHoldDownMs"]
+        [::std::mem::offset_of!(QUIC_SETTINGS, AutoMigrationHoldDownMs) - 144usize];
     ["Offset of field: QUIC_SETTINGS::PathKeepAliveIntervalMs"]
-        [::std::mem::offset_of!(QUIC_SETTINGS, PathKeepAliveIntervalMs) - 144usize];
+        [::std::mem::offset_of!(QUIC_SETTINGS, PathKeepAliveIntervalMs) - 148usize];
 };
 impl QUIC_SETTINGS {
     #[inline]
@@ -6026,6 +6120,8 @@ pub const QUIC_CONNECTION_EVENT_TYPE_QUIC_CONNECTION_EVENT_PATH_REMOVED:
     QUIC_CONNECTION_EVENT_TYPE = 24;
 pub const QUIC_CONNECTION_EVENT_TYPE_QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED:
     QUIC_CONNECTION_EVENT_TYPE = 25;
+pub const QUIC_CONNECTION_EVENT_TYPE_QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED:
+    QUIC_CONNECTION_EVENT_TYPE = 26;
 pub type QUIC_CONNECTION_EVENT_TYPE = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -6062,6 +6158,7 @@ pub union QUIC_CONNECTION_EVENT__bindgen_ty_1 {
     pub PATH_ADDED: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_23,
     pub PATH_REMOVED: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_24,
     pub PATH_STATUS_CHANGED: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_25,
+    pub LOCAL_ADDRESSES_CHANGED: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -6739,6 +6836,49 @@ const _: () = {
         IsActive
     ) - 20usize];
 };
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26 {
+    pub AddedCount: u32,
+    pub Added: *const QUIC_ADDR,
+    pub RemovedCount: u32,
+    pub Removed: *const QUIC_ADDR,
+    pub LostPathCount: u32,
+    pub LostPaths: *const QUIC_PATH_PARAM,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26"]
+        [::std::mem::size_of::<QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26>() - 48usize];
+    ["Alignment of QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26"]
+        [::std::mem::align_of::<QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26>() - 8usize];
+    ["Offset of field: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26::AddedCount"][::std::mem::offset_of!(
+        QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26,
+        AddedCount
+    ) - 0usize];
+    ["Offset of field: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26::Added"][::std::mem::offset_of!(
+        QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26,
+        Added
+    ) - 8usize];
+    ["Offset of field: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26::RemovedCount"][::std::mem::offset_of!(
+        QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26,
+        RemovedCount
+    )
+        - 16usize];
+    ["Offset of field: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26::Removed"][::std::mem::offset_of!(
+        QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26,
+        Removed
+    ) - 24usize];
+    ["Offset of field: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26::LostPathCount"][::std::mem::offset_of!(
+        QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26,
+        LostPathCount
+    )
+        - 32usize];
+    ["Offset of field: QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26::LostPaths"][::std::mem::offset_of!(
+        QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26,
+        LostPaths
+    ) - 40usize];
+};
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
     ["Size of QUIC_CONNECTION_EVENT__bindgen_ty_1"]
@@ -6831,6 +6971,10 @@ const _: () = {
         [::std::mem::offset_of!(QUIC_CONNECTION_EVENT__bindgen_ty_1, PATH_REMOVED) - 0usize];
     ["Offset of field: QUIC_CONNECTION_EVENT__bindgen_ty_1::PATH_STATUS_CHANGED"]
         [::std::mem::offset_of!(QUIC_CONNECTION_EVENT__bindgen_ty_1, PATH_STATUS_CHANGED) - 0usize];
+    ["Offset of field: QUIC_CONNECTION_EVENT__bindgen_ty_1::LOCAL_ADDRESSES_CHANGED"][::std::mem::offset_of!(
+        QUIC_CONNECTION_EVENT__bindgen_ty_1,
+        LOCAL_ADDRESSES_CHANGED
+    ) - 0usize];
 };
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {

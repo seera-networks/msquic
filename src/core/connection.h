@@ -561,6 +561,36 @@ typedef struct QUIC_CONNECTION {
     //
     QUIC_PATH Paths[QUIC_MAX_PATH_COUNT];
 
+    //
+    // Whether a local address change operation is already queued for this
+    // connection. Interlocked, because the library's fan-out sets it from the
+    // platform's callback while the worker clears it.
+    //
+    // One pending operation is enough however many changes arrive: the handler
+    // reads the latest snapshot rather than a delta, so a burst collapses.
+    //
+    BOOLEAN volatile AddressChangeQueued;
+
+    //
+    // Whether this connection holds a reference on the library's address
+    // monitor. Taken when a mode other than DISABLED is first applied, so the
+    // monitor thread only runs while somebody is listening.
+    //
+    BOOLEAN AddressMonitorRef;
+
+    //
+    // The snapshot generation this connection last reconciled against, so a
+    // queued operation that finds nothing new can return without work.
+    //
+    uint64_t LastAddressGeneration;
+
+    //
+    // A local address change arrived before the handshake was confirmed, when
+    // migration is not allowed. Reconciliation re-runs from where paths are
+    // opened at confirmation.
+    //
+    BOOLEAN AddressChangeDirty;
+
     CXPLAT_LIST_ENTRY BoundAddresses;
 
     CXPLAT_LIST_ENTRY CandidateAddresses;
@@ -1149,6 +1179,27 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 void
 QuicConnUnregister(
     _Inout_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Queues reconciliation of this connection's paths against the library's
+// current local address snapshot. Safe to call from the platform callback's
+// context: it only allocates and queues, and queues at most one operation.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+void
+QuicConnQueueLocalAddressChange(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Reconciles the connection's paths against the host's current local
+// addresses. Runs on the connection's worker.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnProcessLocalAddressChange(
+    _In_ QUIC_CONNECTION* Connection
     );
 
 //

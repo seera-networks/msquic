@@ -950,6 +950,36 @@ TEST_P(WithFamilyArgs, LocalPathChanges) {
 }
 
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+TEST_P(WithFamilyArgs, LocalAddressChangeNotify) {
+    //
+    // User-mode only: the injection parameter and the address monitor behind
+    // it have no kernel-mode plumbing in the test driver.
+    //
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeNotify is user-mode only.";
+    }
+    TestLoggerT<ParamType> Logger("QuicTestLocalAddressChangeNotify", GetParam());
+    QuicTestLocalAddressChangeNotify(GetParam());
+}
+
+TEST_P(WithFamilyArgs, LocalAddressChangeDisabled) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeDisabled is user-mode only.";
+    }
+    TestLoggerT<ParamType> Logger("QuicTestLocalAddressChangeDisabled", GetParam());
+    QuicTestLocalAddressChangeDisabled(GetParam());
+}
+
+TEST(ParameterValidation, GetLocalAddresses) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestGetLocalAddressesParam is user-mode only.";
+    }
+    TestLogger Logger("QuicTestGetLocalAddressesParam");
+    QuicTestGetLocalAddressesParam();
+}
+#endif
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 TEST_P(WithFamilyArgs, Multipath) {
     TestLoggerT<ParamType> Logger("QuicTestMultipath", GetParam());
     if (TestingKernelMode) {

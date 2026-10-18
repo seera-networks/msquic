@@ -217,6 +217,34 @@ typedef struct QUIC_LIBRARY {
     CXPLAT_DATAPATH* Datapath;
 
     //
+    // The host's usable local addresses, and the monitor that keeps them.
+    //
+    // The monitor is started the first time a connection runs with
+    // LocalAddressChangeMode set to something other than DISABLED, and stopped
+    // when the last such connection goes, so an application that never asks
+    // pays for none of it -- no netlink socket, no thread. AddressMonitorRefCount
+    // counts those connections and is guarded by MsQuicLib.Lock.
+    //
+    // LocalAddressesLock is a leaf: it is never held while taking another lock,
+    // so the platform callback can replace the snapshot while a worker reads it.
+    //
+    CXPLAT_ADDRESS_MONITOR* AddressMonitor;
+    uint32_t AddressMonitorRefCount;
+    CXPLAT_DISPATCH_LOCK LocalAddressesLock;
+    CXPLAT_LOCAL_ADDRESS* LocalAddresses;
+    uint32_t LocalAddressesCount;
+    //
+    // What the generation above removed. Kept alongside the snapshot so that a
+    // connection can report it without diffing, and replaced wholesale on each
+    // change: a connection whose reconciliations collapsed across several
+    // generations sees only the newest one's removals. The lists that are
+    // always exact are the ones computed against the snapshot itself.
+    //
+    CXPLAT_LOCAL_ADDRESS* LocalAddressesRemoved;
+    uint32_t LocalAddressesRemovedCount;
+    uint64_t LocalAddressesGeneration;
+
+    //
     // List of all registrations in the current process (or kernel).
     //
     CXPLAT_LIST_ENTRY Registrations;
@@ -516,6 +544,43 @@ QuicCidNewRandomSource(
 
 //
 // Ensures any lazy initialization for the library is complete.
+//
+// Takes a reference on the address monitor, starting it if this is the first.
+// Called when a connection with monitoring enabled starts.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+QuicLibraryAddRefAddressMonitor(
+    void
+    );
+
+//
+// Releases a reference taken by QuicLibraryAddRefAddressMonitor, stopping the
+// monitor when the last one goes.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicLibraryReleaseAddressMonitor(
+    void
+    );
+
+//
+// Copies the library's cached snapshot. The caller frees Addresses with
+// CXPLAT_FREE and QUIC_POOL_DATAPATH_ADDRESSES. Returns the generation the
+// copy belongs to, which is what a connection compares against to decide
+// whether it has already reconciled.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Success_(QUIC_SUCCEEDED(return))
+QUIC_STATUS
+QuicLibraryGetLocalAddresses(
+    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Out_ uint32_t* Count,
+    _Outptr_result_buffer_(*RemovedCount) CXPLAT_LOCAL_ADDRESS** Removed,
+    _Out_ uint32_t* RemovedCount,
+    _Out_ uint64_t* Generation
+    );
+
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS

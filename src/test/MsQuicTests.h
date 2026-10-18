@@ -184,6 +184,25 @@ QuicTestLocalPathChanges(
     );
 
 //
+// Local address change tests
+//
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
+void
+QuicTestLocalAddressChangeNotify(
+    const FamilyArgs& Params
+    );
+
+void
+QuicTestLocalAddressChangeDisabled(
+    const FamilyArgs& Params
+    );
+
+void
+QuicTestGetLocalAddressesParam(
+    );
+#endif
+
+//
 // Handshake Tests
 //
 

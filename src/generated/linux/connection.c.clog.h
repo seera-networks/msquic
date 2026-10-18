@@ -969,6 +969,30 @@ tracepoint(CLOG_CONNECTION_C, ApplySettings , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for IndicateLocalAddressesChanged
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u
+// QuicTraceLogConnVerbose(
+            IndicateLocalAddressesChanged,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u",
+            AddedCount,
+            RemovedCount,
+            LostCount);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = AddedCount = arg3
+// arg4 = arg4 = RemovedCount = arg4
+// arg5 = arg5 = LostCount = arg5
+----------------------------------------------------------*/
+#ifndef _clog_6_ARGS_TRACE_IndicateLocalAddressesChanged
+#define _clog_6_ARGS_TRACE_IndicateLocalAddressesChanged(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_CONNECTION_C, IndicateLocalAddressesChanged , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for PhaseShiftUpdated
 // [conn][%p] New Phase Shift: %lld us
 // QuicTraceLogConnVerbose(

@@ -103,6 +103,18 @@ typedef enum QUIC_ADD_ADDRESS_MODE {
                                                 // MUST BE LAST
 } QUIC_ADD_ADDRESS_MODE;
 
+//
+// How a connection reacts to the host's own addresses changing. The monitoring
+// that feeds this is only started once some connection asks for it, so leaving
+// this at the default costs nothing.
+//
+typedef enum QUIC_LOCAL_ADDRESS_CHANGE_MODE {
+    QUIC_LOCAL_ADDRESS_CHANGE_DISABLED,  // Default. The behaviour before this existed.
+    QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY,    // Indicate the change; the app decides.
+    QUIC_LOCAL_ADDRESS_CHANGE_AUTO,      // The connection migrates and manages paths itself.
+    QUIC_LOCAL_ADDRESS_CHANGE_COUNT
+} QUIC_LOCAL_ADDRESS_CHANGE_MODE;
+
 typedef enum QUIC_TLS_ALERT_CODES {
     QUIC_TLS_ALERT_CODE_SUCCESS = 0xFFFF,       // Not a real TlsAlert
     QUIC_TLS_ALERT_CODE_UNEXPECTED_MESSAGE = 10,
@@ -868,7 +880,9 @@ typedef struct QUIC_SETTINGS {
             uint64_t ReceiveObservedAddressReports          : 1;
             uint64_t PathKeepAliveIntervalMs                : 1;
             uint64_t PathValidatedEventEnabled              : 1;
-            uint64_t RESERVED                               : 10;
+            uint64_t LocalAddressChangeMode                 : 1;
+            uint64_t AutoMigrationHoldDownMs                : 1;
+            uint64_t RESERVED                               : 8;
 #else
             uint64_t RESERVED                               : 26;
 #endif
@@ -938,6 +952,8 @@ typedef struct QUIC_SETTINGS {
     uint32_t StreamRecvWindowBidiRemoteDefault;
     uint32_t StreamRecvWindowUnidiDefault;
     uint8_t AddAddressMode;                     // QUIC_ADD_ADDRESS_MODE
+    uint8_t LocalAddressChangeMode;             // QUIC_LOCAL_ADDRESS_CHANGE_MODE
+    uint32_t AutoMigrationHoldDownMs;
     uint32_t PathKeepAliveIntervalMs;
 
 } QUIC_SETTINGS;
@@ -1065,6 +1081,7 @@ void
 #define QUIC_PARAM_GLOBAL_STATELESS_RETRY_CONFIG        0x0100000D  // QUIC_STATELESS_RETRY_CONFIG
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 #define QUIC_PARAM_GLOBAL_XDP_MAP_CONFIG                0x0100000E  // QUIC_XDP_MAP_CONFIG[]
+#define QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES               0x0100000F  // QUIC_ADDR[] - Get-only. The host's usable local addresses, port zero.
 #endif
 
 //
@@ -1448,6 +1465,7 @@ typedef enum QUIC_CONNECTION_EVENT_TYPE {
     QUIC_CONNECTION_EVENT_PATH_ADDED                        = 23,   // Only indicated if QUIC_SETTINGS.MultipathEnabled is TRUE.
     QUIC_CONNECTION_EVENT_PATH_REMOVED                      = 24,   // Only indicated if QUIC_SETTINGS.MultipathEnabled is TRUE.
     QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED               = 25,   // Only indicated if QUIC_SETTINGS.MultipathEnabled is TRUE.
+    QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED           = 26,   // Only indicated if QUIC_SETTINGS.LocalAddressChangeMode is not DISABLED.
 #endif
 } QUIC_CONNECTION_EVENT_TYPE;
 
@@ -1562,6 +1580,34 @@ typedef struct QUIC_CONNECTION_EVENT {
             uint32_t PathId;
             BOOLEAN IsActive;
         } PATH_STATUS_CHANGED;
+        struct {
+            //
+            // Addresses the host has that this connection is not already
+            // sending from -- what it could open a path on now. Port is zero.
+            //
+            uint32_t AddedCount;
+            _Field_size_(AddedCount)
+            const QUIC_ADDR* Added;
+            //
+            // Addresses the host no longer has, as of this change. Port is
+            // zero. Informational: an application that has no path on one of
+            // these has nothing to do about it, and the list covers only the
+            // most recent change, so a burst that collapses into one
+            // indication reports only its last step. LostPaths below is the
+            // list that is always complete.
+            //
+            uint32_t RemovedCount;
+            _Field_size_(RemovedCount)
+            const QUIC_ADDR* Removed;
+            //
+            // Paths whose local address the host no longer has. Each is in the
+            // form QUIC_PARAM_CONN_REMOVE_PATH takes, so it can be passed
+            // straight back.
+            //
+            uint32_t LostPathCount;
+            _Field_size_(LostPathCount)
+            const QUIC_PATH_PARAM* LostPaths;
+        } LOCAL_ADDRESSES_CHANGED;
 #endif
     };
 } QUIC_CONNECTION_EVENT;

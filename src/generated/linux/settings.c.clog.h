@@ -873,6 +873,36 @@ tracepoint(CLOG_SETTINGS_C, SettingAddAddress , arg2);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for SettingLocalAddressChangeMode
+// [sett] LocalAddrChangeMode    = %hhu
+// QuicTraceLogVerbose(SettingLocalAddressChangeMode,      "[sett] LocalAddrChangeMode    = %hhu", Settings->LocalAddressChangeMode);
+// arg2 = arg2 = Settings->LocalAddressChangeMode = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_SettingLocalAddressChangeMode
+#define _clog_3_ARGS_TRACE_SettingLocalAddressChangeMode(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_SETTINGS_C, SettingLocalAddressChangeMode , arg2);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for SettingAutoMigrationHoldDownMs
+// [sett] AutoMigrationHoldDown  = %u
+// QuicTraceLogVerbose(SettingAutoMigrationHoldDownMs,     "[sett] AutoMigrationHoldDown  = %u", Settings->AutoMigrationHoldDownMs);
+// arg2 = arg2 = Settings->AutoMigrationHoldDownMs = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_SettingAutoMigrationHoldDownMs
+#define _clog_3_ARGS_TRACE_SettingAutoMigrationHoldDownMs(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_SETTINGS_C, SettingAutoMigrationHoldDownMs , arg2);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for SettingIgnoreUnreachable
 // [sett] IgnoreUnreachable      = %hhu
 // QuicTraceLogVerbose(SettingIgnoreUnreachable,           "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);

@@ -61,6 +61,7 @@ MsQuicLibraryLoad(
         CxPlatSystemLoad();
         CxPlatLockInitialize(&MsQuicLib.Lock);
         CxPlatDispatchLockInitialize(&MsQuicLib.DatapathLock);
+        CxPlatDispatchLockInitialize(&MsQuicLib.LocalAddressesLock);
 #if DEBUG
         QuicLibraryInitializeDbg();
 #endif
@@ -94,6 +95,7 @@ MsQuicLibraryUnload(
         QuicLibraryUninitializeDbg();
 #endif
         CxPlatDispatchLockUninitialize(&MsQuicLib.DatapathLock);
+        CxPlatDispatchLockUninitialize(&MsQuicLib.LocalAddressesLock);
         CxPlatLockUninitialize(&MsQuicLib.Lock);
         CxPlatSystemUnload();
     }
@@ -871,6 +873,338 @@ MsQuicRelease(
     CxPlatLockRelease(&MsQuicLib.Lock);
 }
 
+//
+// The platform's address monitor calling in. Runs on the monitor's own
+// context, serialized against itself, and must not block -- so it copies the
+// snapshot and queues work, and touches no connection state.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(CXPLAT_ADDRESS_CHANGE_CALLBACK)
+void
+QuicLibraryOnLocalAddressChange(
+    _In_opt_ void* Context,
+    _In_ const CXPLAT_ADDRESS_CHANGE_SET* ChangeSet
+    )
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    CXPLAT_LOCAL_ADDRESS* Copy = NULL;
+    if (ChangeSet->AddressCount != 0) {
+        Copy =
+            CXPLAT_ALLOC_NONPAGED(
+                ChangeSet->AddressCount * sizeof(CXPLAT_LOCAL_ADDRESS),
+                QUIC_POOL_DATAPATH_ADDRESSES);
+        if (Copy == NULL) {
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "library local address snapshot",
+                ChangeSet->AddressCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+            //
+            // The cached snapshot is left as it was rather than emptied, for
+            // the same reason the monitor leaves its own alone when an
+            // enumeration fails: no information is better than wrong
+            // information, and the next change replaces it.
+            //
+            return;
+        }
+        CxPlatCopyMemory(
+            Copy,
+            ChangeSet->Addresses,
+            ChangeSet->AddressCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+    }
+
+    //
+    // The removals, pulled out of the change set so that a connection can
+    // report them without keeping a snapshot of its own.
+    //
+    uint32_t RemovedCount = 0;
+    for (uint32_t i = 0; i < ChangeSet->ChangeCount; ++i) {
+        if (ChangeSet->Changes[i].Type == CXPLAT_ADDRESS_CHANGE_REMOVED) {
+            RemovedCount++;
+        }
+    }
+
+    CXPLAT_LOCAL_ADDRESS* RemovedCopy = NULL;
+    if (RemovedCount != 0) {
+        RemovedCopy =
+            CXPLAT_ALLOC_NONPAGED(
+                RemovedCount * sizeof(CXPLAT_LOCAL_ADDRESS),
+                QUIC_POOL_DATAPATH_ADDRESSES);
+        if (RemovedCopy == NULL) {
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "library local address removals",
+                RemovedCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+            if (Copy != NULL) {
+                CXPLAT_FREE(Copy, QUIC_POOL_DATAPATH_ADDRESSES);
+            }
+            return;
+        }
+        uint32_t j = 0;
+        for (uint32_t i = 0; i < ChangeSet->ChangeCount; ++i) {
+            if (ChangeSet->Changes[i].Type == CXPLAT_ADDRESS_CHANGE_REMOVED) {
+                RemovedCopy[j++] = ChangeSet->Changes[i].Address;
+            }
+        }
+    }
+
+    CXPLAT_LOCAL_ADDRESS* Previous;
+    CXPLAT_LOCAL_ADDRESS* PreviousRemoved;
+    CxPlatDispatchLockAcquire(&MsQuicLib.LocalAddressesLock);
+    Previous = MsQuicLib.LocalAddresses;
+    PreviousRemoved = MsQuicLib.LocalAddressesRemoved;
+    MsQuicLib.LocalAddresses = Copy;
+    MsQuicLib.LocalAddressesCount = ChangeSet->AddressCount;
+    MsQuicLib.LocalAddressesRemoved = RemovedCopy;
+    MsQuicLib.LocalAddressesRemovedCount = RemovedCount;
+    MsQuicLib.LocalAddressesGeneration = ChangeSet->Generation;
+    CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
+
+    if (Previous != NULL) {
+        CXPLAT_FREE(Previous, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    if (PreviousRemoved != NULL) {
+        CXPLAT_FREE(PreviousRemoved, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+
+    QuicTraceLogInfo(
+        LibraryLocalAddressesChanged,
+        "[ lib] Local addresses changed, Generation=%llu, Count=%u",
+        ChangeSet->Generation,
+        ChangeSet->AddressCount);
+
+    //
+    // Fan out. Lock order is MsQuicLib.Lock then Registration->ConnectionLock,
+    // which is the order QuicRegistrationTraceRundown uses, and
+    // LocalAddressesLock above is released before either is taken.
+    //
+    CxPlatLockAcquire(&MsQuicLib.Lock);
+
+    for (CXPLAT_LIST_ENTRY* Link = MsQuicLib.Registrations.Flink;
+        Link != &MsQuicLib.Registrations;
+        Link = Link->Flink) {
+
+        QUIC_REGISTRATION* Registration =
+            CXPLAT_CONTAINING_RECORD(Link, QUIC_REGISTRATION, Link);
+
+        CxPlatDispatchLockAcquire(&Registration->ConnectionLock);
+        for (CXPLAT_LIST_ENTRY* ConnLink = Registration->Connections.Flink;
+            ConnLink != &Registration->Connections;
+            ConnLink = ConnLink->Flink) {
+
+            QUIC_CONNECTION* Connection =
+                CXPLAT_CONTAINING_RECORD(ConnLink, QUIC_CONNECTION, RegistrationLink);
+            QuicConnQueueLocalAddressChange(Connection);
+        }
+        CxPlatDispatchLockRelease(&Registration->ConnectionLock);
+    }
+
+    CxPlatLockRelease(&MsQuicLib.Lock);
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+QuicLibraryAddRefAddressMonitor(
+    void
+    )
+{
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+
+    CxPlatLockAcquire(&MsQuicLib.Lock);
+
+    if (MsQuicLib.AddressMonitor != NULL) {
+        MsQuicLib.AddressMonitorRefCount++;
+        goto Exit;
+    }
+
+    //
+    // The monitor hangs off the datapath, so the datapath has to exist first.
+    //
+    Status = QuicLibraryLazyInitialize(FALSE);
+    if (QUIC_FAILED(Status)) {
+        goto Exit;
+    }
+
+    CXPLAT_ADDRESS_MONITOR_CONFIG Config;
+    CxPlatZeroMemory(&Config, sizeof(Config));
+    Config.Callback = QuicLibraryOnLocalAddressChange;
+    //
+    // Route watching is phase 5. Asking for it now would subscribe to a far
+    // noisier stream for a flag nothing reads.
+    //
+    Config.WatchRoutes = FALSE;
+
+    CXPLAT_ADDRESS_MONITOR* Monitor = NULL;
+    Status = CxPlatAddressMonitorInitialize(MsQuicLib.Datapath, &Config, &Monitor);
+    if (QUIC_FAILED(Status)) {
+        //
+        // QUIC_STATUS_NOT_SUPPORTED here means the platform has no backend,
+        // which is not an error for the caller: the connection runs as it
+        // would have with the mode left disabled.
+        //
+        goto Exit;
+    }
+
+    //
+    // Initialize enumerates synchronously and makes no callback for it, so the
+    // first snapshot has to be taken rather than waited for -- otherwise a
+    // connection that starts on a quiet host would see nothing until some
+    // address happened to change.
+    //
+    CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
+    uint32_t Count = 0;
+    uint64_t Generation = 0;
+    if (QUIC_SUCCEEDED(
+            CxPlatAddressMonitorGetSnapshot(Monitor, &Addresses, &Count, &Generation))) {
+        CxPlatDispatchLockAcquire(&MsQuicLib.LocalAddressesLock);
+        //
+        // A test can have injected a snapshot while no monitor was running, so
+        // this is a replace rather than a first write.
+        //
+        CXPLAT_LOCAL_ADDRESS* Stale = MsQuicLib.LocalAddresses;
+        CXPLAT_LOCAL_ADDRESS* StaleRemoved = MsQuicLib.LocalAddressesRemoved;
+        MsQuicLib.LocalAddressesRemoved = NULL;
+        MsQuicLib.LocalAddresses = Addresses;
+        MsQuicLib.LocalAddressesCount = Count;
+        MsQuicLib.LocalAddressesRemovedCount = 0;
+        MsQuicLib.LocalAddressesGeneration = Generation;
+        CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
+        if (Stale != NULL) {
+            CXPLAT_FREE(Stale, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+        if (StaleRemoved != NULL) {
+            CXPLAT_FREE(StaleRemoved, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+    }
+
+    MsQuicLib.AddressMonitor = Monitor;
+    MsQuicLib.AddressMonitorRefCount = 1;
+
+Exit:
+
+    CxPlatLockRelease(&MsQuicLib.Lock);
+    return Status;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicLibraryReleaseAddressMonitor(
+    void
+    )
+{
+    CXPLAT_ADDRESS_MONITOR* Monitor = NULL;
+    CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
+    CXPLAT_LOCAL_ADDRESS* Removed = NULL;
+
+    CxPlatLockAcquire(&MsQuicLib.Lock);
+    CXPLAT_DBG_ASSERT(MsQuicLib.AddressMonitorRefCount != 0);
+    if (--MsQuicLib.AddressMonitorRefCount == 0) {
+        Monitor = MsQuicLib.AddressMonitor;
+        MsQuicLib.AddressMonitor = NULL;
+    }
+    CxPlatLockRelease(&MsQuicLib.Lock);
+
+    if (Monitor == NULL) {
+        return;
+    }
+
+    //
+    // Outside MsQuicLib.Lock. Uninitialize waits for a callback already
+    // running, and that callback takes MsQuicLib.Lock to fan out -- holding it
+    // here would be a deadlock.
+    //
+    CxPlatAddressMonitorUninitialize(Monitor);
+
+    //
+    // Only now that no callback can be running is it safe to drop the cache.
+    //
+    CxPlatDispatchLockAcquire(&MsQuicLib.LocalAddressesLock);
+    Addresses = MsQuicLib.LocalAddresses;
+    Removed = MsQuicLib.LocalAddressesRemoved;
+    MsQuicLib.LocalAddresses = NULL;
+    MsQuicLib.LocalAddressesCount = 0;
+    MsQuicLib.LocalAddressesRemoved = NULL;
+    MsQuicLib.LocalAddressesRemovedCount = 0;
+    CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
+
+    if (Addresses != NULL) {
+        CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    if (Removed != NULL) {
+        CXPLAT_FREE(Removed, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Success_(QUIC_SUCCEEDED(return))
+QUIC_STATUS
+QuicLibraryGetLocalAddresses(
+    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Out_ uint32_t* Count,
+    _Outptr_result_buffer_(*RemovedCount) CXPLAT_LOCAL_ADDRESS** Removed,
+    _Out_ uint32_t* RemovedCount,
+    _Out_ uint64_t* Generation
+    )
+{
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    CXPLAT_LOCAL_ADDRESS* Copy = NULL;
+    CXPLAT_LOCAL_ADDRESS* RemovedCopy = NULL;
+
+    CxPlatDispatchLockAcquire(&MsQuicLib.LocalAddressesLock);
+
+    if (MsQuicLib.LocalAddressesCount != 0) {
+        Copy =
+            CXPLAT_ALLOC_NONPAGED(
+                MsQuicLib.LocalAddressesCount * sizeof(CXPLAT_LOCAL_ADDRESS),
+                QUIC_POOL_DATAPATH_ADDRESSES);
+        if (Copy == NULL) {
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+        } else {
+            CxPlatCopyMemory(
+                Copy,
+                MsQuicLib.LocalAddresses,
+                MsQuicLib.LocalAddressesCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+        }
+    }
+
+    if (QUIC_SUCCEEDED(Status) && MsQuicLib.LocalAddressesRemovedCount != 0) {
+        RemovedCopy =
+            CXPLAT_ALLOC_NONPAGED(
+                MsQuicLib.LocalAddressesRemovedCount * sizeof(CXPLAT_LOCAL_ADDRESS),
+                QUIC_POOL_DATAPATH_ADDRESSES);
+        if (RemovedCopy == NULL) {
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+        } else {
+            CxPlatCopyMemory(
+                RemovedCopy,
+                MsQuicLib.LocalAddressesRemoved,
+                MsQuicLib.LocalAddressesRemovedCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+        }
+    }
+
+    if (QUIC_SUCCEEDED(Status)) {
+        *Addresses = Copy;
+        *Count = MsQuicLib.LocalAddressesCount;
+        *Removed = RemovedCopy;
+        *RemovedCount = MsQuicLib.LocalAddressesRemovedCount;
+        *Generation = MsQuicLib.LocalAddressesGeneration;
+        Copy = NULL;
+    }
+
+    CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
+
+    if (Copy != NULL) {
+        //
+        // Only reached when the snapshot copy succeeded and the removal copy
+        // did not.
+        //
+        CXPLAT_FREE(Copy, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    return Status;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 QuicLibraryLazyInitialize(
@@ -1383,6 +1717,107 @@ QuicLibrarySetGlobalParam(
             break;
         }
         CxPlatSetAllocFailDenominator(-Value);
+        Status = QUIC_STATUS_SUCCESS;
+        break;
+    }
+#endif
+
+#if DEBUG
+    case QUIC_PARAM_GLOBAL_TEST_INJECT_ADDRESS_CHANGE: {
+
+        if (BufferLength % sizeof(QUIC_ADDR) != 0 ||
+            (BufferLength != 0 && Buffer == NULL)) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        const uint32_t Count = BufferLength / (uint32_t)sizeof(QUIC_ADDR);
+        if (Count > QUIC_MAX_LOCAL_ADDRESS_COUNT) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
+        if (Count != 0) {
+            Addresses =
+                CXPLAT_ALLOC_NONPAGED(
+                    Count * sizeof(CXPLAT_LOCAL_ADDRESS),
+                    QUIC_POOL_DATAPATH_ADDRESSES);
+            if (Addresses == NULL) {
+                Status = QUIC_STATUS_OUT_OF_MEMORY;
+                break;
+            }
+            CxPlatZeroMemory(Addresses, Count * sizeof(CXPLAT_LOCAL_ADDRESS));
+            for (uint32_t i = 0; i < Count; ++i) {
+                Addresses[i].Address = ((const QUIC_ADDR*)Buffer)[i];
+                QuicAddrSetPort(&Addresses[i].Address, 0);
+            }
+        }
+
+        //
+        // Only the removals are needed to build a change set the fan-out can
+        // consume: everything else it reads comes from the snapshot. Compared
+        // against the current cache the same way the real diff keys, on the
+        // address itself.
+        //
+        CXPLAT_ADDRESS_CHANGE* Changes = NULL;
+        uint32_t ChangeCount = 0;
+        uint64_t Generation;
+
+        CxPlatDispatchLockAcquire(&MsQuicLib.LocalAddressesLock);
+        Generation = MsQuicLib.LocalAddressesGeneration + 1;
+        const uint32_t OldCount = MsQuicLib.LocalAddressesCount;
+        if (OldCount != 0) {
+            Changes =
+                CXPLAT_ALLOC_NONPAGED(
+                    OldCount * sizeof(CXPLAT_ADDRESS_CHANGE),
+                    QUIC_POOL_DATAPATH_ADDRESSES);
+            if (Changes != NULL) {
+                for (uint32_t i = 0; i < OldCount; ++i) {
+                    BOOLEAN Still = FALSE;
+                    for (uint32_t j = 0; j < Count; ++j) {
+                        if (QuicAddrCompare(
+                                &MsQuicLib.LocalAddresses[i].Address,
+                                &Addresses[j].Address)) {
+                            Still = TRUE;
+                            break;
+                        }
+                    }
+                    if (!Still) {
+                        Changes[ChangeCount].Type = CXPLAT_ADDRESS_CHANGE_REMOVED;
+                        Changes[ChangeCount].Address = MsQuicLib.LocalAddresses[i];
+                        ChangeCount++;
+                    }
+                }
+            }
+        }
+        CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
+
+        if (OldCount != 0 && Changes == NULL) {
+            if (Addresses != NULL) {
+                CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+            }
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            break;
+        }
+
+        CXPLAT_ADDRESS_CHANGE_SET ChangeSet;
+        CxPlatZeroMemory(&ChangeSet, sizeof(ChangeSet));
+        ChangeSet.Generation = Generation;
+        ChangeSet.ChangeCount = ChangeCount;
+        ChangeSet.Changes = Changes;
+        ChangeSet.AddressCount = Count;
+        ChangeSet.Addresses = Addresses;
+
+        QuicLibraryOnLocalAddressChange(NULL, &ChangeSet);
+
+        if (Changes != NULL) {
+            CXPLAT_FREE(Changes, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+        if (Addresses != NULL) {
+            CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+
         Status = QUIC_STATUS_SUCCESS;
         break;
     }
@@ -1911,6 +2346,56 @@ QuicLibraryGetGlobalParam(
             MsQuicLib.XdpMapConfigCount);
         CxPlatLockRelease(&MsQuicLib.Lock);
         Status = QUIC_STATUS_SUCCESS;
+        break;
+    }
+
+    case QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES: {
+        //
+        // A caller can ask this without any connection having turned the
+        // monitor on, so take a reference for the duration of the query. That
+        // starts the backend if it is not already running, which costs a
+        // thread for the length of the call -- acceptable for a question an
+        // application asks rarely, and free when a connection is already
+        // listening.
+        //
+        Status = QuicLibraryAddRefAddressMonitor();
+        if (QUIC_FAILED(Status)) {
+            break;
+        }
+
+        CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
+        uint32_t Count = 0;
+        CXPLAT_LOCAL_ADDRESS* Removed = NULL;
+        uint32_t RemovedCount = 0;
+        uint64_t Generation = 0;
+        Status =
+            QuicLibraryGetLocalAddresses(
+                &Addresses, &Count, &Removed, &RemovedCount, &Generation);
+        QuicLibraryReleaseAddressMonitor();
+        if (Removed != NULL) {
+            CXPLAT_FREE(Removed, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+        if (QUIC_FAILED(Status)) {
+            break;
+        }
+
+        const uint32_t RequiredLength = Count * (uint32_t)sizeof(QUIC_ADDR);
+        if (*BufferLength < RequiredLength || (RequiredLength != 0 && Buffer == NULL)) {
+            *BufferLength = RequiredLength;
+            Status = QUIC_STATUS_BUFFER_TOO_SMALL;
+        } else {
+            if (Addresses != NULL) {
+                for (uint32_t i = 0; i < Count; ++i) {
+                    ((QUIC_ADDR*)Buffer)[i] = Addresses[i].Address;
+                }
+            }
+            *BufferLength = RequiredLength;
+            Status = QUIC_STATUS_SUCCESS;
+        }
+
+        if (Addresses != NULL) {
+            CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
         break;
     }
 
