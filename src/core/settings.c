@@ -191,6 +191,12 @@ QuicSettingsSetDefault(
     if (!Settings->IsSet.AddAddressMode) {
         Settings->AddAddressMode = QUIC_DEFAULT_ADD_ADDRESS_MODE;
     }
+    if (!Settings->IsSet.LocalAddressChangeMode) {
+        Settings->LocalAddressChangeMode = QUIC_DEFAULT_LOCAL_ADDRESS_CHANGE_MODE;
+    }
+    if (!Settings->IsSet.AutoMigrationHoldDownMs) {
+        Settings->AutoMigrationHoldDownMs = QUIC_DEFAULT_AUTO_MIGRATION_HOLD_DOWN_MS;
+    }
     if (!Settings->IsSet.IgnoreUnreachable) {
         Settings->IgnoreUnreachable = QUIC_DEFAULT_IGNORE_UNREACHABLE;
     }
@@ -393,6 +399,12 @@ QuicSettingsCopy(
     }
     if (!Destination->IsSet.AddAddressMode) {
         Destination->AddAddressMode = Source->AddAddressMode;
+    }
+    if (!Destination->IsSet.LocalAddressChangeMode) {
+        Destination->LocalAddressChangeMode = Source->LocalAddressChangeMode;
+    }
+    if (!Destination->IsSet.AutoMigrationHoldDownMs) {
+        Destination->AutoMigrationHoldDownMs = Source->AutoMigrationHoldDownMs;
     }
     if (!Destination->IsSet.IgnoreUnreachable) {
         Destination->IgnoreUnreachable = Source->IgnoreUnreachable;
@@ -832,6 +844,16 @@ QuicSettingApply(
     if (Source->IsSet.AddAddressMode && (!Destination->IsSet.AddAddressMode || OverWrite)) {
         Destination->AddAddressMode = Source->AddAddressMode;
         Destination->IsSet.AddAddressMode = TRUE;
+    }
+    if (Source->IsSet.LocalAddressChangeMode &&
+        (!Destination->IsSet.LocalAddressChangeMode || OverWrite)) {
+        Destination->LocalAddressChangeMode = Source->LocalAddressChangeMode;
+        Destination->IsSet.LocalAddressChangeMode = TRUE;
+    }
+    if (Source->IsSet.AutoMigrationHoldDownMs &&
+        (!Destination->IsSet.AutoMigrationHoldDownMs || OverWrite)) {
+        Destination->AutoMigrationHoldDownMs = Source->AutoMigrationHoldDownMs;
+        Destination->IsSet.AutoMigrationHoldDownMs = TRUE;
     }
 
     if (Source->IsSet.IgnoreUnreachable && (!Destination->IsSet.IgnoreUnreachable || OverWrite)) {
@@ -1593,6 +1615,26 @@ VersionSettingsFail:
             &ValueLen);
         Settings->AddAddressMode = (uint8_t)Value;
     }
+    if (!Settings->IsSet.LocalAddressChangeMode) {
+        Value = QUIC_DEFAULT_LOCAL_ADDRESS_CHANGE_MODE;
+        ValueLen = sizeof(Value);
+        CxPlatStorageReadValue(
+            Storage,
+            QUIC_SETTING_LOCAL_ADDRESS_CHANGE_MODE,
+            (uint8_t*)&Value,
+            &ValueLen);
+        if (Value < QUIC_LOCAL_ADDRESS_CHANGE_COUNT) {
+            Settings->LocalAddressChangeMode = (uint8_t)Value;
+        }
+    }
+    if (!Settings->IsSet.AutoMigrationHoldDownMs) {
+        ValueLen = sizeof(Settings->AutoMigrationHoldDownMs);
+        CxPlatStorageReadValue(
+            Storage,
+            QUIC_SETTING_AUTO_MIGRATION_HOLD_DOWN_MS,
+            (uint8_t*)&Settings->AutoMigrationHoldDownMs,
+            &ValueLen);
+    }
     if (!Settings->IsSet.IgnoreUnreachable) {
         Value = QUIC_DEFAULT_IGNORE_UNREACHABLE;
         ValueLen = sizeof(Value);
@@ -1707,6 +1749,8 @@ QuicSettingsDump(
     QuicTraceLogVerbose(SettingPathValidatedEventEnabled,   "[sett] PathValidatedEvtEnabled= %hhu", Settings->PathValidatedEventEnabled);
     QuicTraceLogVerbose(SettingServerMigrationEnabled,      "[sett] ServerMigrationEnabled = %hhu", Settings->ServerMigrationEnabled);
     QuicTraceLogVerbose(SettingAddAddress,                  "[sett] AddAddressMode         = %hhu", Settings->AddAddressMode);
+    QuicTraceLogVerbose(SettingLocalAddressChangeMode,      "[sett] LocalAddrChangeMode    = %hhu", Settings->LocalAddressChangeMode);
+    QuicTraceLogVerbose(SettingAutoMigrationHoldDownMs,     "[sett] AutoMigrationHoldDown  = %u", Settings->AutoMigrationHoldDownMs);
     QuicTraceLogVerbose(SettingIgnoreUnreachable,           "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);
     QuicTraceLogVerbose(SettingMultipathEnabled,            "[sett] MultipathEnabled       = %hhu", Settings->MultipathEnabled);
     QuicTraceLogVerbose(SettingSendObservedAddressReports,  "[sett] SendObservedAddrRpts   = %hhu", Settings->SendObservedAddressReports);
@@ -1897,6 +1941,12 @@ QuicSettingsDumpNew(
     }
     if (Settings->IsSet.AddAddressMode) {
         QuicTraceLogVerbose(SettingAddAddress,                      "[sett] AddAddressMode         = %hhu", Settings->AddAddressMode);
+    }
+    if (Settings->IsSet.LocalAddressChangeMode) {
+        QuicTraceLogVerbose(SettingLocalAddressChangeMode,          "[sett] LocalAddrChangeMode    = %hhu", Settings->LocalAddressChangeMode);
+    }
+    if (Settings->IsSet.AutoMigrationHoldDownMs) {
+        QuicTraceLogVerbose(SettingAutoMigrationHoldDownMs,         "[sett] AutoMigrationHoldDown  = %u", Settings->AutoMigrationHoldDownMs);
     }
     if (Settings->IsSet.IgnoreUnreachable) {
         QuicTraceLogVerbose(SettingIgnoreUnreachable,               "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);
@@ -2199,6 +2249,20 @@ QuicSettingsSettingsToInternal(
         SettingsSize,
         InternalSettings);
 
+    SETTING_COPY_TO_INTERNAL_SIZED(
+        LocalAddressChangeMode,
+        QUIC_SETTINGS,
+        Settings,
+        SettingsSize,
+        InternalSettings);
+
+    SETTING_COPY_TO_INTERNAL_SIZED(
+        AutoMigrationHoldDownMs,
+        QUIC_SETTINGS,
+        Settings,
+        SettingsSize,
+        InternalSettings);
+
    SETTING_COPY_FLAG_TO_INTERNAL_SIZED(
         Flags,
         IgnoreUnreachable,
@@ -2442,6 +2506,20 @@ QuicSettingsGetSettings(
     SETTING_COPY_FLAG_FROM_INTERNAL_SIZED(
         Flags,
         AddAddressMode,
+        QUIC_SETTINGS,
+        Settings,
+        *SettingsLength,
+        InternalSettings);
+
+    SETTING_COPY_FROM_INTERNAL_SIZED(
+        LocalAddressChangeMode,
+        QUIC_SETTINGS,
+        Settings,
+        *SettingsLength,
+        InternalSettings);
+
+    SETTING_COPY_FROM_INTERNAL_SIZED(
+        AutoMigrationHoldDownMs,
         QUIC_SETTINGS,
         Settings,
         *SettingsLength,

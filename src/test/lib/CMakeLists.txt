@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 set(SOURCES
+    AddressChangeTest.cpp
     ApiTest.cpp
     BasicTest.cpp
     DatagramTest.cpp

@@ -1055,6 +1055,37 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ApplySettings,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for IndicateLocalAddressesChanged
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u
+// QuicTraceLogConnVerbose(
+            IndicateLocalAddressesChanged,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u",
+            AddedCount,
+            RemovedCount,
+            LostCount);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = AddedCount = arg3
+// arg4 = arg4 = RemovedCount = arg4
+// arg5 = arg5 = LostCount = arg5
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateLocalAddressesChanged,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3,
+        unsigned int, arg4,
+        unsigned int, arg5), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(unsigned int, arg4, arg4)
+        ctf_integer(unsigned int, arg5, arg5)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for PhaseShiftUpdated
 // [conn][%p] New Phase Shift: %lld us
 // QuicTraceLogConnVerbose(

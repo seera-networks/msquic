@@ -631,6 +631,20 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_DEFAULT_ADD_ADDRESS_MODE                QUIC_ADD_ADDRESS_AUTO
 
 //
+// Whether a connection reacts to the host's own addresses changing. Disabled
+// by default: the behaviour every caller had before, and what keeps the
+// address monitor from being started at all for applications that do not ask.
+//
+#define QUIC_DEFAULT_LOCAL_ADDRESS_CHANGE_MODE       QUIC_LOCAL_ADDRESS_CHANGE_DISABLED
+
+//
+// The least time between automatic migrations of the active path that are
+// optional -- a better route, a new address. Migrating because the active
+// path's own address disappeared is never held down.
+//
+#define QUIC_DEFAULT_AUTO_MIGRATION_HOLD_DOWN_MS     1000
+
+//
 // The default settings for ignore unreachable addresses.
 //
 #define QUIC_DEFAULT_IGNORE_UNREACHABLE              FALSE
@@ -784,6 +798,8 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_SETTING_STREAM_MULTI_RECEIVE_ENABLED   "StreamMultiReceiveEnabled"
 #define QUIC_SETTING_SERVER_MIGRATION_ENABLED       "ServerMigrationEnabled"
 #define QUIC_SETTING_ADD_ADDRESS_MODE               "AddAddressMode"
+#define QUIC_SETTING_LOCAL_ADDRESS_CHANGE_MODE      "LocalAddressChangeMode"
+#define QUIC_SETTING_AUTO_MIGRATION_HOLD_DOWN_MS    "AutoMigrationHoldDownMs"
 #define QUIC_SETTING_IGNORE_UNREACHABLE             "IgnoreUnreachable"
 #define QUIC_SETTING_MULTIPATH_ENABLED              "MultipathEnabled"
 #define QUIC_SETTING_SEND_OBSERVED_ADDRESS_REPORTS    "SendObservedAddressReports"

@@ -88,6 +88,29 @@ TRACEPOINT_EVENT(CLOG_LIBRARY_C, LibraryVerifierEnabled,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for LibraryLocalAddressesChanged
+// [ lib] Local addresses changed, Generation=%llu, Count=%u
+// QuicTraceLogInfo(
+        LibraryLocalAddressesChanged,
+        "[ lib] Local addresses changed, Generation=%llu, Count=%u",
+        ChangeSet->Generation,
+        ChangeSet->AddressCount);
+// arg2 = arg2 = ChangeSet->Generation = arg2
+// arg3 = arg3 = ChangeSet->AddressCount = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_LIBRARY_C, LibraryLocalAddressesChanged,
+    TP_ARGS(
+        unsigned long long, arg2,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer(uint64_t, arg2, arg2)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for LibraryCidLengthSet
 // [ lib] CID Length = %hhu
 // QuicTraceLogInfo(

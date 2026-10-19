@@ -6949,6 +6949,30 @@
       ],
       "macroName": "QuicTraceLogStreamVerbose"
     },
+    "IndicateLocalAddressesChanged": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u",
+      "UniqueId": "IndicateLocalAddressesChanged",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "IndicateNotifyObservedAddress": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS",
@@ -7575,6 +7599,22 @@
       "UniqueId": "LibraryLoadBalancingModeSetAfterInUse",
       "splitArgs": [],
       "macroName": "QuicTraceLogError"
+    },
+    "LibraryLocalAddressesChanged": {
+      "ModuleProperites": {},
+      "TraceString": "[ lib] Local addresses changed, Generation=%llu, Count=%u",
+      "UniqueId": "LibraryLocalAddressesChanged",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogInfo"
     },
     "LibraryMsQuicClose": {
       "ModuleProperites": {},
@@ -11981,6 +12021,18 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "SettingAutoMigrationHoldDownMs": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] AutoMigrationHoldDown  = %u",
+      "UniqueId": "SettingAutoMigrationHoldDownMs",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "SettingCongestionControlAlgorithm": {
       "ModuleProperites": {},
       "TraceString": "[sett] CongestionControlAlgorithm = %hu",
@@ -12609,6 +12661,18 @@
       "ModuleProperites": {},
       "TraceString": "[sett] IgnoreUnreachable      = %hhu",
       "UniqueId": "SettingIgnoreUnreachable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "SettingLocalAddressChangeMode": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] LocalAddrChangeMode    = %hhu",
+      "UniqueId": "SettingLocalAddressChangeMode",
       "splitArgs": [
         {
           "DefinationEncoding": "hhu",
@@ -16956,6 +17020,11 @@
         "EncodingString": "[strm][%p] Indicating QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE = %llu"
       },
       {
+        "UniquenessHash": "6543cd24-b144-4f9e-9c6c-68b67387bf8e",
+        "TraceID": "IndicateLocalAddressesChanged",
+        "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u"
+      },
+      {
         "UniquenessHash": "27e4602e-c0fc-694a-ed69-7578cd1d81ae",
         "TraceID": "IndicateNotifyObservedAddress",
         "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS"
@@ -17169,6 +17238,11 @@
         "UniquenessHash": "e6c3b194-e19d-d568-1157-675aba101620",
         "TraceID": "LibraryLoadBalancingModeSetAfterInUse",
         "EncodingString": "[ lib] Tried to change load balancing mode after library in use!"
+      },
+      {
+        "UniquenessHash": "752f49ed-e3e4-9cb2-ac74-04ede62feb93",
+        "TraceID": "LibraryLocalAddressesChanged",
+        "EncodingString": "[ lib] Local addresses changed, Generation=%llu, Count=%u"
       },
       {
         "UniquenessHash": "ae77005c-231d-7848-7e06-879ecbd5363d",
@@ -18501,6 +18575,11 @@
         "EncodingString": "[sett] AddAddressMode         = %hhu"
       },
       {
+        "UniquenessHash": "295bf407-e4e9-2b67-52e4-a7caf85eb265",
+        "TraceID": "SettingAutoMigrationHoldDownMs",
+        "EncodingString": "[sett] AutoMigrationHoldDown  = %u"
+      },
+      {
         "UniquenessHash": "8a9548eb-5ed9-abe8-6008-94b545f099d7",
         "TraceID": "SettingCongestionControlAlgorithm",
         "EncodingString": "[sett] CongestionControlAlgorithm = %hu"
@@ -18759,6 +18838,11 @@
         "UniquenessHash": "77ab1610-2ec3-cabb-48c6-b873e735a6c3",
         "TraceID": "SettingIgnoreUnreachable",
         "EncodingString": "[sett] IgnoreUnreachable      = %hhu"
+      },
+      {
+        "UniquenessHash": "f8b0e239-3b4c-72a6-631e-74c77d01ecce",
+        "TraceID": "SettingLocalAddressChangeMode",
+        "EncodingString": "[sett] LocalAddrChangeMode    = %hhu"
       },
       {
         "UniquenessHash": "025f13c0-6d85-2f19-a68e-e80104f42f1f",

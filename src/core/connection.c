@@ -425,6 +425,16 @@ QuicConnFree(
     if (Connection->CloseReasonPhrase != NULL) {
         CXPLAT_FREE(Connection->CloseReasonPhrase, QUIC_POOL_CLOSE_REASON);
     }
+    //
+    // Should already be gone: QuicConnOnShutdownComplete releases it, at
+    // PASSIVE_LEVEL where the monitor's teardown belongs. Kept as a net so a
+    // path that somehow reaches free still returns the reference.
+    //
+    CXPLAT_DBG_ASSERT(!Connection->AddressMonitorRef);
+    if (Connection->AddressMonitorRef) {
+        Connection->AddressMonitorRef = FALSE;
+        QuicLibraryReleaseAddressMonitor();
+    }
     Connection->State.Freed = TRUE;
 #if DEBUG
     QuicLibraryUntrackDbgObject(QUIC_DBG_OBJECT_TYPE_CONNECTION, &Connection->DbgObjectLink);
@@ -566,6 +576,292 @@ QuicConnRegister(
     }
 
     return !RegistrationShuttingDown;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+void
+QuicConnQueueLocalAddressChange(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    if (Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_DISABLED ||
+        Connection->State.Freed ||
+        Connection->State.ShutdownComplete) {
+        return;
+    }
+
+    if (Connection->Worker == NULL) {
+        //
+        // No worker to queue onto yet, and no paths to reconcile either. Noted
+        // so that handshake confirmation runs the first pass. Writing this
+        // field off-worker is safe only here: a connection without a worker is
+        // also not on its registration's list, so the platform fan-out cannot
+        // have reached it, and the only caller is the thread opening it.
+        //
+        Connection->AddressChangeDirty = TRUE;
+        return;
+    }
+
+    //
+    // One operation at a time per connection. The handler reads the latest
+    // snapshot rather than anything carried on the operation, so a second one
+    // would do the same work twice -- and a burst of platform callbacks, which
+    // is the normal shape of an interface transition, would otherwise queue one
+    // apiece.
+    //
+    if (InterlockedFetchAndSetBoolean(&Connection->AddressChangeQueued)) {
+        return;
+    }
+
+    QUIC_OPERATION* Oper =
+        QuicConnAllocOperation(Connection, QUIC_OPER_TYPE_LOCAL_ADDRESS_CHANGE);
+    if (Oper == NULL) {
+        //
+        // Cleared again, so the next change can queue one. Dropping it is the
+        // right answer under memory pressure: the snapshot is level-triggered,
+        // so the next reconciliation sees everything this one would have.
+        //
+        (void)InterlockedFetchAndClearBoolean(&Connection->AddressChangeQueued);
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "local address change operation",
+            0);
+        return;
+    }
+
+    QuicConnQueueOper(Connection, Oper);
+}
+
+//
+// Reconciles the connection's paths against the library's latest local address
+// snapshot, on the connection's own worker.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnProcessLocalAddressChange(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    //
+    // Cleared before the snapshot is read, not after. The other order loses a
+    // change that lands while this runs: the fan-out would see the flag still
+    // set, queue nothing, and this pass would already have read the older
+    // snapshot.
+    //
+    (void)InterlockedFetchAndClearBoolean(&Connection->AddressChangeQueued);
+
+    if (Connection->State.ShutdownComplete ||
+        Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_DISABLED) {
+        return;
+    }
+
+    if (!Connection->State.HandshakeConfirmed) {
+        //
+        // RFC 9000 section 9 does not allow migration before the handshake is
+        // confirmed, and there is nothing useful to tell the application about
+        // paths that do not exist yet. Noted instead, and re-run from where
+        // QuicConnOpenNewPaths is called at confirmation.
+        //
+        Connection->AddressChangeDirty = TRUE;
+        return;
+    }
+
+    Connection->AddressChangeDirty = FALSE;
+
+    CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
+    uint32_t AddressCount = 0;
+    CXPLAT_LOCAL_ADDRESS* Removed = NULL;
+    uint32_t RemovedCount = 0;
+    uint64_t Generation = 0;
+    //
+    // Declared up here, before the first goto, so that every path to Exit
+    // sees them initialized.
+    //
+    QUIC_ADDR* Added = NULL;
+    QUIC_ADDR* RemovedAddrs = NULL;
+    uint32_t AddedCount = 0;
+
+    if (QUIC_FAILED(
+            QuicLibraryGetLocalAddresses(
+                &Addresses, &AddressCount, &Removed, &RemovedCount, &Generation))) {
+        return;
+    }
+
+    //
+    // The getter may hand back NULL with a zero count, which its annotation
+    // now says out loud. Normalized here so that every loop below is bounded
+    // by a count that matches a pointer the analyzers can see is valid.
+    //
+    if (Addresses == NULL) {
+        AddressCount = 0;
+    }
+    if (Removed == NULL) {
+        RemovedCount = 0;
+    }
+
+    if (Generation == Connection->LastAddressGeneration) {
+        //
+        // Already reconciled against this one. Two operations can reach here
+        // for one generation when a change lands just as a previous pass
+        // cleared its flag.
+        //
+        goto Exit;
+    }
+    Connection->LastAddressGeneration = Generation;
+
+    //
+    // Which of this connection's paths have lost the address they are bound
+    // to. Compared without the port, since a snapshot entry names an address
+    // and the path names an endpoint.
+    //
+    QUIC_PATH_PARAM LostPaths[QUIC_MAX_PATH_COUNT];
+    QUIC_ADDR LostLocal[QUIC_MAX_PATH_COUNT];
+    QUIC_ADDR LostRemote[QUIC_MAX_PATH_COUNT];
+    uint32_t LostCount = 0;
+
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    CXPLAT_ANALYSIS_ASSUME(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path->Binding == NULL) {
+            continue;
+        }
+
+        QUIC_ADDR Local = Path->Route.LocalAddress;
+        QuicAddrSetPort(&Local, 0);
+
+        BOOLEAN Found = FALSE;
+        for (uint32_t j = 0; j < AddressCount; ++j) {
+            if (QuicAddrCompare(&Local, &Addresses[j].Address)) {
+                Found = TRUE;
+                break;
+            }
+        }
+        if (Found) {
+            continue;
+        }
+
+        LostLocal[LostCount] = Path->Route.LocalAddress;
+        LostRemote[LostCount] = Path->Route.RemoteAddress;
+        LostPaths[LostCount].LocalAddress = &LostLocal[LostCount];
+        LostPaths[LostCount].RemoteAddress = &LostRemote[LostCount];
+        ++LostCount;
+    }
+
+    //
+    // Addresses the connection is not already using. Reported as added rather
+    // than diffed against the previous snapshot: what an application wants to
+    // know is which addresses it could open a path on now, and that is a
+    // question about the present, not about what changed.
+    //
+    //
+    // On the heap, not the stack: QUIC_MAX_LOCAL_ADDRESS_COUNT entries of
+    // QUIC_ADDR twice over is several kilobytes, and this runs synchronously
+    // from crypto frame processing, which is already deep in the receive path.
+    // One allocation covers both lists.
+    //
+    //
+    // At least one entry even when both lists are empty, so that the arrays
+    // are never NULL past this point. The degenerate case is a generation
+    // that empties the snapshot and removes nothing, which still has lost
+    // paths worth reporting.
+    //
+    const uint32_t ListCount = CXPLAT_MAX(AddressCount + RemovedCount, 1);
+    Added =
+        CXPLAT_ALLOC_NONPAGED(
+            ListCount * sizeof(QUIC_ADDR),
+            QUIC_POOL_DATAPATH_ADDRESSES);
+    if (Added == NULL) {
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "local address change event lists",
+            ListCount * sizeof(QUIC_ADDR));
+        goto Exit;
+    }
+    RemovedAddrs = Added + AddressCount;
+
+    for (uint32_t j = 0; j < AddressCount; ++j) {
+        BOOLEAN InUse = FALSE;
+        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+            if (Connection->Paths[i].Binding == NULL) {
+                //
+                // Same skip as the loop above. A torn-down path keeps a stale
+                // local address, and counting it as in use would hide an
+                // address the application could open a path on.
+                //
+                continue;
+            }
+            QUIC_ADDR Local = Connection->Paths[i].Route.LocalAddress;
+            QuicAddrSetPort(&Local, 0);
+            if (QuicAddrCompare(&Local, &Addresses[j].Address)) {
+                InUse = TRUE;
+                break;
+            }
+        }
+        if (!InUse) {
+            //
+            // Bounded by the loop: one entry per snapshot address at most, and
+            // the allocation holds AddressCount of them plus the removals.
+            //
+            CXPLAT_DBG_ASSERT(AddedCount < ListCount);
+            CXPLAT_ANALYSIS_ASSUME(AddedCount < ListCount);
+            Added[AddedCount++] = Addresses[j].Address;
+        }
+    }
+
+    if (LostCount == 0 && AddedCount == 0 && RemovedCount == 0) {
+        goto Exit;
+    }
+
+    //
+    // Flattened for the event, which speaks in QUIC_ADDR rather than in the
+    // platform's richer entry.
+    //
+    CXPLAT_ANALYSIS_ASSUME(AddressCount + RemovedCount <= ListCount);
+    for (uint32_t i = 0; i < RemovedCount; ++i) {
+        RemovedAddrs[i] = Removed[i].Address;
+    }
+
+    if (Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY) {
+        QUIC_CONNECTION_EVENT Event;
+        Event.Type = QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED;
+        Event.LOCAL_ADDRESSES_CHANGED.AddedCount = AddedCount;
+        Event.LOCAL_ADDRESSES_CHANGED.Added = AddedCount != 0 ? Added : NULL;
+        Event.LOCAL_ADDRESSES_CHANGED.RemovedCount = RemovedCount;
+        Event.LOCAL_ADDRESSES_CHANGED.Removed = RemovedCount != 0 ? RemovedAddrs : NULL;
+        Event.LOCAL_ADDRESSES_CHANGED.LostPathCount = LostCount;
+        Event.LOCAL_ADDRESSES_CHANGED.LostPaths = LostCount != 0 ? LostPaths : NULL;
+        QuicTraceLogConnVerbose(
+            IndicateLocalAddressesChanged,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u",
+            AddedCount,
+            RemovedCount,
+            LostCount);
+        (void)QuicConnIndicateEvent(Connection, &Event);
+    }
+
+    //
+    // QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing yet. The policy is phase 3;
+    // until then the mode is accepted and behaves as NOTIFY does without the
+    // event, so an application that sets it early is not misled into thinking
+    // paths are being managed.
+    //
+
+Exit:
+
+    if (Addresses != NULL) {
+        CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    if (Removed != NULL) {
+        CXPLAT_FREE(Removed, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    if (Added != NULL) {
+        CXPLAT_FREE(Added, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -1117,6 +1413,16 @@ QuicConnOnShutdownComplete(
     }
     Connection->State.ShutdownComplete = TRUE;
     Connection->State.UpdateWorker = FALSE;
+
+    if (Connection->AddressMonitorRef) {
+        //
+        // Released here rather than at free: tearing the monitor down joins
+        // the backend's thread, which is PASSIVE_LEVEL work, and QuicConnFree
+        // runs at DISPATCH_LEVEL.
+        //
+        Connection->AddressMonitorRef = FALSE;
+        QuicLibraryReleaseAddressMonitor();
+    }
 
     QuicTraceEvent(
         ConnShutdownComplete,
@@ -10270,6 +10576,43 @@ QuicConnApplyNewSettings(
     }
 #endif
 
+    //
+    // Tested against the modes that do something rather than against
+    // DISABLED, so that a value outside the enum -- which nothing on the API
+    // path rejects -- cannot start the monitor for a connection that will
+    // never be told anything.
+    //
+    const BOOLEAN WantsAddressChanges =
+        Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY ||
+        Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_AUTO;
+
+    if (!WantsAddressChanges && Connection->AddressMonitorRef) {
+        //
+        // Turned back off. Give the reference back rather than holding the
+        // monitor up until the connection closes.
+        //
+        Connection->AddressMonitorRef = FALSE;
+        QuicLibraryReleaseAddressMonitor();
+    } else if (WantsAddressChanges && !Connection->AddressMonitorRef) {
+        //
+        // The monitor is started on demand and stopped when the last interested
+        // connection goes away, so an application that never asks for this pays
+        // nothing for it. A failure here leaves the mode set but silent, which
+        // is the same as the platform having no backend.
+        //
+        if (QUIC_SUCCEEDED(QuicLibraryAddRefAddressMonitor())) {
+            Connection->AddressMonitorRef = TRUE;
+            //
+            // Run once up front. Before the handshake is confirmed this only
+            // marks the connection dirty, so what the application actually
+            // gets is one indication at confirmation naming every address it
+            // could open a path on -- which is the question it is asking by
+            // turning the mode on at all.
+            //
+            QuicConnQueueLocalAddressChange(Connection);
+        }
+    }
+
     if (OverWrite) {
         QuicSettingsDumpNew(NewSettings);
     } else {
@@ -10695,6 +11038,10 @@ QuicConnDrainOperations(
 
         case QUIC_OPER_TYPE_REMOVE_ADDRESS:
             QuicConnProcessRemoveAddressOper(Connection, Oper->REMOVE_ADDRESS.SequenceNumber);
+            break;
+
+        case QUIC_OPER_TYPE_LOCAL_ADDRESS_CHANGE:
+            QuicConnProcessLocalAddressChange(Connection);
             break;
 
         default:

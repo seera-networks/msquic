@@ -27,9 +27,9 @@ extern "C" {
 // QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            errno,
+            Error,
             "socket(AF_NETLINK, NETLINK_ROUTE) failed");
-// arg2 = arg2 = errno = arg2
+// arg2 = arg2 = Error = arg2
 // arg3 = arg3 = "socket(AF_NETLINK, NETLINK_ROUTE) failed" = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_4_ARGS_TRACE_LibraryErrorStatus

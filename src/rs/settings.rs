@@ -45,6 +45,33 @@ impl From<AddAddressMode> for crate::ffi::QUIC_ADD_ADDRESS_MODE {
     }
 }
 
+#[derive(Clone, Copy)]
+/// What a connection does when the host's local addresses change.
+pub enum LocalAddressChangeMode {
+    /// The behaviour before this existed.
+    Disabled,
+    /// Indicate the change; the application decides.
+    Notify,
+    /// The connection migrates and manages paths itself.
+    Auto,
+}
+
+impl From<LocalAddressChangeMode> for crate::ffi::QUIC_LOCAL_ADDRESS_CHANGE_MODE {
+    fn from(value: LocalAddressChangeMode) -> Self {
+        match value {
+            LocalAddressChangeMode::Disabled => {
+                crate::ffi::QUIC_LOCAL_ADDRESS_CHANGE_MODE_QUIC_LOCAL_ADDRESS_CHANGE_DISABLED
+            }
+            LocalAddressChangeMode::Notify => {
+                crate::ffi::QUIC_LOCAL_ADDRESS_CHANGE_MODE_QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY
+            }
+            LocalAddressChangeMode::Auto => {
+                crate::ffi::QUIC_LOCAL_ADDRESS_CHANGE_MODE_QUIC_LOCAL_ADDRESS_CHANGE_AUTO
+            }
+        }
+    }
+}
+
 /// Settings for MsQuic
 /// Wrapping QUIC_SETTINGS ffi type.
 pub struct Settings {
@@ -204,6 +231,20 @@ impl Settings {
         self.inner.AddAddressMode = crate::ffi::QUIC_ADD_ADDRESS_MODE::from(value) as u8;
         self
     }
+
+    pub fn set_LocalAddressChangeMode(mut self, value: LocalAddressChangeMode) -> Self {
+        unsafe {
+            self.inner
+                .__bindgen_anon_1
+                .IsSet
+                .set_LocalAddressChangeMode(1)
+        };
+        self.inner.LocalAddressChangeMode =
+            crate::ffi::QUIC_LOCAL_ADDRESS_CHANGE_MODE::from(value) as u8;
+        self
+    }
+
+    define_settings_entry!(set_AutoMigrationHoldDownMs, AutoMigrationHoldDownMs, u32);
 
     #[cfg(feature = "preview-api")]
     define_settings_entry_bitflag2!(set_IgnoreUnreachable);

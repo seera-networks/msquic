@@ -7,9 +7,9 @@
 // QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            errno,
+            Error,
             "socket(AF_NETLINK, NETLINK_ROUTE) failed");
-// arg2 = arg2 = errno = arg2
+// arg2 = arg2 = Error = arg2
 // arg3 = arg3 = "socket(AF_NETLINK, NETLINK_ROUTE) failed" = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_ADDRESS_MONITOR_LINUX_C, LibraryErrorStatus,
