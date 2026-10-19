@@ -200,6 +200,18 @@ QuicTestLocalAddressChangeDisabled(
 void
 QuicTestGetLocalAddressesParam(
     );
+
+void
+QuicTestLocalAddressChangeAuto(
+    );
+
+void
+QuicTestLocalAddressChangeAutoOffline(
+    );
+
+void
+QuicTestLocalAddressChangeAutoServerMigration(
+    );
 #endif
 
 //
