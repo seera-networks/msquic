@@ -118,6 +118,11 @@ typedef enum QUIC_ADD_ADDRESS_MODE {
 // application calling those from the callback races the policy -- there, the
 // events are informational only.
 //
+// N.B. SetParam runs inline when called from a connection callback, so
+// ACTIVATE_PATH from inside one raises LOCAL_ADDRESS_CHANGED before the call
+// returns, re-entering the handler. Do not hold a non-recursive lock across a
+// handler that calls the path parameters.
+//
 typedef enum QUIC_LOCAL_ADDRESS_CHANGE_MODE {
     QUIC_LOCAL_ADDRESS_CHANGE_DISABLED,  // Default. The behaviour before this existed.
     QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY,    // Indicate the change; the app decides and acts.

@@ -229,6 +229,8 @@ This event is delivered when the local address used for the primary/active path 
 
 It is raised whatever moved the active path: `QUIC_PARAM_CONN_ACTIVATE_PATH`, or a migration the connection performed itself under `QUIC_LOCAL_ADDRESS_CHANGE_AUTO`.
 
+> **Note** — `SetParam` runs inline when called from a connection callback, so setting `QUIC_PARAM_CONN_ACTIVATE_PATH` from a callback raises this event *before that call returns*, re-entering the application's handler. An application that holds a non-recursive lock across its handler must not call the path parameters from inside it; queue the work instead.
+
 ### LOCAL_ADDRESS_CHANGED
 
 New local address is passed in the `LOCAL_ADDRESS_CHANGED` struct/union.

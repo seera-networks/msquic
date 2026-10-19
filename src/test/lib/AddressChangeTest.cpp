@@ -545,8 +545,36 @@ QuicTestLocalAddressChangeAutoOffline(
     TEST_TRUE(QuicAddrCompare(&ClientLocalAddr.SockAddr, &StillLocalAddr.SockAddr));
 
     //
-    // The address comes back. The active path's address is present again, so
-    // there is nothing to migrate and the connection carries on where it was.
+    // Now the host has an address, but not one that could carry this
+    // connection: a link-local address cannot reach a loopback peer. AUTO has
+    // to treat that as having no candidate and keep holding.
+    //
+    // N.B. This asserts the outcome, not the mechanism. With the scope filter
+    // in QuicConnSelectLocalAddress removed, this address would be chosen and
+    // the migration would instead fail when the binding could not be created,
+    // which looks the same from here -- the negative control confirms the test
+    // does not distinguish the two. The case the filter actually exists for is
+    // a peer off this host with only loopback left in the snapshot, which a
+    // loopback-only test cannot set up.
+    //
+    QUIC_ADDR Unusable;
+    CxPlatZeroMemory(&Unusable, sizeof(Unusable));
+    TEST_TRUE(QuicAddrFromString("169.254.1.1", 0, &Unusable));
+    QuicAddrSetPort(&Unusable, 0);
+    TEST_QUIC_SUCCEEDED(InjectAddresses(&Unusable, 1));
+
+    TEST_FALSE(Context.LocalAddrChangedEvent.WaitTimeout(500));
+    TEST_EQUAL(0u, Context.LocalAddrChangeCount);
+    TEST_FALSE(Context.ShutdownEvent.WaitTimeout(100));
+
+    QuicAddr HeldLocalAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(HeldLocalAddr));
+    TEST_TRUE(QuicAddrCompare(&ClientLocalAddr.SockAddr, &HeldLocalAddr.SockAddr));
+
+    //
+    // The real address comes back. The active path's address is present again,
+    // so there is nothing to migrate and the connection carries on where it
+    // was.
     //
     QUIC_ADDR Back = ClientLocalAddr.SockAddr;
     QuicAddrSetPort(&Back, 0);
