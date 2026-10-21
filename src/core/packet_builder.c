@@ -568,7 +568,11 @@ QuicPacketBuilderQMuxPrepare(
             QMux->PermitEarlyData = FALSE;
             return FALSE;
         }
-        QuicPacketBuilderFinalize(Builder, FALSE);
+        //
+        // The QMux finalizer, not the UDP one: a QMux path has no PathID, and
+        // the UDP finalizer's "nothing framed" branch dereferences it.
+        //
+        QuicPacketBuilderQMuxFinalize(Builder, FALSE);
         NewQuicPacket = TRUE;
 
     } else if (Builder->Datagram == NULL) {
@@ -1477,6 +1481,12 @@ QuicPacketBuilderQMuxFinalize(
         }
         Builder->Datagram->Length = (uint32_t)EncryptBuffer.DataLength;
         Builder->DatagramLength = (uint16_t)Builder->Datagram->Length;
+        //
+        // An encrypted record cannot take more frames: close this buffer now,
+        // or a later "nothing framed" finalize frees it unsent (TLS sequence
+        // already consumed, so the peer fails every record after it).
+        //
+        FinalQuicPacket = TRUE;
 
         //
         // Track the sent packet.
