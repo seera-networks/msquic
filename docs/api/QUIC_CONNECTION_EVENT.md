@@ -227,6 +227,10 @@ A flag indicating that the application called [ConnectionClose](ConnectionClose.
 
 This event is delivered when the local address used for the primary/active path communication has changed.
 
+It is raised whatever moved the active path: `QUIC_PARAM_CONN_ACTIVATE_PATH`, or a migration the connection performed itself under `QUIC_LOCAL_ADDRESS_CHANGE_AUTO`.
+
+> **Note** — `SetParam` runs inline when called from a connection callback, so setting `QUIC_PARAM_CONN_ACTIVATE_PATH` from a callback raises this event *before that call returns*, re-entering the application's handler. An application that holds a non-recursive lock across its handler must not call the path parameters from inside it; queue the work instead.
+
 ### LOCAL_ADDRESS_CHANGED
 
 New local address is passed in the `LOCAL_ADDRESS_CHANGED` struct/union.
@@ -580,6 +584,10 @@ Addresses the host no longer has, with the port zero. This one is informational 
 The connection's paths whose local address the host no longer has. Each entry is a `QUIC_PATH_PARAM` in the form `QUIC_PARAM_CONN_REMOVE_PATH` accepts, so it can be passed straight back.
 
 The arrays are valid only for the duration of the callback.
+
+### NOTIFY and AUTO are not interchangeable
+
+Under `NOTIFY` the application owns the decision and is expected to act on this event. Under `QUIC_LOCAL_ADDRESS_CHANGE_AUTO` the connection owns it, and calling the path parameters from a callback races the policy — there, treat this event and `QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED` as informational. `AUTO` also does nothing at all on a connection that negotiated server-initiated migration, because the path parameters reject our calls on one.
 
 # See Also
 

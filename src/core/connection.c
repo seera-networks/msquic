@@ -578,6 +578,844 @@ QuicConnRegister(
     return !RegistrationShuttingDown;
 }
 
+//
+// Forward declarations: the policy below drives the path APIs, which are
+// defined further down this file with the rest of the parameter handling.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_STATUS
+QuicConnAddPath(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_PATH_PARAM* Param,
+    _Out_ QUIC_PATH** NewPath
+    );
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_STATUS
+QuicConnActivatePath(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_PATH_PARAM* Param
+    );
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_STATUS
+QuicConnRemovePath(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_PATH_PARAM* Param
+    );
+
+
+//
+// Whether an address is on this host. The whole of 127/8 answers locally, not
+// just 127.0.0.1, and a test or a service can legitimately sit on any of it --
+// this file's own tests use 127.0.0.2.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnAddressIsLoopback(
+    _In_ const QUIC_ADDR* Address
+    )
+{
+    if (QuicAddrGetFamily(Address) == QUIC_ADDRESS_FAMILY_INET) {
+        uint8_t Bytes[4];
+        CxPlatCopyMemory(Bytes, &Address->Ipv4.sin_addr, sizeof(Bytes));
+        return Bytes[0] == 127;
+    }
+
+    QUIC_ADDR Loopback;
+    CxPlatZeroMemory(&Loopback, sizeof(Loopback));
+    QuicAddrSetFamily(&Loopback, QUIC_ADDRESS_FAMILY_INET6);
+    QuicAddrSetToLoopback(&Loopback);
+    return QuicAddrCompareIp(&Loopback, Address);
+}
+
+//
+// Whether an address is only reachable on-link: fe80::/10 for IPv6, and
+// 169.254/16 for IPv4.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnAddressIsLinkLocal(
+    _In_ const QUIC_ADDR* Address
+    )
+{
+    if (QuicAddrGetFamily(Address) == QUIC_ADDRESS_FAMILY_INET) {
+        uint8_t Bytes[4];
+        CxPlatCopyMemory(Bytes, &Address->Ipv4.sin_addr, sizeof(Bytes));
+        return Bytes[0] == 169 && Bytes[1] == 254;
+    }
+
+    uint8_t Bytes[16];
+    CxPlatCopyMemory(Bytes, &Address->Ipv6.sin6_addr, sizeof(Bytes));
+    return Bytes[0] == 0xfe && (Bytes[1] & 0xc0) == 0x80;
+}
+
+//
+// Whether the connection already sends from this address on some path. The
+// comparison ignores the port, since a snapshot entry names an address and a
+// path names an endpoint.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnHasPathOnLocalAddress(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Address
+    )
+{
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].Binding == NULL) {
+            continue;
+        }
+        if (QuicAddrCompareIp(&Connection->Paths[i].Route.LocalAddress, Address)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+
+//
+// Ranks one candidate local address against another for AUTO mode, in the
+// order phase 3 of #134 settled on. Returns TRUE when Left is the better of
+// the two.
+//
+// Replacing is the address being migrated away from, when there is one. Its
+// temporary flag is carried forward rather than re-decided, so that a
+// connection that started on a privacy address stays on one and a connection
+// that started on a stable address does not silently acquire one.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnLocalAddressIsBetter(
+    _In_ const CXPLAT_LOCAL_ADDRESS* Left,
+    _In_ const CXPLAT_LOCAL_ADDRESS* Right,
+    _In_opt_ const CXPLAT_LOCAL_ADDRESS* Replacing
+    )
+{
+    //
+    // A deprecated address still works, but its lifetime has expired and it
+    // will go away; anything else is preferable.
+    //
+    const BOOLEAN LeftDeprecated = !!(Left->Flags & CXPLAT_ADDRESS_FLAG_DEPRECATED);
+    const BOOLEAN RightDeprecated = !!(Right->Flags & CXPLAT_ADDRESS_FLAG_DEPRECATED);
+    if (LeftDeprecated != RightDeprecated) {
+        return RightDeprecated;
+    }
+
+    //
+    // A global address is preferable to one with narrower scope even when both
+    // can reach the peer. Which of them *can* is settled by the caller's
+    // filter, not here.
+    //
+    const BOOLEAN LeftNarrow =
+        !!(Left->Flags & (CXPLAT_ADDRESS_FLAG_LINK_LOCAL | CXPLAT_ADDRESS_FLAG_LOOPBACK));
+    const BOOLEAN RightNarrow =
+        !!(Right->Flags & (CXPLAT_ADDRESS_FLAG_LINK_LOCAL | CXPLAT_ADDRESS_FLAG_LOOPBACK));
+    if (LeftNarrow != RightNarrow) {
+        return RightNarrow;
+    }
+
+    //
+    // Keep whichever kind of address the connection was already using.
+    //
+    if (Replacing != NULL) {
+        const BOOLEAN WantTemporary = !!(Replacing->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
+        const BOOLEAN LeftTemporary = !!(Left->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
+        const BOOLEAN RightTemporary = !!(Right->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
+        if (LeftTemporary != RightTemporary) {
+            return LeftTemporary == WantTemporary;
+        }
+    }
+
+    //
+    // Nothing left to tell them apart, so pick deterministically: the same
+    // input has to produce the same choice on every reconciliation, or a
+    // connection could migrate back and forth between equals.
+    //
+    if (Left->InterfaceIndex != Right->InterfaceIndex) {
+        return Left->InterfaceIndex < Right->InterfaceIndex;
+    }
+
+    //
+    // Ordered on the address bytes, by family. Not on the QUIC_ADDR union as a
+    // whole: that has padding, whose contents are not defined, so comparing it
+    // would make this ordering depend on bytes nobody set -- the opposite of
+    // the stability the tiebreak exists to provide.
+    //
+    const QUIC_ADDRESS_FAMILY LeftFamily = QuicAddrGetFamily(&Left->Address);
+    const QUIC_ADDRESS_FAMILY RightFamily = QuicAddrGetFamily(&Right->Address);
+    if (LeftFamily != RightFamily) {
+        return LeftFamily < RightFamily;
+    }
+    if (LeftFamily == QUIC_ADDRESS_FAMILY_INET) {
+        return
+            memcmp(
+                &Left->Address.Ipv4.sin_addr,
+                &Right->Address.Ipv4.sin_addr,
+                sizeof(Left->Address.Ipv4.sin_addr)) < 0;
+    }
+    return
+        memcmp(
+            &Left->Address.Ipv6.sin6_addr,
+            &Right->Address.Ipv6.sin6_addr,
+            sizeof(Left->Address.Ipv6.sin6_addr)) < 0;
+}
+
+
+//
+// Picks the local address AUTO mode should send from to reach Remote, or NULL
+// when the host has nothing usable. Excludes addresses the connection already
+// has a path on, since the caller is looking for somewhere new to go.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+const CXPLAT_LOCAL_ADDRESS*
+QuicConnSelectLocalAddress(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_reads_(AddressCount) const CXPLAT_LOCAL_ADDRESS* Addresses,
+    _In_ uint32_t AddressCount,
+    _In_ const QUIC_ADDR* Remote,
+    _In_opt_ const CXPLAT_LOCAL_ADDRESS* Replacing,
+    _In_ BOOLEAN ExcludeAddressesInUse
+    )
+{
+    const QUIC_ADDRESS_FAMILY Family = QuicAddrGetFamily(Remote);
+    const CXPLAT_LOCAL_ADDRESS* Best = NULL;
+
+    //
+    // Whether the peer is on this host, and whether it is only reachable
+    // on-link. These decide which classes of local address can carry the
+    // connection at all, below.
+    //
+    const BOOLEAN RemoteIsLoopback = QuicConnAddressIsLoopback(Remote);
+    const BOOLEAN RemoteIsLinkLocal = QuicConnAddressIsLinkLocal(Remote);
+
+    for (uint32_t i = 0; i < AddressCount; ++i) {
+        const CXPLAT_LOCAL_ADDRESS* Candidate = &Addresses[i];
+
+        //
+        // Only an address of the peer's family can carry this connection.
+        // There is no mapping step here: a v4 peer needs a v4 source.
+        //
+        if (QuicAddrGetFamily(&Candidate->Address) != Family) {
+            continue;
+        }
+
+        if (ExcludeAddressesInUse &&
+            QuicConnHasPathOnLocalAddress(Connection, &Candidate->Address)) {
+            continue;
+        }
+
+        //
+        // Excluded outright, not merely ranked last. The platform keeps
+        // loopback and link-local in the snapshot on purpose -- whether to use
+        // one is policy, and this is where that policy lives -- but neither can
+        // carry traffic to a peer outside its scope. Ranking them would make
+        // them the choice of last resort, which is worse than having no
+        // candidate: AUTO would rebind the active path to an address that can
+        // never reach the peer, retiring a CID and resetting congestion
+        // control on the way, instead of holding the connection and waiting
+        // for a real address.
+        //
+        // Scope is read from the address as well as from the platform's flag.
+        // The flag is what a backend reports; the address is what it is. Not
+        // every source of a snapshot sets flags -- the test injection
+        // parameter does not -- and a filter that can be switched off by a
+        // missing flag is not much of a filter.
+        //
+        const BOOLEAN CandidateIsLoopback =
+            (Candidate->Flags & CXPLAT_ADDRESS_FLAG_LOOPBACK) ||
+            QuicConnAddressIsLoopback(&Candidate->Address);
+        const BOOLEAN CandidateIsLinkLocal =
+            (Candidate->Flags & CXPLAT_ADDRESS_FLAG_LINK_LOCAL) ||
+            QuicConnAddressIsLinkLocal(&Candidate->Address);
+
+        if (CandidateIsLoopback && !RemoteIsLoopback) {
+            continue;
+        }
+        if (CandidateIsLinkLocal && !RemoteIsLinkLocal) {
+            continue;
+        }
+
+        if (Best == NULL ||
+            QuicConnLocalAddressIsBetter(Candidate, Best, Replacing)) {
+            Best = Candidate;
+        }
+    }
+
+    return Best;
+}
+
+
+//
+// Tells the application the active path's local address changed, whatever
+// moved it -- AUTO's own migration or an application ACTIVATE_PATH. Compared
+// against what the caller captured before the operation.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnIndicateLocalAddressChanged(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Previous
+    )
+{
+    const QUIC_ADDR* Current = &Connection->Paths[0].Route.LocalAddress;
+    if (QuicAddrCompare(Previous, Current)) {
+        return;
+    }
+
+    QUIC_CONNECTION_EVENT Event;
+    Event.Type = QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED;
+    Event.LOCAL_ADDRESS_CHANGED.Address = Current;
+    QuicTraceLogConnVerbose(
+        IndicateLocalAddressChanged,
+        Connection,
+        "Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED");
+    (void)QuicConnIndicateEvent(Connection, &Event);
+}
+
+
+//
+// Finds a path other than the active one that the peer has already validated,
+// so it can be made active without waiting. Returns NULL when there is none.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_PATH*
+QuicConnFindValidatedAlternatePath(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_reads_(AddressCount) const CXPLAT_LOCAL_ADDRESS* Addresses,
+    _In_ uint32_t AddressCount
+    )
+{
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount; ++i) {
+        QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path->Binding == NULL || !Path->IsPeerValidated) {
+            continue;
+        }
+
+        //
+        // The same screening QuicPathSetActive's other caller does, and for
+        // the same reason: QuicPathSetActive asserts on the destination CID,
+        // and a path that is closing is not one to move onto. Keeping the two
+        // sites in agreement is the whole point -- they diverged once already.
+        //
+        if (Path->PathID == NULL ||
+            Path->LocalClose ||
+            Path->RemoteClose ||
+            Path->DestCid == NULL ||
+            Path->DestCid->CID.Retired) {
+            continue;
+        }
+
+        //
+        // No point moving onto a path whose own local address the host has
+        // also just lost.
+        //
+        BOOLEAN StillThere = FALSE;
+        for (uint32_t j = 0; j < AddressCount; ++j) {
+            if (QuicAddrCompareIp(&Path->Route.LocalAddress, &Addresses[j].Address)) {
+                StillThere = TRUE;
+                break;
+            }
+        }
+        if (StillThere) {
+            return Path;
+        }
+    }
+    return NULL;
+}
+
+
+//
+// What to make of a path API refusing a migration AUTO wanted.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicConnAutoNoteMigrationFailure(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_STATUS Status
+    )
+{
+    if (Status == QUIC_STATUS_INVALID_STATE) {
+        //
+        // "Retry later", not "failed". This is what comes back when there is no
+        // unused destination CID to migrate onto, and the peer is the only one
+        // who can fix that. Reconciliation re-runs from the NEW_CONNECTION_ID
+        // handler; treating it as an error would strand the connection on a
+        // path it already knows is dead.
+        //
+        Connection->AddressMigrationDeferred = TRUE;
+        QuicTraceLogConnInfo(
+            AutoMigrateDeferred,
+            Connection,
+            "AUTO deferred a migration until the peer issues a new CID");
+        return;
+    }
+
+    QuicTraceLogConnWarning(
+        AutoMigrateFailed,
+        Connection,
+        "AUTO failed to migrate, status=0x%x",
+        Status);
+}
+
+
+//
+// Whether AUTO may make an optional change yet. Losing the active path's
+// address is never held down -- that one is not optional, and rate-limiting it
+// would strand the connection. This gates the changes that are only an
+// improvement, where flapping is the worse failure.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnAutoHoldDownElapsed(
+    _In_ const QUIC_CONNECTION* Connection
+    )
+{
+    const uint32_t HoldDownMs = Connection->Settings.AutoMigrationHoldDownMs;
+    if (HoldDownMs == 0 || Connection->LastAutoMigrationTimeUs == 0) {
+        return TRUE;
+    }
+    return
+        CxPlatTimeDiff64(Connection->LastAutoMigrationTimeUs, CxPlatTimeUs64()) >=
+            MS_TO_US((uint64_t)HoldDownMs);
+}
+
+//
+// Drops the paths whose local address the host no longer has, skipping the one
+// that is now active. Never removes the last path: with a single path left
+// QuicConnRemovePath aborts the connection, and offline is not a failure.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicConnAutoRemoveLostPaths(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_reads_(LostCount) const QUIC_PATH_PARAM* LostPaths,
+    _In_ uint32_t LostCount,
+    _In_ const QUIC_ADDR* KeepLocal,
+    _In_ const QUIC_ADDR* KeepRemote
+    )
+{
+    for (uint32_t i = 0; i < LostCount; ++i) {
+        if (QuicAddrCompare(LostPaths[i].LocalAddress, KeepLocal) &&
+            QuicAddrCompare(LostPaths[i].RemoteAddress, KeepRemote)) {
+            continue;
+        }
+
+        if (Connection->PathsCount <= 1) {
+            //
+            // Nothing left to fall back to. Keeping a dead path beats aborting.
+            //
+            break;
+        }
+
+        QUIC_ADDR Local = *LostPaths[i].LocalAddress;
+        QUIC_ADDR Remote = *LostPaths[i].RemoteAddress;
+        QUIC_PATH_PARAM Param;
+        Param.LocalAddress = &Local;
+        Param.RemoteAddress = &Remote;
+
+        const QUIC_STATUS Status = QuicConnRemovePath(Connection, &Param);
+        if (QUIC_FAILED(Status)) {
+            QuicTraceLogConnWarning(
+                AutoRemovePathFailed,
+                Connection,
+                "AUTO failed to remove a path whose address was lost, status=0x%x",
+                Status);
+            continue;
+        }
+        QuicTraceLogConnInfo(
+            AutoRemovedLostPath,
+            Connection,
+            "AUTO removed a path whose local address was lost");
+    }
+}
+
+
+//
+// Multipath AUTO. Abandons paths whose address is gone and opens paths on
+// addresses that appeared, one per remote already in use.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicConnAutoMigrateMultipath(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_reads_(AddressCount) const CXPLAT_LOCAL_ADDRESS* Addresses,
+    _In_ uint32_t AddressCount,
+    _In_reads_(LostCount) const QUIC_PATH_PARAM* LostPaths,
+    _In_ uint32_t LostCount,
+    _In_ BOOLEAN ActiveLost
+    )
+{
+    //
+    // What not to abandon. Starts as the active path and moves to whichever
+    // path is promoted, if one is.
+    //
+    QUIC_ADDR KeepLocal = Connection->Paths[0].Route.LocalAddress;
+    QUIC_ADDR KeepRemote = Connection->Paths[0].Route.RemoteAddress;
+
+    //
+    // Never leave the connection without an active path: if the active one is
+    // going away, hand that role to a validated path before abandoning it.
+    //
+    if (ActiveLost) {
+        QUIC_PATH* Alternate =
+            QuicConnFindValidatedAlternatePath(Connection, Addresses, AddressCount);
+        if (Alternate != NULL) {
+            QUIC_ADDR AlternateLocal = Alternate->Route.LocalAddress;
+            QUIC_ADDR AlternateRemote = Alternate->Route.RemoteAddress;
+            QUIC_PATH_PARAM Param;
+            Param.LocalAddress = &AlternateLocal;
+            Param.RemoteAddress = &AlternateRemote;
+
+            const QUIC_STATUS Status = QuicConnActivatePath(Connection, &Param);
+            if (QUIC_SUCCEEDED(Status)) {
+                QuicTraceLogConnInfo(
+                    AutoMigrateMultipathActivate,
+                    Connection,
+                    "AUTO made a validated path active before abandoning the old one");
+                Connection->AddressMigrationDeferred = FALSE;
+                Connection->LastAutoMigrationTimeUs = CxPlatTimeUs64();
+                //
+                // Under multipath, promoting a path only sets its IsActive and
+                // sends PATH_AVAILABLE -- Paths[0] does not move, and several
+                // paths being active at once is normal. So the path to keep is
+                // the one just promoted, not Paths[0], which is still the one
+                // whose address is gone and which has to be abandoned below.
+                //
+                KeepLocal = AlternateLocal;
+                KeepRemote = AlternateRemote;
+            } else {
+                QuicConnAutoNoteMigrationFailure(Connection, Status);
+            }
+        }
+    }
+
+    //
+    // Abandon what is gone. PATH_ABANDON is what QuicConnRemovePath sends
+    // under multipath, which is the existing behaviour for this.
+    //
+    // No LOCAL_ADDRESS_CHANGED here: that event is about the active path's
+    // local address, and Paths[0] is unchanged by a multipath promotion. The
+    // application hears about multipath changes through PATH_AVAILABLE and
+    // PATH_REMOVED instead.
+    //
+    QuicConnAutoRemoveLostPaths(
+        Connection, LostPaths, LostCount, &KeepLocal, &KeepRemote);
+
+    //
+    // Then open paths on whatever is new. One per remote already in use, since
+    // that is what the peer has told us it can receive on, bounded by the path
+    // array -- QuicConnAddPath enforces the peer's path-ID limit itself.
+    //
+    // Optional, so it waits out the hold-down. An address that comes and goes
+    // would otherwise have us opening and abandoning a path per flap.
+    //
+    if (!QuicConnAutoHoldDownElapsed(Connection)) {
+        QuicTraceLogConnVerbose(
+            AutoAddPathHeldDown,
+            Connection,
+            "AUTO held down opening a path on a new address");
+        return;
+    }
+
+    //
+    // Snapshot the remotes first: adding a path shifts the array underneath.
+    //
+    QUIC_ADDR Remotes[QUIC_MAX_PATH_COUNT];
+    uint32_t RemoteCount = 0;
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    CXPLAT_ANALYSIS_ASSUME(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].Binding == NULL) {
+            continue;
+        }
+        BOOLEAN Seen = FALSE;
+        for (uint32_t j = 0; j < RemoteCount; ++j) {
+            if (QuicAddrCompare(&Remotes[j], &Connection->Paths[i].Route.RemoteAddress)) {
+                Seen = TRUE;
+                break;
+            }
+        }
+        if (!Seen) {
+            CXPLAT_DBG_ASSERT(RemoteCount < QUIC_MAX_PATH_COUNT);
+            CXPLAT_ANALYSIS_ASSUME(RemoteCount < QUIC_MAX_PATH_COUNT);
+            Remotes[RemoteCount++] = Connection->Paths[i].Route.RemoteAddress;
+        }
+    }
+
+    for (uint32_t r = 0; r < RemoteCount; ++r) {
+        //
+        // Walked over the snapshot rather than by re-selecting a best address
+        // each time: every address is considered exactly once, so this
+        // terminates whatever the new path's address resolves to.
+        //
+        for (uint32_t a = 0; a < AddressCount; ++a) {
+            if (Connection->PathsCount >= QUIC_MAX_PATH_COUNT) {
+                return;
+            }
+            if (QuicAddrGetFamily(&Addresses[a].Address) !=
+                    QuicAddrGetFamily(&Remotes[r])) {
+                continue;
+            }
+            if (QuicConnHasPathOnLocalAddress(Connection, &Addresses[a].Address)) {
+                continue;
+            }
+
+            QUIC_ADDR NewLocal = Addresses[a].Address;
+            QuicAddrSetPort(&NewLocal, 0);
+            QUIC_ADDR NewRemote = Remotes[r];
+            QUIC_PATH_PARAM Param;
+            Param.LocalAddress = &NewLocal;
+            Param.RemoteAddress = &NewRemote;
+
+            QUIC_PATH* NewPath = NULL;
+            const QUIC_STATUS Status = QuicConnAddPath(Connection, &Param, &NewPath);
+            if (QUIC_FAILED(Status)) {
+                //
+                // Out of path IDs or CIDs. Stop rather than spin: the next
+                // reconciliation tries again.
+                //
+                QuicTraceLogConnInfo(
+                    AutoAddPathFailed,
+                    Connection,
+                    "AUTO could not open a path on a new address, status=0x%x",
+                    Status);
+                return;
+            }
+            Connection->LastAutoMigrationTimeUs = CxPlatTimeUs64();
+            QuicTraceLogConnInfo(
+                AutoAddedPath,
+                Connection,
+                "AUTO opened a path on a new local address");
+        }
+    }
+}
+
+
+//
+// AUTO mode. Reconciles the connection's paths with the host's addresses by
+// itself, per the policy tables in #134.
+//
+// Runs on the connection's worker, from QuicConnProcessLocalAddressChange,
+// with the snapshot that pass read.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicConnAutoMigrate(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_reads_(AddressCount) const CXPLAT_LOCAL_ADDRESS* Addresses,
+    _In_ uint32_t AddressCount,
+    _In_reads_(LostCount) const QUIC_PATH_PARAM* LostPaths,
+    _In_ uint32_t LostCount,
+    _In_reads_(RemovedCount) const CXPLAT_LOCAL_ADDRESS* Removed,
+    _In_ uint32_t RemovedCount
+    )
+{
+    //
+    // The path APIs reject a client's calls once server migration is
+    // negotiated, and a server's unless it is. AUTO is therefore inert on such
+    // a connection: the setting is accepted, nothing happens, and it is said
+    // once instead of on every reconciliation.
+    //
+    if ((QuicConnIsClient(Connection) && Connection->Settings.ServerMigrationEnabled) ||
+        (QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||
+        (QuicConnIsServer(Connection) && !Connection->State.ServerMigrationNegotiated)) {
+        if (!Connection->AutoMigrationUnavailableTraced) {
+            Connection->AutoMigrationUnavailableTraced = TRUE;
+            QuicTraceLogConnWarning(
+                AutoMigrationUnavailable,
+                Connection,
+                "QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated");
+        }
+        return;
+    }
+
+    //
+    // Whether the active path is one of the ones that just lost its address.
+    // Paths[0] is the active path, so LostPaths naming it is the case that
+    // forces a migration; the rest are tidy-up.
+    //
+    const QUIC_ADDR ActiveLocal = Connection->Paths[0].Route.LocalAddress;
+    const QUIC_ADDR ActiveRemote = Connection->Paths[0].Route.RemoteAddress;
+    BOOLEAN ActiveLost = FALSE;
+    for (uint32_t i = 0; i < LostCount; ++i) {
+        if (QuicAddrCompare(LostPaths[i].LocalAddress, &ActiveLocal) &&
+            QuicAddrCompare(LostPaths[i].RemoteAddress, &ActiveRemote)) {
+            ActiveLost = TRUE;
+            break;
+        }
+    }
+
+    if (Connection->State.MultipathNegotiated) {
+        QuicConnAutoMigrateMultipath(
+            Connection, Addresses, AddressCount, LostPaths, LostCount, ActiveLost);
+        return;
+    }
+
+    //
+    // Single path, and the active path is fine. The only thing left that could
+    // want a migration is a route-preference change, which needs the route
+    // watching that phase 5 turns on -- with WatchRoutes off, RouteChanged is
+    // never set and there is nothing here to act on. A new address alone is
+    // not a reason to move a working connection.
+    //
+    if (!ActiveLost) {
+        //
+        // Other paths that lost their address still get cleaned up.
+        //
+        QuicConnAutoRemoveLostPaths(Connection, LostPaths, LostCount, &ActiveLocal, &ActiveRemote);
+        return;
+    }
+
+    //
+    // The active path is dead. A path the peer has already validated is the
+    // cheapest way out, since it needs no new validation.
+    //
+    QUIC_PATH* Alternate =
+        QuicConnFindValidatedAlternatePath(Connection, Addresses, AddressCount);
+    if (Alternate != NULL) {
+        QUIC_ADDR AlternateLocal = Alternate->Route.LocalAddress;
+        QUIC_ADDR AlternateRemote = Alternate->Route.RemoteAddress;
+        QUIC_PATH_PARAM Param;
+        Param.LocalAddress = &AlternateLocal;
+        Param.RemoteAddress = &AlternateRemote;
+
+        const QUIC_ADDR Previous = Connection->Paths[0].Route.LocalAddress;
+        const QUIC_STATUS Status = QuicConnActivatePath(Connection, &Param);
+        if (QUIC_SUCCEEDED(Status)) {
+            QuicTraceLogConnInfo(
+                AutoMigrateToValidatedPath,
+                Connection,
+                "AUTO moved to an already validated path");
+            Connection->AddressMigrationDeferred = FALSE;
+            Connection->LastAutoMigrationTimeUs = CxPlatTimeUs64();
+            QuicConnIndicateLocalAddressChanged(Connection, &Previous);
+            QuicConnAutoRemoveLostPaths(
+                Connection, LostPaths, LostCount,
+                &Connection->Paths[0].Route.LocalAddress,
+                &Connection->Paths[0].Route.RemoteAddress);
+            return;
+        }
+        QuicConnAutoNoteMigrationFailure(Connection, Status);
+        return;
+    }
+
+    //
+    // Nothing validated to fall back to, so migrate the active path onto a new
+    // local address. RFC 9000 section 9.2 allows sending non-probing frames on
+    // the new path, and the old one is unusable, so waiting for a parallel
+    // validation to finish would only add delay.
+    //
+    //
+    // The address being replaced, with the flags the platform reported for it.
+    // Those flags are the point: they are what decides whether to stay on a
+    // privacy address or a stable one. Synthesizing the entry with no flags --
+    // as this first did -- silently turned that policy off, and a connection
+    // that had deliberately been on an RFC 8981 temporary address would be
+    // migrated onto the stable one, publishing a long-lived identifier.
+    //
+    CXPLAT_LOCAL_ADDRESS Replacing;
+    CxPlatZeroMemory(&Replacing, sizeof(Replacing));
+    Replacing.Address = ActiveLocal;
+    QuicAddrSetPort(&Replacing.Address, 0);
+    for (uint32_t i = 0; i < RemovedCount; ++i) {
+        if (QuicAddrCompareIp(&Removed[i].Address, &ActiveLocal)) {
+            Replacing = Removed[i];
+            break;
+        }
+    }
+
+    const CXPLAT_LOCAL_ADDRESS* Chosen =
+        QuicConnSelectLocalAddress(
+            Connection, Addresses, AddressCount, &ActiveRemote, &Replacing, TRUE);
+    if (Chosen == NULL) {
+        //
+        // Offline. The connection and its dead path are kept: post-handshake
+        // send failures and unreachable events are already non-fatal, so the
+        // idle timeout is the only limit, and the next reconciliation migrates
+        // as soon as the host has an address again. Tearing the connection
+        // down here would be strictly worse than waiting.
+        //
+        QuicTraceLogConnInfo(
+            AutoMigrateOffline,
+            Connection,
+            "AUTO has no candidate local address; holding the connection");
+        return;
+    }
+
+    QUIC_ADDR NewLocal = Chosen->Address;
+    if (Connection->State.ShareBinding) {
+        //
+        // A shared binding is keyed on the port, so keep the one the
+        // connection already has rather than asking for a fresh ephemeral.
+        //
+        QuicAddrSetPort(&NewLocal, QuicAddrGetPort(&ActiveLocal));
+    } else {
+        QuicAddrSetPort(&NewLocal, 0);
+    }
+
+    QUIC_ADDR NewRemote = ActiveRemote;
+    QUIC_PATH_PARAM Param;
+    Param.LocalAddress = &NewLocal;
+    Param.RemoteAddress = &NewRemote;
+
+    const QUIC_ADDR Previous = Connection->Paths[0].Route.LocalAddress;
+    const QUIC_STATUS Status = QuicConnActivatePath(Connection, &Param);
+    if (QUIC_FAILED(Status)) {
+        QuicConnAutoNoteMigrationFailure(Connection, Status);
+        return;
+    }
+
+    QuicTraceLogConnInfo(
+        AutoMigrateImmediate,
+        Connection,
+        "AUTO migrated the active path to a new local address");
+
+    //
+    // Validate the peer on the new path as well. QuicConnActivatePath sends a
+    // PING and lets the peer validate us, but says nothing about whether the
+    // peer is reachable from here; on a migration we chose ourselves, that is
+    // worth finding out rather than assuming.
+    //
+    if (Connection->Paths[0].IsPeerValidated) { // Not already validating.
+        Connection->Paths[0].IsPeerValidated = FALSE;
+        Connection->Paths[0].SendChallenge = TRUE;
+        Connection->Paths[0].PathValidationStartTime = CxPlatTimeUs64();
+        Connection->Paths[0].ChallengeCount = 1;
+        CxPlatRandom(
+            sizeof(Connection->Paths[0].Challenge),
+            Connection->Paths[0].Challenge);
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
+        //
+        // Starting a validation is not enough on its own: without the timer
+        // there is nothing to re-send a lost challenge or to notice that it
+        // never completed, and the path would stay amplification-limited for
+        // the life of the connection.
+        //
+        QuicConnPathValidationTimerUpdate(Connection);
+    }
+
+    Connection->AddressMigrationDeferred = FALSE;
+    Connection->LastAutoMigrationTimeUs = CxPlatTimeUs64();
+    QuicConnIndicateLocalAddressChanged(Connection, &Previous);
+}
+
 _IRQL_requires_max_(DISPATCH_LEVEL)
 void
 QuicConnQueueLocalAddressChange(
@@ -844,12 +1682,11 @@ QuicConnProcessLocalAddressChange(
         (void)QuicConnIndicateEvent(Connection, &Event);
     }
 
-    //
-    // QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing yet. The policy is phase 3;
-    // until then the mode is accepted and behaves as NOTIFY does without the
-    // event, so an application that sets it early is not misled into thinking
-    // paths are being managed.
-    //
+    if (Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_AUTO) {
+        QuicConnAutoMigrate(
+            Connection, Addresses, AddressCount, LostPaths, LostCount,
+            Removed, RemovedCount);
+    }
 
 Exit:
 
@@ -5334,6 +6171,20 @@ QuicConnRecvFrames(
                 QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
             }
 
+            if (Connection->AddressMigrationDeferred) {
+                //
+                // AUTO wanted to migrate and had no unused CID to migrate
+                // onto. The peer has just issued one, so this is the moment to
+                // try again -- the connection is otherwise sitting on a path
+                // it already knows is dead. Re-runs the whole reconciliation
+                // rather than remembering a decision, since the host's
+                // addresses may have moved on since.
+                //
+                Connection->AddressMigrationDeferred = FALSE;
+                Connection->LastAddressGeneration = 0;
+                QuicConnQueueLocalAddressChange(Connection);
+            }
+
             AckEliciting = TRUE;
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
             break;
@@ -9472,7 +10323,16 @@ QuicConnParamSet(
             Status = QUIC_STATUS_INVALID_PARAMETER;
             break;
         }
+        //
+        // Captured before the call so the indication below reports an actual
+        // change. The application gets told either way -- whether the active
+        // path moved because it asked or because AUTO did it.
+        //
+        const QUIC_ADDR PreviousLocal = Connection->Paths[0].Route.LocalAddress;
         Status = QuicConnActivatePath(Connection, (QUIC_PATH_PARAM*)Buffer);
+        if (QUIC_SUCCEEDED(Status)) {
+            QuicConnIndicateLocalAddressChanged(Connection, &PreviousLocal);
+        }
         break;
     }
 

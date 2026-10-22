@@ -231,6 +231,162 @@
       ],
       "macroName": "QuicTraceLogConnError"
     },
+    "AutoAddedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO opened a path on a new local address",
+      "UniqueId": "AutoAddedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoAddPathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO could not open a path on a new address, status=0x%x",
+      "UniqueId": "AutoAddPathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoAddPathHeldDown": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO held down opening a path on a new address",
+      "UniqueId": "AutoAddPathHeldDown",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "AutoMigrateDeferred": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO deferred a migration until the peer issues a new CID",
+      "UniqueId": "AutoMigrateDeferred",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrateFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO failed to migrate, status=0x%x",
+      "UniqueId": "AutoMigrateFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AutoMigrateImmediate": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO migrated the active path to a new local address",
+      "UniqueId": "AutoMigrateImmediate",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrateMultipathActivate": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO made a validated path active before abandoning the old one",
+      "UniqueId": "AutoMigrateMultipathActivate",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrateOffline": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO has no candidate local address; holding the connection",
+      "UniqueId": "AutoMigrateOffline",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrateToValidatedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO moved to an already validated path",
+      "UniqueId": "AutoMigrateToValidatedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrationUnavailable": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated",
+      "UniqueId": "AutoMigrationUnavailable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AutoRemovedLostPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO removed a path whose local address was lost",
+      "UniqueId": "AutoRemovedLostPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoRemovePathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO failed to remove a path whose address was lost, status=0x%x",
+      "UniqueId": "AutoRemovePathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "BindingCleanup": {
       "ModuleProperites": {},
       "TraceString": "[bind][%p] Cleaning up",
@@ -6948,6 +7104,18 @@
         }
       ],
       "macroName": "QuicTraceLogStreamVerbose"
+    },
+    "IndicateLocalAddressChanged": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED",
+      "UniqueId": "IndicateLocalAddressChanged",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
     },
     "IndicateLocalAddressesChanged": {
       "ModuleProperites": {},
@@ -15170,6 +15338,66 @@
         "EncodingString": "[conn][%p] Attack detected: Skipped packet number %llu ACKed in range [%llu, %llu]"
       },
       {
+        "UniquenessHash": "f79fd54f-5b23-a760-bf06-caf6a0224333",
+        "TraceID": "AutoAddedPath",
+        "EncodingString": "[conn][%p] AUTO opened a path on a new local address"
+      },
+      {
+        "UniquenessHash": "56bbfdc6-a39a-fec9-719a-d65ac24eaeec",
+        "TraceID": "AutoAddPathFailed",
+        "EncodingString": "[conn][%p] AUTO could not open a path on a new address, status=0x%x"
+      },
+      {
+        "UniquenessHash": "185cabf8-30d0-f639-ef4e-15b22a2fd220",
+        "TraceID": "AutoAddPathHeldDown",
+        "EncodingString": "[conn][%p] AUTO held down opening a path on a new address"
+      },
+      {
+        "UniquenessHash": "b367a76a-cb77-80f4-a653-782cc4bad50c",
+        "TraceID": "AutoMigrateDeferred",
+        "EncodingString": "[conn][%p] AUTO deferred a migration until the peer issues a new CID"
+      },
+      {
+        "UniquenessHash": "10c1cdbc-0f81-8765-0764-224d1c374822",
+        "TraceID": "AutoMigrateFailed",
+        "EncodingString": "[conn][%p] AUTO failed to migrate, status=0x%x"
+      },
+      {
+        "UniquenessHash": "e47fee63-dc77-9267-a7ab-85706be745cc",
+        "TraceID": "AutoMigrateImmediate",
+        "EncodingString": "[conn][%p] AUTO migrated the active path to a new local address"
+      },
+      {
+        "UniquenessHash": "01fb7f72-fc41-53ce-5593-864b50d48264",
+        "TraceID": "AutoMigrateMultipathActivate",
+        "EncodingString": "[conn][%p] AUTO made a validated path active before abandoning the old one"
+      },
+      {
+        "UniquenessHash": "0249dacf-e293-cc2f-8d3b-36f25235c927",
+        "TraceID": "AutoMigrateOffline",
+        "EncodingString": "[conn][%p] AUTO has no candidate local address; holding the connection"
+      },
+      {
+        "UniquenessHash": "2cf81955-b7f6-966e-4ef2-7cb29e15eeae",
+        "TraceID": "AutoMigrateToValidatedPath",
+        "EncodingString": "[conn][%p] AUTO moved to an already validated path"
+      },
+      {
+        "UniquenessHash": "230a914f-39d3-e420-8615-8238b841d79e",
+        "TraceID": "AutoMigrationUnavailable",
+        "EncodingString": "[conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated"
+      },
+      {
+        "UniquenessHash": "0ac0c49e-31b3-c3d9-d969-d9916e3206b5",
+        "TraceID": "AutoRemovedLostPath",
+        "EncodingString": "[conn][%p] AUTO removed a path whose local address was lost"
+      },
+      {
+        "UniquenessHash": "f949ece9-7b6f-36ce-4133-d2b80ae5e75a",
+        "TraceID": "AutoRemovePathFailed",
+        "EncodingString": "[conn][%p] AUTO failed to remove a path whose address was lost, status=0x%x"
+      },
+      {
         "UniquenessHash": "5d83e63e-7ce5-0102-8dd2-cbcf5946da2e",
         "TraceID": "BindingCleanup",
         "EncodingString": "[bind][%p] Cleaning up"
@@ -17018,6 +17246,11 @@
         "UniquenessHash": "537b9c54-10f5-965c-b3e5-6e6e5c66dc85",
         "TraceID": "IndicateIdealSendBuffer",
         "EncodingString": "[strm][%p] Indicating QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE = %llu"
+      },
+      {
+        "UniquenessHash": "bc7db1b4-164e-ee13-3216-b89b060ca0ed",
+        "TraceID": "IndicateLocalAddressChanged",
+        "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED"
       },
       {
         "UniquenessHash": "6543cd24-b144-4f9e-9c6c-68b67387bf8e",

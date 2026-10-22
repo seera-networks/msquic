@@ -579,6 +579,26 @@ typedef struct QUIC_CONNECTION {
     BOOLEAN AddressMonitorRef;
 
     //
+    // AUTO mode wanted to migrate and could not, because there was no unused
+    // destination CID to migrate onto. Reconciliation re-runs when the peer
+    // issues one; until then the connection stays on a path it knows is dead.
+    //
+    BOOLEAN AddressMigrationDeferred;
+
+    //
+    // AUTO mode is accepted but does nothing, because the connection also
+    // negotiated server migration and the path APIs reject our calls. Traced
+    // once rather than on every reconciliation.
+    //
+    BOOLEAN AutoMigrationUnavailableTraced;
+
+    //
+    // When AUTO last migrated of its own accord, for AutoMigrationHoldDownMs.
+    // Zero means never.
+    //
+    uint64_t LastAutoMigrationTimeUs;
+
+    //
     // The snapshot generation this connection last reconciled against, so a
     // queued operation that finds nothing new can return without work.
     //

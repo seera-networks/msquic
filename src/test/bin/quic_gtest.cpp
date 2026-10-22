@@ -1112,6 +1112,34 @@ TEST_P(WithFamilyArgs, LocalAddressChangeDisabled) {
     TestLoggerT<ParamType> Logger("QuicTestLocalAddressChangeDisabled", GetParam());
     QuicTestLocalAddressChangeDisabled(GetParam());
 }
+
+//
+// Not parameterized by family: a connection to loopback can only be carried by
+// another loopback address, and IPv6 has just the one.
+//
+TEST(Basic, LocalAddressChangeAuto) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAuto is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAuto");
+    QuicTestLocalAddressChangeAuto();
+}
+
+TEST(Basic, LocalAddressChangeAutoOffline) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAutoOffline is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAutoOffline");
+    QuicTestLocalAddressChangeAutoOffline();
+}
+
+TEST(Basic, LocalAddressChangeAutoServerMigration) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAutoServerMigration is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAutoServerMigration");
+    QuicTestLocalAddressChangeAutoServerMigration();
+}
 #endif // DEBUG
 
 //

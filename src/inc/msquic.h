@@ -108,10 +108,26 @@ typedef enum QUIC_ADD_ADDRESS_MODE {
 // that feeds this is only started once some connection asks for it, so leaving
 // this at the default costs nothing.
 //
+//
+// What a connection does when the set of addresses the host has changes.
+//
+// N.B. The two active modes differ in who owns the paths, and an application
+// cannot treat them alike. Under NOTIFY it is the application's job to act,
+// from the LOCAL_ADDRESSES_CHANGED callback, using ADD_PATH / ACTIVATE_PATH /
+// REMOVE_PATH. Under AUTO the connection owns that decision, and an
+// application calling those from the callback races the policy -- there, the
+// events are informational only.
+//
+// N.B. SetParam runs inline when called from a connection callback, so
+// ACTIVATE_PATH from inside one raises LOCAL_ADDRESS_CHANGED before the call
+// returns, re-entering the handler. Do not hold a non-recursive lock across a
+// handler that calls the path parameters.
+//
 typedef enum QUIC_LOCAL_ADDRESS_CHANGE_MODE {
     QUIC_LOCAL_ADDRESS_CHANGE_DISABLED,  // Default. The behaviour before this existed.
-    QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY,    // Indicate the change; the app decides.
+    QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY,    // Indicate the change; the app decides and acts.
     QUIC_LOCAL_ADDRESS_CHANGE_AUTO,      // The connection migrates and manages paths itself.
+                                         // Do not call the path parameters from the callback.
     QUIC_LOCAL_ADDRESS_CHANGE_COUNT
 } QUIC_LOCAL_ADDRESS_CHANGE_MODE;
 
