@@ -255,10 +255,10 @@ tracepoint(CLOG_TLS_QUICTLS_C, OpenSslSSLWriteError , arg1, arg3);\
 // Decoder Ring for OpenSslSSLReadError
 // [conn][%p] SSL_read failed, error: %d
 // QuicTraceLogConnError(
-                    OpenSslSSLReadError,
-                    TlsContext->Connection,
-                    "SSL_read failed, error: %d",
-                    Err);
+                OpenSslSSLReadError,
+                TlsContext->Connection,
+                "SSL_read failed, error: %d",
+                Err);
 // arg1 = arg1 = TlsContext->Connection = arg1
 // arg3 = arg3 = Err = arg3
 ----------------------------------------------------------*/

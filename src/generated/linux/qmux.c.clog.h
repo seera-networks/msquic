@@ -159,19 +159,19 @@ tracepoint(CLOG_QMUX_C, TlsHandshakeData , arg1, arg3);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for QueueDatagrams
-// [conn][%p] Queuing %u TCP data
+// Decoder Ring for QueueTcpData
+// [conn][%p] Queuing %u TCP data buffers
 // QuicTraceLogConnVerbose(
-        QueueDatagrams,
+        QueueTcpData,
         Connection,
-        "Queuing %u TCP data",
+        "Queuing %u TCP data buffers",
         RecvDataChainLength);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = RecvDataChainLength = arg3
 ----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_QueueDatagrams
-#define _clog_4_ARGS_TRACE_QueueDatagrams(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_QMUX_C, QueueDatagrams , arg1, arg3);\
+#ifndef _clog_4_ARGS_TRACE_QueueTcpData
+#define _clog_4_ARGS_TRACE_QueueTcpData(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_QMUX_C, QueueTcpData , arg1, arg3);\
 
 #endif
 

@@ -11132,6 +11132,22 @@
       ],
       "macroName": "QuicTraceLogStreamVerbose"
     },
+    "QueueTcpData": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Queuing %u TCP data buffers",
+      "UniqueId": "QueueTcpData",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "RawDatapathSend": {
       "ModuleProperites": {},
       "TraceString": "[data][%p] Raw send %u bytes in %hhu buffers (segment=%hu) Dst=%!ADDR!, Src=%!ADDR!",
@@ -18713,14 +18729,19 @@
         "EncodingString": "[conn][%p] Recv %u TCP data, %u bytes"
       },
       {
-        "UniquenessHash": "1e2665cc-1c0a-e656-f1f2-fa996a19400f",
+        "UniquenessHash": "18ef147d-5376-d7f2-f624-3b27af96dd05",
         "TraceID": "QueueDatagrams",
-        "EncodingString": "[conn][%p] Queuing %u TCP data"
+        "EncodingString": "[conn][%p] Queuing %u UDP datagrams"
       },
       {
         "UniquenessHash": "80596bbb-20e9-07e5-07f3-ebc7078fa612",
         "TraceID": "QueueRecvFlush",
         "EncodingString": "[strm][%p] Queuing recv flush"
+      },
+      {
+        "UniquenessHash": "63c07009-9239-621e-4866-1faec0fa42ad",
+        "TraceID": "QueueTcpData",
+        "EncodingString": "[conn][%p] Queuing %u TCP data buffers"
       },
       {
         "UniquenessHash": "5ddc6267-3f4c-743c-9a00-f3cc7d7444f5",

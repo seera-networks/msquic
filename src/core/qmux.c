@@ -403,9 +403,9 @@ QuicQMuxQueueRecvData(
     }
 
     QuicTraceLogConnVerbose(
-        QueueDatagrams,
+        QueueTcpData,
         Connection,
-        "Queuing %u TCP data",
+        "Queuing %u TCP data buffers",
         RecvDataChainLength);
 
     BOOLEAN QueueOperation;
