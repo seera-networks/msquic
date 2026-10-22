@@ -141,17 +141,17 @@ TRACEPOINT_EVENT(CLOG_QMUX_C, TlsHandshakeData,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for QueueDatagrams
-// [conn][%p] Queuing %u TCP data
+// Decoder Ring for QueueTcpData
+// [conn][%p] Queuing %u TCP data buffers
 // QuicTraceLogConnVerbose(
-        QueueDatagrams,
+        QueueTcpData,
         Connection,
-        "Queuing %u TCP data",
+        "Queuing %u TCP data buffers",
         RecvDataChainLength);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = RecvDataChainLength = arg3
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_QMUX_C, QueueDatagrams,
+TRACEPOINT_EVENT(CLOG_QMUX_C, QueueTcpData,
     TP_ARGS(
         const void *, arg1,
         unsigned int, arg3), 
