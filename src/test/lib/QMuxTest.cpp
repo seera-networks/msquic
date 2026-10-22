@@ -334,4 +334,155 @@ QuicTestQMuxKeepAlive(
     TEST_TRUE(ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
 }
 
+//
+// Datagram burst: more DATAGRAM frames queued in one go than fit in a single
+// QUIC packet's frame metadata (QUIC_MAX_FRAMES_PER_PACKET). Over QMux this
+// used to finalize (and TLS-encrypt) a record without closing its buffer, and
+// the flush that followed freed that buffer unsent: the peer then failed to
+// decrypt the next record and the connection died. A burst that also left
+// less than QUIC_MIN_PACKET_SPARE_SPACE in the record buffer crashed in the
+// UDP packet finalizer instead (a QMux path has no PathID).
+//
+const uint32_t QMuxDatagramBurstCount = 32;
+const uint16_t QMuxDatagramBurstLength = 1200;
+static uint8_t QMuxDatagramRawBuffer[QMuxDatagramBurstLength];
+static QUIC_BUFFER QMuxDatagramSendBuffer = { QMuxDatagramBurstLength, QMuxDatagramRawBuffer };
+
+struct QMuxDatagramServerContext {
+    CxPlatEvent ConnectedEvent;
+    CxPlatEvent ShutdownEvent;
+    uint32_t SendFailures {0};
+
+    static QUIC_STATUS QUIC_API ConnCallback(
+        _In_ MsQuicConnection* Conn,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_CONNECTION_EVENT* Event
+        )
+    {
+        auto Ctx = static_cast<QMuxDatagramServerContext*>(Context);
+        switch (Event->Type) {
+        case QUIC_CONNECTION_EVENT_CONNECTED:
+            //
+            // Queue the whole burst from the callback: the connection's worker
+            // cannot flush until it returns, so every datagram is pending in
+            // the same send flush.
+            //
+            for (uint32_t i = 0; i < QMuxDatagramBurstCount; ++i) {
+                if (QUIC_FAILED(
+                    MsQuic->DatagramSend(
+                        *Conn, &QMuxDatagramSendBuffer, 1, QUIC_SEND_FLAG_NONE, nullptr))) {
+                    ++Ctx->SendFailures;
+                }
+            }
+            Ctx->ConnectedEvent.Set();
+            break;
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+            Ctx->ConnectedEvent.Set();
+            Ctx->ShutdownEvent.Set();
+            break;
+        default:
+            break;
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+};
+
+struct QMuxDatagramClientContext {
+    CxPlatEvent AllReceivedEvent;
+    CxPlatEvent ShutdownEvent;
+    uint32_t Received {0};
+    uint32_t WrongLength {0};
+
+    static QUIC_STATUS QUIC_API ConnCallback(
+        _In_ MsQuicConnection* /* Conn */,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_CONNECTION_EVENT* Event
+        )
+    {
+        auto Ctx = static_cast<QMuxDatagramClientContext*>(Context);
+        switch (Event->Type) {
+        case QUIC_CONNECTION_EVENT_DATAGRAM_RECEIVED:
+            if (Event->DATAGRAM_RECEIVED.Buffer->Length != QMuxDatagramBurstLength) {
+                ++Ctx->WrongLength;
+            }
+            if (++Ctx->Received == QMuxDatagramBurstCount) {
+                Ctx->AllReceivedEvent.Set();
+            }
+            break;
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+            //
+            // A connection lost mid-burst unblocks the wait; the counts then
+            // say what was missing.
+            //
+            Ctx->AllReceivedEvent.Set();
+            Ctx->ShutdownEvent.Set();
+            break;
+        default:
+            break;
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+};
+
+void
+QuicTestQMuxDatagramBurst(
+    _In_ const FamilyArgs& Params
+    )
+{
+    QMuxDatagramServerContext ServerContext;
+    QMuxDatagramClientContext ClientContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetDatagramReceiveEnabled(true);
+
+    MsQuicConfiguration ServerConfiguration(
+        Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, true, ServerConfiguration,
+        QMuxDatagramServerContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr;
+    QMuxStartListener(Listener, Params.Family, ServerLocalAddr);
+
+    MsQuicConnection Connection(
+        Registration, true, CleanUpManual,
+        QMuxDatagramClientContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            ServerLocalAddr.GetFamily(),
+            QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()),
+            ServerLocalAddr.GetPort()));
+
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.ConnectedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(0u, ServerContext.SendFailures);
+
+    //
+    // QMux runs over TCP, so nothing may be lost: every datagram of the burst
+    // arrives, and the connection is still up afterwards.
+    //
+    TEST_TRUE(ClientContext.AllReceivedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(QMuxDatagramBurstCount, ClientContext.Received);
+    TEST_EQUAL(0u, ClientContext.WrongLength);
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(0));
+    TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(0));
+
+    Connection.Shutdown(0);
+    TEST_TRUE(Connection.ShutdownCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+}
+
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES

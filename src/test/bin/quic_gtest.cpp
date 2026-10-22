@@ -1057,6 +1057,15 @@ TEST_P(WithFamilyArgs, QMuxKeepAlive) {
         QuicTestQMuxKeepAlive(GetParam());
     }
 }
+
+TEST_P(WithFamilyArgs, QMuxDatagramBurst) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxDatagramBurst", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxDatagramBurst), GetParam()));
+    } else {
+        QuicTestQMuxDatagramBurst(GetParam());
+    }
+}
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Mtu, Settings) {
