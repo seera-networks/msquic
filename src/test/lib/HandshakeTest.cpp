@@ -1126,8 +1126,23 @@ QuicTestNatPortRebindBurst(
     TEST_TRUE(ServerContext.Received > 0);
     TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(0));
 
+    //
+    // Shut down, but without requiring the server to see it promptly.
+    //
+    // By now the server's idea of the client's address is one of the ports the
+    // hook invented, and the hook is gone, so the CONNECTION_CLOSE arrives
+    // from the real port and the server has to take a path for it -- possibly
+    // evicting one to do so. A CONNECTION_CLOSE is sent once and not
+    // retransmitted on a timer, so a single drop leaves the server waiting out
+    // the 10s idle timeout instead. Asserting on it inside TestWaitTimeout
+    // made this test fail on the io_uring BVT, whose receive batching changes
+    // which packets land where.
+    //
+    // The teardown below is what guarantees cleanup: RegistrationClose waits
+    // for the server connection, and ServerContext outlives the registration.
+    //
     Connection.Shutdown(0);
-    TEST_TRUE(ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+    (void)ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout);
 }
 
 void
