@@ -7353,6 +7353,24 @@ QuicConnRecvDatagrams(
         CXPLAT_DBG_ASSERT(Packet->ReleaseDeferred == IsDeferred);
         Packet->ReleaseDeferred = FALSE;
 
+        if (BatchCount != 0 && Connection->PathsCount == QUIC_MAX_PATH_COUNT) {
+            //
+            // With every path slot taken, QuicConnGetPathForPacket makes room
+            // for a new address by removing the inactive paths that look like
+            // a rebind of it, and the path the batched packets came in on can
+            // be one of them. Finish the batch while its path still exists.
+            //
+            CXPLAT_DBG_ASSERT(CurrentPath != NULL);
+            QuicConnRecvDatagramBatch(
+                Connection,
+                CurrentPath,
+                BatchCount,
+                Batch,
+                Cipher,
+                &RecvState);
+            BatchCount = 0;
+        }
+
         QUIC_PATH* DatagramPath = QuicConnGetPathForPacket(Connection, Packet);
         if (DatagramPath == NULL) {
             QuicPacketLogDrop(Connection, Packet, "Max paths already tracked");
@@ -7363,10 +7381,21 @@ QuicConnRecvDatagrams(
 
         if (CurrentPath != NULL) {
             //
-            // The current path may be moved.
+            // The current path may be moved, or gone.
             //
             uint8_t PathIndex;
             CurrentPath = QuicConnGetPathByID(Connection, CurrentPathID, &PathIndex);
+            if (CurrentPath == NULL && BatchCount != 0) {
+                //
+                // Not expected after the flush above, but a batch must never
+                // be processed without a path: drop it rather than crash.
+                //
+                CXPLAT_DBG_ASSERT(FALSE);
+                for (uint8_t i = 0; i < BatchCount; ++i) {
+                    QuicPacketLogDrop(Connection, Batch[i], "Path removed with packets batched");
+                }
+                BatchCount = 0;
+            }
         }
         if (DatagramPath != CurrentPath) {
             if (BatchCount != 0) {
