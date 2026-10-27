@@ -589,6 +589,11 @@ QuicTestNatAddrRebind_WithPadding(
     );
 
 void
+QuicTestNatPortRebindBurst(
+    const FamilyArgs& Params
+    );
+
+void
 QuicTestNatAddrRebind_NoPadding(
     const FamilyArgs& Params
     );

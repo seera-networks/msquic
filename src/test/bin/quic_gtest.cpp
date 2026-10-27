@@ -2130,6 +2130,23 @@ TEST_P(WithFamilyArgs, RebindPort) {
     }
 }
 
+TEST_P(WithFamilyArgs, RebindPortBurst) {
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
+    if (UseQTIP) {
+        //
+        // NAT rebind doesn't make sense for TCP and QTIP.
+        //
+        return;
+    }
+#endif
+    TestLoggerT<ParamType> Logger("QuicTestNatPortRebindBurst", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestNatPortRebindBurst), GetParam()));
+    } else {
+        QuicTestNatPortRebindBurst(GetParam());
+    }
+}
+
 struct WithRebindPaddingArgs :
     public testing::TestWithParam<RebindPaddingArgs> {
 
