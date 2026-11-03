@@ -123,12 +123,14 @@ typedef struct CXPLAT_ADDRESS_MONITOR {
 // Backend hooks. Initialize subscribes and starts delivering; Uninitialize
 // stops delivery and waits for any callback already running.
 //
+_IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 CxPlatAddressMonitorOsInitialize(
     _In_ CXPLAT_DATAPATH* Datapath,
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor
     );
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 CxPlatAddressMonitorOsUninitialize(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor
@@ -138,10 +140,11 @@ CxPlatAddressMonitorOsUninitialize(
 // Enumerates every local address the OS knows, unfiltered. The caller frees
 // *Raw with CXPLAT_FREE and QUIC_POOL_DATAPATH_ADDRESSES.
 //
+_IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 CxPlatAddressMonitorOsEnumerate(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
-    _Outptr_result_buffer_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
+    _Outptr_result_buffer_maybenull_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
     _Out_ uint32_t* RawCount
     );
 

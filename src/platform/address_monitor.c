@@ -255,7 +255,13 @@ CxPlatAddressMonitorResync(
     CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
     uint32_t AddressCount = 0;
 
-    if (RawCount != 0) {
+    //
+    // Tested together. An enumeration can succeed with nothing to report, and
+    // hands back a null pointer with a zero count when it does -- which the
+    // declaration now says out loud. Freeing that unconditionally, as this
+    // did, is a null free on any allocator that validates its pool tag.
+    //
+    if (Raw != NULL && RawCount != 0) {
         Addresses =
             CXPLAT_ALLOC_NONPAGED(
                 RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
@@ -271,7 +277,9 @@ CxPlatAddressMonitorResync(
         CxPlatAddressMonitorFilter(Raw, RawCount, Addresses, &AddressCount);
     }
 
-    CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+    if (Raw != NULL) {
+        CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
 
     CXPLAT_ADDRESS_CHANGE* Changes = NULL;
     uint32_t ChangeCount = 0;

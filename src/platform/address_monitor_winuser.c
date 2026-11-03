@@ -229,7 +229,7 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 CxPlatAddressMonitorOsEnumerate(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
-    _Outptr_result_buffer_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
+    _Outptr_result_buffer_maybenull_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
     _Out_ uint32_t* RawCount
     )
 {
