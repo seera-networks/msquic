@@ -135,11 +135,19 @@ CxPlatAddressMonitorFromAdapter(
 {
     CxPlatZeroMemory(Entry, sizeof(*Entry));
 
-    CxPlatCopyMemory(
-        &Entry->Address.Address,
-        Address->Address.lpSockaddr,
-        Address->Address.lpSockaddrLength < (int)sizeof(QUIC_ADDR) ?
-            (size_t)Address->Address.lpSockaddrLength : sizeof(QUIC_ADDR));
+    //
+    // Clamped both ways: SOCKET_ADDRESS reports the length the OS filled in,
+    // which for a v4 sockaddr is well short of QUIC_ADDR, and a copy of the
+    // full union would read past it.
+    //
+    const int SockAddrLength = Address->Address.iSockaddrLength;
+    if (SockAddrLength > 0) {
+        CxPlatCopyMemory(
+            &Entry->Address.Address,
+            Address->Address.lpSockaddr,
+            (size_t)SockAddrLength < sizeof(QUIC_ADDR) ?
+                (size_t)SockAddrLength : sizeof(QUIC_ADDR));
+    }
     QuicAddrSetPort(&Entry->Address.Address, 0);
 
     Entry->Address.InterfaceIndex =

@@ -426,7 +426,7 @@ _Success_(QUIC_SUCCEEDED(return))
 QUIC_STATUS
 CxPlatAddressMonitorGetSnapshot(
     _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
-    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Outptr_result_buffer_maybenull_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
     _Out_ uint32_t* Count,
     _Out_ uint64_t* Generation
     )
@@ -501,7 +501,7 @@ _Success_(QUIC_SUCCEEDED(return))
 QUIC_STATUS
 CxPlatAddressMonitorGetSnapshot(
     _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
-    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Outptr_result_buffer_maybenull_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
     _Out_ uint32_t* Count,
     _Out_ uint64_t* Generation
     )
