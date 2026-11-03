@@ -28,7 +28,13 @@ extern "C" {
 #define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
 #endif
 
-#if defined(_WIN32) && !defined(_KERNEL_MODE)
+//
+// Desktop Windows only. The UWP and GameCore link lines carry neither
+// NotifyUnicastIpAddressChange nor CancelMibChangeNotify2 -- those are
+// documented desktop-only -- so a restricted build gets the not-supported
+// stub, as it did before this backend existed.
+//
+#if defined(_WIN32) && !defined(_KERNEL_MODE) && !defined(QUIC_RESTRICTED_BUILD)
 #define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
 #endif
 

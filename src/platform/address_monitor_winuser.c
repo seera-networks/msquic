@@ -158,15 +158,18 @@ CxPlatAddressMonitorFromAdapter(
     }
 
     //
-    // An RFC 8981 privacy address is the one with a randomly generated suffix.
-    // Only meaningful for IPv6, matching the Linux backend, which reads
-    // IFA_F_TEMPORARY only for AF_INET6: on IPv4 the bit that would carry it
-    // means "secondary address", which is a different thing entirely.
+    // TEMPORARY is deliberately not set here, and SuffixOrigin is not the way
+    // to set it. Windows randomizes interface identifiers by default
+    // (randomizeidentifiers), so the stable public SLAAC address derived from a
+    // router advertisement reports SuffixOrigin == IpSuffixOriginRandom exactly
+    // like the RFC 8981 temporary address beside it. Keying on that would mark
+    // the host's primary global IPv6 address as a privacy address, and phase 3
+    // uses this flag to decide which kind of address to stay on -- so a wrong
+    // flag actively misdirects selection, while an unset one merely leaves that
+    // preference with nothing to say. IP_ADAPTER_UNICAST_ADDRESS_LH carries no
+    // field that separates the two; distinguishing them would mean inferring it
+    // from the lifetime pair, which is guesswork this is better off without.
     //
-    if (QuicAddrGetFamily(&Entry->Address.Address) == QUIC_ADDRESS_FAMILY_INET6 &&
-        Address->SuffixOrigin == IpSuffixOriginRandom) {
-        Entry->Address.Flags |= CXPLAT_ADDRESS_FLAG_TEMPORARY;
-    }
 
     //
     // Scope is read from the address rather than from a flag the OS sets,
@@ -408,7 +411,8 @@ CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
 
         if (Notified && !DebouncePending) {
             DebouncePending = TRUE;
-            DebounceDeadline = CxPlatTimeUs64() + MS_TO_US(Monitor->DebounceMs);
+            DebounceDeadline =
+                CxPlatTimeUs64() + MS_TO_US((uint64_t)Monitor->DebounceMs);
         }
 
         if (DebouncePending &&
@@ -511,6 +515,43 @@ CxPlatAddressMonitorOsInitialize(
         Status = HRESULT_FROM_WIN32(Error);
         goto Error;
     }
+
+    //
+    // The first enumeration is synchronous and silent: callers get a usable
+    // snapshot the moment Initialize returns, with no callback for it. The
+    // shared Initialize does not do this -- each backend does -- and without it
+    // Generation stays 0, so QuicLibraryAddRefAddressMonitor's "only take a
+    // newer generation" seed drops the snapshot and a connection on a quiet
+    // host sees no local addresses at all.
+    //
+    CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS* Raw = NULL;
+    uint32_t RawCount = 0;
+    Status = CxPlatAddressMonitorOsEnumerate(Monitor, &Raw, &RawCount);
+    if (QUIC_FAILED(Status)) {
+        goto Error;
+    }
+
+    if (RawCount != 0) {
+        Monitor->Addresses =
+            CXPLAT_ALLOC_NONPAGED(
+                RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
+        if (Monitor->Addresses == NULL) {
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "address monitor initial snapshot",
+                (uint64_t)RawCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+            CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            goto Error;
+        }
+        CxPlatAddressMonitorFilter(
+            Raw, RawCount, Monitor->Addresses, &Monitor->AddressCount);
+    }
+    if (Raw != NULL) {
+        CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    Monitor->Generation = 1;
 
     CXPLAT_THREAD_CONFIG ThreadConfig = {
         0, 0, "quic_addrmon", CxPlatAddressMonitorThread, Monitor

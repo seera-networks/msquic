@@ -655,6 +655,11 @@ typedef struct CXPLAT_ADDRESS_MONITOR_CONFIG {
     // resync is the difference between one callback and a handful.
     //
     uint32_t DebounceMs;        // 0 selects CXPLAT_ADDRESS_MONITOR_DEFAULT_DEBOUNCE_MS
+    //
+    // N.B. Honoured by the Linux backend only. The Windows backend
+    // subscribes to address and interface changes, so asking for route
+    // watching there succeeds and simply never reports a route change.
+    //
     BOOLEAN WatchRoutes;        // Also report routing table changes
 } CXPLAT_ADDRESS_MONITOR_CONFIG;
 
