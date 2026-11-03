@@ -28,6 +28,10 @@ extern "C" {
 #define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
 #endif
 
+#if defined(_WIN32) && !defined(_KERNEL_MODE)
+#define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
+#endif
+
 //
 // What a backend reports for one address before filtering. The two booleans are
 // the reasons an address can be dropped that are not visible in
