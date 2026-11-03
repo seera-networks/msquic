@@ -966,6 +966,185 @@ QuicTestNatAddrRebind_WithPadding(
     QuicTestNatAddrRebind(Params.Family, Params.Padding, FALSE);
 }
 
+//
+// A NAT that hands out a new port for nearly every packet, as a symmetric NAT
+// does when its mappings are flushed: the server sees datagram after datagram
+// from a fresh port of the same address. Port k of the cycle stands in for the
+// client's real one on receive, and is mapped back to it on send.
+//
+struct RotatingPortHelper : public DatapathHook
+{
+    static const uint16_t PortCount = 8;
+    QUIC_ADDR Original;
+    uint16_t Ports[PortCount];
+    long volatile Next {0};
+    RotatingPortHelper(const QUIC_ADDR& OrigAddr, uint16_t AvoidPort) : Original(OrigAddr) {
+        uint16_t Port = QuicAddrGetPort(&OrigAddr);
+        for (uint16_t i = 0; i < PortCount; ++i) {
+            do {
+                ++Port;
+            } while (Port == AvoidPort || Port == 0);
+            Ports[i] = Port;
+        }
+        DatapathHooks::Instance->AddHook(this);
+    }
+    ~RotatingPortHelper() {
+        DatapathHooks::Instance->RemoveHook(this);
+    }
+    bool IsOurs(const QUIC_ADDR* Address) const {
+        if (QuicAddrGetFamily(Address) != QuicAddrGetFamily(&Original) ||
+            !QuicAddrCompareIp(Address, &Original)) {
+            return false;
+        }
+        for (uint16_t i = 0; i < PortCount; ++i) {
+            if (QuicAddrGetPort(Address) == Ports[i]) {
+                return true;
+            }
+        }
+        return false;
+    }
+    _IRQL_requires_max_(DISPATCH_LEVEL)
+    BOOLEAN
+    Receive(
+        _Inout_ struct CXPLAT_RECV_DATA* Datagram
+        ) {
+        if (QuicAddrCompare(&Datagram->Route->RemoteAddress, &Original)) {
+            QuicAddrSetPort(
+                &Datagram->Route->RemoteAddress,
+                Ports[(unsigned long)InterlockedIncrement(&Next) % PortCount]);
+        }
+        return FALSE;
+    }
+    _IRQL_requires_max_(PASSIVE_LEVEL)
+    BOOLEAN
+    Send(
+        _Inout_ QUIC_ADDR* RemoteAddress,
+        _Inout_opt_ QUIC_ADDR* /* LocalAddress */,
+        _Inout_ struct CXPLAT_SEND_DATA* /* SendData */
+        ) {
+        if (IsOurs(RemoteAddress)) {
+            *RemoteAddress = Original;
+        }
+        return FALSE;
+    }
+};
+
+struct RebindBurstServerContext {
+    CxPlatEvent ConnectedEvent;
+    CxPlatEvent ShutdownEvent;
+    long volatile Received {0};
+    static QUIC_STATUS QUIC_API ConnCallback(
+        _In_ MsQuicConnection*,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_CONNECTION_EVENT* Event
+        ) {
+        auto Ctx = static_cast<RebindBurstServerContext*>(Context);
+        switch (Event->Type) {
+        case QUIC_CONNECTION_EVENT_CONNECTED:
+            Ctx->ConnectedEvent.Set();
+            break;
+        case QUIC_CONNECTION_EVENT_DATAGRAM_RECEIVED:
+            InterlockedIncrement(&Ctx->Received);
+            break;
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+            Ctx->ConnectedEvent.Set();
+            Ctx->ShutdownEvent.Set();
+            break;
+        default:
+            break;
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+};
+
+const uint16_t RebindBurstDatagramLength = 1000;
+static uint8_t RebindBurstRawBuffer[RebindBurstDatagramLength];
+static QUIC_BUFFER RebindBurstBuffer = { RebindBurstDatagramLength, RebindBurstRawBuffer };
+
+void
+QuicTestNatPortRebindBurst(
+    const FamilyArgs& Params
+    )
+{
+    RebindBurstServerContext ServerContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetDatagramReceiveEnabled(true);
+    Settings.SetIdleTimeoutMs(10000);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, RebindBurstServerContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Params.Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.ConnectedEvent.WaitTimeout(TestWaitTimeout));
+    CxPlatSleep(10);
+
+    QuicAddr OrigLocalAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(OrigLocalAddr));
+
+    {
+        RotatingPortHelper PortHelper(OrigLocalAddr.SockAddr, ServerLocalAddr.GetPort());
+
+        //
+        // Bursts, so that the server takes several datagrams in one receive
+        // pass: one from a port it already has a path for is batched, and the
+        // next, from a port it has none for, fills the last path slot or makes
+        // room by removing inactive paths -- possibly the batched one's.
+        //
+        for (uint32_t Round = 0; Round < 50; ++Round) {
+            for (uint32_t i = 0; i < 16; ++i) {
+                (void)MsQuic->DatagramSend(Connection, &RebindBurstBuffer, 1, QUIC_SEND_FLAG_NONE, nullptr);
+            }
+            CxPlatSleep(5);
+            if (ServerContext.ShutdownEvent.WaitTimeout(0)) {
+                break;
+            }
+        }
+        CxPlatSleep(100);
+    }
+
+    //
+    // Datagrams may be lost to path changes; what matters is that the server
+    // went on receiving and its connection survived all of it.
+    //
+    TEST_TRUE(ServerContext.Received > 0);
+    TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(0));
+
+    //
+    // Shut down, but without requiring the server to see it promptly.
+    //
+    // By now the server's idea of the client's address is one of the ports the
+    // hook invented, and the hook is gone, so the CONNECTION_CLOSE arrives
+    // from the real port and the server has to take a path for it -- possibly
+    // evicting one to do so. A CONNECTION_CLOSE is sent once and not
+    // retransmitted on a timer, so a single drop leaves the server waiting out
+    // the 10s idle timeout instead. Asserting on it inside TestWaitTimeout
+    // made this test fail on the io_uring BVT, whose receive batching changes
+    // which packets land where.
+    //
+    // The teardown below is what guarantees cleanup: RegistrationClose waits
+    // for the server connection, and ServerContext outlives the registration.
+    //
+    Connection.Shutdown(0);
+    (void)ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout);
+}
+
 void
 QuicTestPathValidationTimeout(
     const FamilyArgs& Params

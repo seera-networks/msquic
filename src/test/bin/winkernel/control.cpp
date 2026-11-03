@@ -588,6 +588,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestPathValidationLastPathClose);
     RegisterTestFunction(QuicTestNatPortRebind_NoPadding);
     RegisterTestFunction(QuicTestNatPortRebind_WithPadding);
+    RegisterTestFunction(QuicTestNatPortRebindBurst);
     RegisterTestFunction(QuicTestNatAddrRebind_NoPadding);
     RegisterTestFunction(QuicTestNatAddrRebind_WithPadding);
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
