@@ -395,7 +395,7 @@ TEST_F(AddressMonitorTest, EnumerateRealHost)
 
     CXPLAT_LOCAL_ADDRESS* Filtered = NULL;
     uint32_t Count = 0;
-    if (RawCount != 0) {
+    if (Raw != nullptr && RawCount != 0) {
         Filtered =
             (CXPLAT_LOCAL_ADDRESS*)CXPLAT_ALLOC_NONPAGED(
                 RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);

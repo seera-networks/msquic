@@ -539,7 +539,13 @@ CxPlatAddressMonitorOsInitialize(
         goto Error;
     }
 
-    if (RawCount != 0) {
+    //
+    // Tested together, not RawCount alone: a successful enumeration with
+    // nothing to report hands back a null pointer with a zero count, and a
+    // count is not evidence of a pointer. Using the count as a proxy for the
+    // pointer is the mistake this feature has now made four times.
+    //
+    if (Raw != NULL && RawCount != 0) {
         Monitor->Addresses =
             CXPLAT_ALLOC_NONPAGED(
                 RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
