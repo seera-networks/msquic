@@ -655,6 +655,11 @@ typedef struct CXPLAT_ADDRESS_MONITOR_CONFIG {
     // resync is the difference between one callback and a handful.
     //
     uint32_t DebounceMs;        // 0 selects CXPLAT_ADDRESS_MONITOR_DEFAULT_DEBOUNCE_MS
+    //
+    // N.B. Honoured by the Linux backend only. The Windows backend
+    // subscribes to address and interface changes, so asking for route
+    // watching there succeeds and simply never reports a route change.
+    //
     BOOLEAN WatchRoutes;        // Also report routing table changes
 } CXPLAT_ADDRESS_MONITOR_CONFIG;
 
@@ -692,7 +697,7 @@ _Success_(QUIC_SUCCEEDED(return))
 QUIC_STATUS
 CxPlatAddressMonitorGetSnapshot(
     _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
-    _Outptr_result_buffer_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
+    _Outptr_result_buffer_maybenull_(*Count) CXPLAT_LOCAL_ADDRESS** Addresses,
     _Out_ uint32_t* Count,
     _Out_ uint64_t* Generation
     );

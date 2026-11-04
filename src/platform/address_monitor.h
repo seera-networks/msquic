@@ -29,6 +29,16 @@ extern "C" {
 #endif
 
 //
+// Desktop Windows only. The UWP and GameCore link lines carry neither
+// NotifyUnicastIpAddressChange nor CancelMibChangeNotify2 -- those are
+// documented desktop-only -- so a restricted build gets the not-supported
+// stub, as it did before this backend existed.
+//
+#if defined(_WIN32) && !defined(_KERNEL_MODE) && !defined(QUIC_RESTRICTED_BUILD)
+#define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
+#endif
+
+//
 // What a backend reports for one address before filtering. The two booleans are
 // the reasons an address can be dropped that are not visible in
 // CXPLAT_ADDRESS_FLAGS, and they never reach a consumer: the filter uses them
@@ -113,12 +123,14 @@ typedef struct CXPLAT_ADDRESS_MONITOR {
 // Backend hooks. Initialize subscribes and starts delivering; Uninitialize
 // stops delivery and waits for any callback already running.
 //
+_IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 CxPlatAddressMonitorOsInitialize(
     _In_ CXPLAT_DATAPATH* Datapath,
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor
     );
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 CxPlatAddressMonitorOsUninitialize(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor
@@ -128,10 +140,11 @@ CxPlatAddressMonitorOsUninitialize(
 // Enumerates every local address the OS knows, unfiltered. The caller frees
 // *Raw with CXPLAT_FREE and QUIC_POOL_DATAPATH_ADDRESSES.
 //
+_IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 CxPlatAddressMonitorOsEnumerate(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
-    _Outptr_result_buffer_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
+    _Outptr_result_buffer_maybenull_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
     _Out_ uint32_t* RawCount
     );
 

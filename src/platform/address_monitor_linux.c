@@ -565,10 +565,11 @@ CxPlatNetlinkOnAddressMessage(
     ++Dump->Count;
 }
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 CxPlatAddressMonitorOsEnumerate(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
-    _Outptr_result_buffer_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
+    _Outptr_result_buffer_maybenull_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
     _Out_ uint32_t* RawCount
     )
 {
@@ -775,6 +776,7 @@ static CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
     CXPLAT_THREAD_RETURN(0);
 }
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 CxPlatAddressMonitorOsInitialize(
     _In_ CXPLAT_DATAPATH* Datapath,
@@ -839,7 +841,13 @@ CxPlatAddressMonitorOsInitialize(
         goto Error;
     }
 
-    if (RawCount != 0) {
+    //
+    // Tested together, not RawCount alone: a successful enumeration with
+    // nothing to report hands back a null pointer with a zero count, and a
+    // count is not evidence of a pointer. Using the count as a proxy for the
+    // pointer is the mistake this feature has now made four times.
+    //
+    if (Raw != NULL && RawCount != 0) {
         Monitor->Addresses =
             CXPLAT_ALLOC_NONPAGED(
                 RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
@@ -890,6 +898,7 @@ Error:
     return Status;
 }
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 CxPlatAddressMonitorOsUninitialize(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor

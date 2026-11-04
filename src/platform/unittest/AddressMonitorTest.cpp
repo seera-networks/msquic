@@ -395,7 +395,7 @@ TEST_F(AddressMonitorTest, EnumerateRealHost)
 
     CXPLAT_LOCAL_ADDRESS* Filtered = NULL;
     uint32_t Count = 0;
-    if (RawCount != 0) {
+    if (Raw != nullptr && RawCount != 0) {
         Filtered =
             (CXPLAT_LOCAL_ADDRESS*)CXPLAT_ALLOC_NONPAGED(
                 RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
@@ -438,6 +438,14 @@ TEST_F(AddressMonitorTest, EnumerateRealHost)
 // valid answer for the same reason as above, so what is asserted is that it
 // succeeds and that everything it does report is marked up and portless.
 //
+// POSIX only, as the name says. It was gated on CXPLAT_ADDRESS_MONITOR_SUPPORTED
+// instead, which was the same thing until Windows gained a backend -- and both
+// assertions are wrong there: datapath_winuser.c passes
+// GAA_FLAG_INCLUDE_ALL_INTERFACES and copies OperStatus verbatim, so any host
+// with a disconnected NIC or an idle virtual adapter reports one that is not
+// up, and it does not clear the port either.
+//
+#ifndef _WIN32
 TEST_F(AddressMonitorTest, GetLocalAddressesOnPosix)
 {
     CXPLAT_ADAPTER_ADDRESS* Addresses = NULL;
@@ -454,6 +462,7 @@ TEST_F(AddressMonitorTest, GetLocalAddressesOnPosix)
         CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
     }
 }
+#endif // !_WIN32
 
 //
 // The ifType is an IANA value, not netlink's ARPHRD_*. Loopback is the one
