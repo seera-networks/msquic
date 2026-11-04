@@ -44,6 +44,24 @@ Abstract:
 #if defined(CXPLAT_ADDRESS_MONITOR_SUPPORTED)
 
 //
+// The NETIOAPI functions do not report failure the same way in the two modes.
+// In the kernel they return an NTSTATUS, which is already a QUIC_STATUS and is
+// signed; in user mode they return a Win32 error, where zero is success and
+// neither NO_ERROR nor HRESULT_FROM_WIN32 exists in the WDK headers. Three
+// things differ -- the type, the test and the conversion -- so all three are
+// named here rather than #ifdef'd at each call site.
+//
+#if defined(_KERNEL_MODE)
+typedef NTSTATUS CXPLAT_NETIO_RESULT;
+#define CxPlatNetioFailed(X)    QUIC_FAILED(X)
+#define CxPlatNetioToStatus(X)  ((QUIC_STATUS)(X))
+#else
+typedef DWORD CXPLAT_NETIO_RESULT;
+#define CxPlatNetioFailed(X)    ((X) != NO_ERROR)
+#define CxPlatNetioToStatus(X)  HRESULT_FROM_WIN32(X)
+#endif
+
+//
 // How long to wait before retrying an enumeration that failed, doubling to
 // this bound. Matches the Linux backend.
 //
@@ -110,10 +128,18 @@ CxPlatAddressMonitorWinSetScopeFlags(
         if (Bytes[0] == 0xfe && (Bytes[1] & 0xc0) == 0x80) {
             Address->Flags |= CXPLAT_ADDRESS_FLAG_LINK_LOCAL;
         } else {
-            static const uint8_t Loopback[16] = {
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
-            };
-            if (memcmp(Bytes, Loopback, sizeof(Bytes)) == 0) {
+            //
+            // ::1 compared through QuicAddrCompareIp rather than memcmp. The
+            // kernel build compiles this file too, and memcmp is not something
+            // any other kernel-compiled file here relies on, while
+            // QuicAddrCompareIp is used throughout and is available in both
+            // modes.
+            //
+            QUIC_ADDR Loopback;
+            CxPlatZeroMemory(&Loopback, sizeof(Loopback));
+            QuicAddrSetFamily(&Loopback, QUIC_ADDRESS_FAMILY_INET6);
+            QuicAddrSetToLoopback(&Loopback);
+            if (QuicAddrCompareIp(&Loopback, &Address->Address)) {
                 Address->Flags |= CXPLAT_ADDRESS_FLAG_LOOPBACK;
             }
         }
@@ -290,20 +316,20 @@ CxPlatAddressMonitorOsInitialize(
     // through CxPlatAddressMonitorGetSnapshot, and an immediate callback would
     // only produce a redundant resync.
     //
-    DWORD Error =
+    CXPLAT_NETIO_RESULT Error =
         NotifyUnicastIpAddressChange(
             AF_UNSPEC,
             CxPlatAddressMonitorAddressChangeCallback,
             Monitor,
             FALSE,
             &Os->AddressNotify);
-    if (Error != NO_ERROR) {
+    if (CxPlatNetioFailed(Error)) {
         QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            Error,
+            (uint32_t)Error,
             "NotifyUnicastIpAddressChange");
-        Status = HRESULT_FROM_WIN32(Error);
+        Status = CxPlatNetioToStatus(Error);
         goto Error;
     }
 
@@ -314,13 +340,13 @@ CxPlatAddressMonitorOsInitialize(
             Monitor,
             FALSE,
             &Os->InterfaceNotify);
-    if (Error != NO_ERROR) {
+    if (CxPlatNetioFailed(Error)) {
         QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            Error,
+            (uint32_t)Error,
             "NotifyIpInterfaceChange");
-        Status = HRESULT_FROM_WIN32(Error);
+        Status = CxPlatNetioToStatus(Error);
         goto Error;
     }
 
