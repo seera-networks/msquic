@@ -756,6 +756,15 @@ TEST_F(DataPathTest, InitializeInvalid)
 //
 TEST_F(DataPathTest, GetLocalAddressForRemoteLoopback)
 {
+    //
+    // The datapath is created even though the call does not take one: it is
+    // what initializes Winsock, and without it every socket() in this
+    // function's implementation fails on Windows. POSIX needs no such thing,
+    // which is why leaving it out passed there and failed in CI.
+    //
+    CxPlatDataPath Datapath(&EmptyUdpCallbacks);
+    VERIFY_QUIC_SUCCESS(Datapath.GetInitStatus());
+
     QUIC_ADDR Remote;
     CxPlatZeroMemory(&Remote, sizeof(Remote));
     QuicAddrSetFamily(&Remote, QUIC_ADDRESS_FAMILY_INET);
@@ -777,6 +786,9 @@ TEST_F(DataPathTest, GetLocalAddressForRemoteLoopback)
 
 TEST_F(DataPathTest, GetLocalAddressForRemoteLoopbackV6)
 {
+    CxPlatDataPath Datapath(&EmptyUdpCallbacks);
+    VERIFY_QUIC_SUCCESS(Datapath.GetInitStatus());
+
     QUIC_ADDR Remote;
     CxPlatZeroMemory(&Remote, sizeof(Remote));
     QuicAddrSetFamily(&Remote, QUIC_ADDRESS_FAMILY_INET6);
@@ -810,6 +822,23 @@ TEST_F(DataPathTest, GetLocalAddressForRemoteLoopbackV6)
 //
 TEST_F(DataPathTest, GetLocalAddressForRemoteUnspecified)
 {
+    CxPlatDataPath Datapath(&EmptyUdpCallbacks);
+    VERIFY_QUIC_SUCCESS(Datapath.GetInitStatus());
+
+    //
+    // A working call first. On its own, "the bad address fails" is satisfied by
+    // a platform where every call fails -- which is how this test passed in CI
+    // while the two beside it were failing for want of Winsock. Pairing it with
+    // a call that must succeed is what makes the negative mean anything.
+    //
+    QUIC_ADDR Good;
+    CxPlatZeroMemory(&Good, sizeof(Good));
+    QuicAddrSetFamily(&Good, QUIC_ADDRESS_FAMILY_INET);
+    QuicAddrSetToLoopback(&Good);
+    QUIC_ADDR GoodLocal;
+    VERIFY_QUIC_SUCCESS(
+        CxPlatDataPathGetLocalAddressForRemote(&Good, &GoodLocal));
+
     QUIC_ADDR Remote;
     CxPlatZeroMemory(&Remote, sizeof(Remote));
 
