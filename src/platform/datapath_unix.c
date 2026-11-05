@@ -51,7 +51,16 @@ CxPlatDataPathGetLocalAddresses(
         return Status;
     }
 
-    if (RawCount == 0) {
+    //
+    // Tested together, and Raw freed either way. An enumeration can succeed
+    // with nothing to report and still have allocated -- entries skipped for
+    // their family leave a buffer with a zero count -- so returning on the
+    // count alone leaked it.
+    //
+    if (Raw == NULL || RawCount == 0) {
+        if (Raw != NULL) {
+            CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
         return QUIC_STATUS_SUCCESS;
     }
 

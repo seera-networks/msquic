@@ -37,6 +37,9 @@ else()
         set(SOURCES ${SOURCES} datapath_xplat.c datapath_raw_dummy.c)
     else()
         set(SOURCES ${SOURCES} datapath_kqueue.c)
+        if(CX_PLATFORM STREQUAL "darwin")
+            set(SOURCES ${SOURCES} address_monitor_darwin.c)
+        endif()
     endif()
 
     # Compile for Android failed by __atomic_add_fetch(), only emulator and some old ChromeBooks are X86, so the performance penalty may be acceptable, do not patch all the atomic usage for now

@@ -29,6 +29,15 @@ extern "C" {
 #endif
 
 //
+// Apple specifically, not "anything that is not Linux": FreeBSD shares the
+// kqueue datapath and has no backend here, so naming __APPLE__ is what keeps
+// it on the not-supported stub.
+//
+#if defined(__APPLE__)
+#define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
+#endif
+
+//
 // Windows, user mode and kernel alike -- the NETIO subscription and the
 // debounce thread are shared, and only the enumeration differs. Not the
 // restricted builds though: the UWP and GameCore link lines carry neither
