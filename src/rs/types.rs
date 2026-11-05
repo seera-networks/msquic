@@ -726,22 +726,27 @@ mod local_addresses_changed_tests {
     ) -> ffi::QUIC_CONNECTION_EVENT {
         let mut ev: ffi::QUIC_CONNECTION_EVENT = unsafe { std::mem::zeroed() };
         ev.Type = ffi::QUIC_CONNECTION_EVENT_TYPE_QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED;
-        ev.__bindgen_anon_1.LOCAL_ADDRESSES_CHANGED = ffi::QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26 {
-            AddedCount: added.len() as u32,
-            Added: if added.is_empty() {
-                std::ptr::null()
-            } else {
-                added.as_ptr() as *const ffi::QUIC_ADDR
-            },
-            RemovedCount: removed.len() as u32,
-            Removed: if removed.is_empty() {
-                std::ptr::null()
-            } else {
-                removed.as_ptr() as *const ffi::QUIC_ADDR
-            },
-            LostPathCount: lost.len() as u32,
-            LostPaths: if lost.is_empty() { std::ptr::null() } else { lost.as_ptr() },
-        };
+        ev.__bindgen_anon_1.LOCAL_ADDRESSES_CHANGED =
+            ffi::QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26 {
+                AddedCount: added.len() as u32,
+                Added: if added.is_empty() {
+                    std::ptr::null()
+                } else {
+                    added.as_ptr() as *const ffi::QUIC_ADDR
+                },
+                RemovedCount: removed.len() as u32,
+                Removed: if removed.is_empty() {
+                    std::ptr::null()
+                } else {
+                    removed.as_ptr() as *const ffi::QUIC_ADDR
+                },
+                LostPathCount: lost.len() as u32,
+                LostPaths: if lost.is_empty() {
+                    std::ptr::null()
+                } else {
+                    lost.as_ptr()
+                },
+            };
         ev
     }
 
@@ -784,14 +789,8 @@ mod local_addresses_changed_tests {
                 // point of the cast: the decode reinterprets QUIC_ADDR as
                 // crate::Addr, so a layout mismatch would show up here.
                 //
-                assert_eq!(
-                    added[0].as_socket().unwrap().ip().to_string(),
-                    "127.0.0.2"
-                );
-                assert_eq!(
-                    added[1].as_socket().unwrap().ip().to_string(),
-                    "127.0.0.3"
-                );
+                assert_eq!(added[0].as_socket().unwrap().ip().to_string(), "127.0.0.2");
+                assert_eq!(added[1].as_socket().unwrap().ip().to_string(), "127.0.0.3");
                 assert_eq!(
                     removed[0].as_socket().unwrap().ip().to_string(),
                     "127.0.0.4"
