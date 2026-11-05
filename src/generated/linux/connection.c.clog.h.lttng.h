@@ -344,6 +344,94 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, RecvVerNegCryptoError,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for AutoMigrateFailed
+// [conn][%p] AUTO failed to migrate, status=0x%x
+// QuicTraceLogConnWarning(
+        AutoMigrateFailed,
+        Connection,
+        "AUTO failed to migrate, status=0x%x",
+        Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrateFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRemovePathFailed
+// [conn][%p] AUTO failed to remove a path whose address was lost, status=0x%x
+// QuicTraceLogConnWarning(
+                AutoRemovePathFailed,
+                Connection,
+                "AUTO failed to remove a path whose address was lost, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoRemovePathFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRemoveOldRoutePathFailed
+// [conn][%p] AUTO failed to remove the path the route moved off, status=0x%x
+// QuicTraceLogConnWarning(
+                AutoRemoveOldRoutePathFailed,
+                Connection,
+                "AUTO failed to remove the path the route moved off, status=0x%x",
+                RemoveStatus);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemoveStatus = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoRemoveOldRoutePathFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrationUnavailable
+// [conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated
+// QuicTraceLogConnWarning(
+                AutoMigrationUnavailable,
+                Connection,
+                "QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrationUnavailable,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ApiEventNoHandler
 // [conn][%p] Event silently discarded (no handler).
 // QuicTraceLogConnWarning(
@@ -492,6 +580,261 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ExportKeyingMaterialInvalidState,
         ctf_integer(unsigned char, arg3, arg3)
         ctf_integer(unsigned char, arg4, arg4)
         ctf_integer(unsigned char, arg5, arg5)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateDeferred
+// [conn][%p] AUTO deferred a migration until the peer issues a new CID
+// QuicTraceLogConnInfo(
+            AutoMigrateDeferred,
+            Connection,
+            "AUTO deferred a migration until the peer issues a new CID");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrateDeferred,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRemovedLostPath
+// [conn][%p] AUTO removed a path whose local address was lost
+// QuicTraceLogConnInfo(
+            AutoRemovedLostPath,
+            Connection,
+            "AUTO removed a path whose local address was lost");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoRemovedLostPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateMultipathActivate
+// [conn][%p] AUTO made a validated path active before abandoning the old one
+// QuicTraceLogConnInfo(
+                    AutoMigrateMultipathActivate,
+                    Connection,
+                    "AUTO made a validated path active before abandoning the old one");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrateMultipathActivate,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoAddPathFailed
+// [conn][%p] AUTO could not open a path on a new address, status=0x%x
+// QuicTraceLogConnInfo(
+                    AutoAddPathFailed,
+                    Connection,
+                    "AUTO could not open a path on a new address, status=0x%x",
+                    Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoAddPathFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoAddedPath
+// [conn][%p] AUTO opened a path on a new local address
+// QuicTraceLogConnInfo(
+                AutoAddedPath,
+                Connection,
+                "AUTO opened a path on a new local address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoAddedPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowedRoute
+// [conn][%p] AUTO followed a route change onto a validated path
+// QuicTraceLogConnInfo(
+        AutoFollowedRoute,
+        Connection,
+        "AUTO followed a route change onto a validated path");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoFollowedRoute,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRemovedOldRoutePath
+// [conn][%p] AUTO removed the path the route moved off
+// QuicTraceLogConnInfo(
+            AutoRemovedOldRoutePath,
+            Connection,
+            "AUTO removed the path the route moved off");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoRemovedOldRoutePath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRouteMigrationAbandoned
+// [conn][%p] AUTO lost the path it opened for a route change
+// QuicTraceLogConnInfo(
+            AutoRouteMigrationAbandoned,
+            Connection,
+            "AUTO lost the path it opened for a route change");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoRouteMigrationAbandoned,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowRouteAddPathFailed
+// [conn][%p] AUTO could not open a path for a route change, status=0x%x
+// QuicTraceLogConnInfo(
+            AutoFollowRouteAddPathFailed,
+            Connection,
+            "AUTO could not open a path for a route change, status=0x%x",
+            Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoFollowRouteAddPathFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowRouteAddedPath
+// [conn][%p] AUTO opened a path to follow a route change
+// QuicTraceLogConnInfo(
+        AutoFollowRouteAddedPath,
+        Connection,
+        "AUTO opened a path to follow a route change");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoFollowRouteAddedPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateToValidatedPath
+// [conn][%p] AUTO moved to an already validated path
+// QuicTraceLogConnInfo(
+                AutoMigrateToValidatedPath,
+                Connection,
+                "AUTO moved to an already validated path");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrateToValidatedPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateOffline
+// [conn][%p] AUTO has no candidate local address; holding the connection
+// QuicTraceLogConnInfo(
+            AutoMigrateOffline,
+            Connection,
+            "AUTO has no candidate local address; holding the connection");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrateOffline,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateImmediate
+// [conn][%p] AUTO migrated the active path to a new local address
+// QuicTraceLogConnInfo(
+        AutoMigrateImmediate,
+        Connection,
+        "AUTO migrated the active path to a new local address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrateImmediate,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
     )
 )
 
@@ -1049,6 +1392,117 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ApplySettings,
         const void *, arg1), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for RouteLocalAddressUnavailable
+// [conn][%p] No route-derived local address, status=0x%x
+// QuicTraceLogConnVerbose(
+            RouteLocalAddressUnavailable,
+            Connection,
+            "No route-derived local address, status=0x%x",
+            Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, RouteLocalAddressUnavailable,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateLocalAddressChanged
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED
+// QuicTraceLogConnVerbose(
+        IndicateLocalAddressChanged,
+        Connection,
+        "Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateLocalAddressChanged,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoAddPathHeldDown
+// [conn][%p] AUTO held down opening a path on a new address
+// QuicTraceLogConnVerbose(
+            AutoAddPathHeldDown,
+            Connection,
+            "AUTO held down opening a path on a new address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoAddPathHeldDown,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowRouteHeldDown
+// [conn][%p] AUTO held down following a route change
+// QuicTraceLogConnVerbose(
+            AutoFollowRouteHeldDown,
+            Connection,
+            "AUTO held down following a route change");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoFollowRouteHeldDown,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateLocalAddressesChanged
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u
+// QuicTraceLogConnVerbose(
+            IndicateLocalAddressesChanged,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u",
+            AddedCount,
+            RemovedCount,
+            LostCount);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = AddedCount = arg3
+// arg4 = arg4 = RemovedCount = arg4
+// arg5 = arg5 = LostCount = arg5
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateLocalAddressesChanged,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3,
+        unsigned int, arg4,
+        unsigned int, arg5), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(unsigned int, arg4, arg4)
+        ctf_integer(unsigned int, arg5, arg5)
     )
 )
 

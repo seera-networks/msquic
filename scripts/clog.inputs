@@ -17,6 +17,12 @@
 ../src/platform/datapath_winuser.c
 ../src/platform/datapath_linux.c
 ../src/platform/datapath_unix.c
+../src/platform/address_monitor.c
+../src/platform/address_monitor_linux.c
+../src/platform/address_monitor_darwin.c
+../src/platform/address_monitor_win.c
+../src/platform/address_monitor_winuser.c
+../src/platform/address_monitor_winkernel.c
 ../src/platform/datapath_xplat.c
 ../src/platform/datapath_raw_socket.c
 ../src/platform/datapath_raw_socket_win.c
@@ -90,6 +96,7 @@
 ../src/test/lib/TestStream.cpp
 ../src/test/lib/DataTest.cpp
 ../src/test/lib/PathTest.cpp
+../src/test/lib/AddressChangeTest.cpp
 ../src/test/lib/TestListener.cpp
 ../src/test/lib/EventTest.cpp
 ../src/test/lib/ApiTest.cpp
@@ -124,6 +131,7 @@
 ../src/core/unittest/PartitionTest.cpp
 ../src/platform/unittest/TlsTest.cpp
 ../src/platform/unittest/PlatformTest.cpp
+../src/platform/unittest/AddressMonitorTest.cpp
 ../src/platform/unittest/CryptTest.cpp
 ../src/platform/unittest/DataPathTest.cpp
 ../src/platform/unittest/ToeplitzTest.cpp

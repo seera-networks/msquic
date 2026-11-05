@@ -184,6 +184,45 @@ QuicTestLocalPathChanges(
     );
 
 //
+// Local address change tests
+//
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
+void
+QuicTestLocalAddressChangeNotify(
+    const FamilyArgs& Params
+    );
+
+void
+QuicTestLocalAddressChangeDisabled(
+    const FamilyArgs& Params
+    );
+
+void
+QuicTestGetLocalAddressesParam(
+    );
+
+void
+QuicTestLocalAddressChangeAuto(
+    );
+
+void
+QuicTestLocalAddressChangeAutoOffline(
+    );
+
+void
+QuicTestLocalAddressChangeAutoServerMigration(
+    );
+
+void
+QuicTestLocalAddressChangeAutoRoute(
+    );
+
+void
+QuicTestLocalAddressChangeAutoRouteUnchanged(
+    );
+#endif
+
+//
 // Handshake Tests
 //
 
@@ -752,6 +791,11 @@ QuicTestPathKeepAlive(
 
 void
 QuicTestPathStatistics(
+    _In_ const FamilyArgs& Params
+    );
+
+void
+QuicTestMultipathPathsAreMeasured(
     _In_ const FamilyArgs& Params
     );
 

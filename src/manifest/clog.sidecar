@@ -231,6 +231,254 @@
       ],
       "macroName": "QuicTraceLogConnError"
     },
+    "AutoAddedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO opened a path on a new local address",
+      "UniqueId": "AutoAddedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoAddPathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO could not open a path on a new address, status=0x%x",
+      "UniqueId": "AutoAddPathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoAddPathHeldDown": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO held down opening a path on a new address",
+      "UniqueId": "AutoAddPathHeldDown",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "AutoFollowedRoute": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO followed a route change onto a validated path",
+      "UniqueId": "AutoFollowedRoute",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoFollowRouteAddedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO opened a path to follow a route change",
+      "UniqueId": "AutoFollowRouteAddedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoFollowRouteAddPathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO could not open a path for a route change, status=0x%x",
+      "UniqueId": "AutoFollowRouteAddPathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoFollowRouteHeldDown": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO held down following a route change",
+      "UniqueId": "AutoFollowRouteHeldDown",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "AutoMigrateDeferred": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO deferred a migration until the peer issues a new CID",
+      "UniqueId": "AutoMigrateDeferred",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrateFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO failed to migrate, status=0x%x",
+      "UniqueId": "AutoMigrateFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AutoMigrateImmediate": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO migrated the active path to a new local address",
+      "UniqueId": "AutoMigrateImmediate",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrateMultipathActivate": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO made a validated path active before abandoning the old one",
+      "UniqueId": "AutoMigrateMultipathActivate",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrateOffline": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO has no candidate local address; holding the connection",
+      "UniqueId": "AutoMigrateOffline",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrateToValidatedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO moved to an already validated path",
+      "UniqueId": "AutoMigrateToValidatedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoMigrationUnavailable": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated",
+      "UniqueId": "AutoMigrationUnavailable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AutoRemovedLostPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO removed a path whose local address was lost",
+      "UniqueId": "AutoRemovedLostPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoRemovedOldRoutePath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO removed the path the route moved off",
+      "UniqueId": "AutoRemovedOldRoutePath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoRemoveOldRoutePathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO failed to remove the path the route moved off, status=0x%x",
+      "UniqueId": "AutoRemoveOldRoutePathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AutoRemovePathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO failed to remove a path whose address was lost, status=0x%x",
+      "UniqueId": "AutoRemovePathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AutoRouteMigrationAbandoned": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO lost the path it opened for a route change",
+      "UniqueId": "AutoRouteMigrationAbandoned",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "BindingCleanup": {
       "ModuleProperites": {},
       "TraceString": "[bind][%p] Cleaning up",
@@ -7201,6 +7449,42 @@
       ],
       "macroName": "QuicTraceLogStreamVerbose"
     },
+    "IndicateLocalAddressChanged": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED",
+      "UniqueId": "IndicateLocalAddressChanged",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "IndicateLocalAddressesChanged": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u",
+      "UniqueId": "IndicateLocalAddressesChanged",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "IndicateNotifyObservedAddress": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS",
@@ -7827,6 +8111,22 @@
       "UniqueId": "LibraryLoadBalancingModeSetAfterInUse",
       "splitArgs": [],
       "macroName": "QuicTraceLogError"
+    },
+    "LibraryLocalAddressesChanged": {
+      "ModuleProperites": {},
+      "TraceString": "[ lib] Local addresses changed, Generation=%llu, Count=%u",
+      "UniqueId": "LibraryLocalAddressesChanged",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogInfo"
     },
     "LibraryMsQuicClose": {
       "ModuleProperites": {},
@@ -8739,6 +9039,30 @@
         },
         {
           "DefinationEncoding": "u",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "MtuProbeTruncated": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+      "UniqueId": "MtuProbeTruncated",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "hu",
           "MacroVariableName": "arg5"
         }
       ],
@@ -11556,6 +11880,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "RouteLocalAddressUnavailable": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] No route-derived local address, status=0x%x",
+      "UniqueId": "RouteLocalAddressUnavailable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "RouteResolutionEnd": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Route resolution completed on Path[%hhu] with L2 address %hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
@@ -12373,6 +12713,18 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "SettingAutoMigrationHoldDownMs": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] AutoMigrationHoldDown  = %u",
+      "UniqueId": "SettingAutoMigrationHoldDownMs",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "SettingCongestionControlAlgorithm": {
       "ModuleProperites": {},
       "TraceString": "[sett] CongestionControlAlgorithm = %hu",
@@ -13001,6 +13353,18 @@
       "ModuleProperites": {},
       "TraceString": "[sett] IgnoreUnreachable      = %hhu",
       "UniqueId": "SettingIgnoreUnreachable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg2"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "SettingLocalAddressChangeMode": {
+      "ModuleProperites": {},
+      "TraceString": "[sett] LocalAddrChangeMode    = %hhu",
+      "UniqueId": "SettingLocalAddressChangeMode",
       "splitArgs": [
         {
           "DefinationEncoding": "hhu",
@@ -15594,6 +15958,101 @@
         "EncodingString": "[conn][%p] Attack detected: Skipped packet number %llu ACKed in range [%llu, %llu]"
       },
       {
+        "UniquenessHash": "f79fd54f-5b23-a760-bf06-caf6a0224333",
+        "TraceID": "AutoAddedPath",
+        "EncodingString": "[conn][%p] AUTO opened a path on a new local address"
+      },
+      {
+        "UniquenessHash": "56bbfdc6-a39a-fec9-719a-d65ac24eaeec",
+        "TraceID": "AutoAddPathFailed",
+        "EncodingString": "[conn][%p] AUTO could not open a path on a new address, status=0x%x"
+      },
+      {
+        "UniquenessHash": "185cabf8-30d0-f639-ef4e-15b22a2fd220",
+        "TraceID": "AutoAddPathHeldDown",
+        "EncodingString": "[conn][%p] AUTO held down opening a path on a new address"
+      },
+      {
+        "UniquenessHash": "b129fc5c-0290-fc6f-7bfd-26c11e671bc7",
+        "TraceID": "AutoFollowedRoute",
+        "EncodingString": "[conn][%p] AUTO followed a route change onto a validated path"
+      },
+      {
+        "UniquenessHash": "a6f11b77-6f51-999c-ccbb-c10ead34f3ba",
+        "TraceID": "AutoFollowRouteAddedPath",
+        "EncodingString": "[conn][%p] AUTO opened a path to follow a route change"
+      },
+      {
+        "UniquenessHash": "15cf10b9-fcdd-2d25-00ef-4fff2824ddd5",
+        "TraceID": "AutoFollowRouteAddPathFailed",
+        "EncodingString": "[conn][%p] AUTO could not open a path for a route change, status=0x%x"
+      },
+      {
+        "UniquenessHash": "ac0f8df4-dfbf-6d27-6a0d-991b2b0ad31e",
+        "TraceID": "AutoFollowRouteHeldDown",
+        "EncodingString": "[conn][%p] AUTO held down following a route change"
+      },
+      {
+        "UniquenessHash": "b367a76a-cb77-80f4-a653-782cc4bad50c",
+        "TraceID": "AutoMigrateDeferred",
+        "EncodingString": "[conn][%p] AUTO deferred a migration until the peer issues a new CID"
+      },
+      {
+        "UniquenessHash": "10c1cdbc-0f81-8765-0764-224d1c374822",
+        "TraceID": "AutoMigrateFailed",
+        "EncodingString": "[conn][%p] AUTO failed to migrate, status=0x%x"
+      },
+      {
+        "UniquenessHash": "e47fee63-dc77-9267-a7ab-85706be745cc",
+        "TraceID": "AutoMigrateImmediate",
+        "EncodingString": "[conn][%p] AUTO migrated the active path to a new local address"
+      },
+      {
+        "UniquenessHash": "01fb7f72-fc41-53ce-5593-864b50d48264",
+        "TraceID": "AutoMigrateMultipathActivate",
+        "EncodingString": "[conn][%p] AUTO made a validated path active before abandoning the old one"
+      },
+      {
+        "UniquenessHash": "0249dacf-e293-cc2f-8d3b-36f25235c927",
+        "TraceID": "AutoMigrateOffline",
+        "EncodingString": "[conn][%p] AUTO has no candidate local address; holding the connection"
+      },
+      {
+        "UniquenessHash": "2cf81955-b7f6-966e-4ef2-7cb29e15eeae",
+        "TraceID": "AutoMigrateToValidatedPath",
+        "EncodingString": "[conn][%p] AUTO moved to an already validated path"
+      },
+      {
+        "UniquenessHash": "230a914f-39d3-e420-8615-8238b841d79e",
+        "TraceID": "AutoMigrationUnavailable",
+        "EncodingString": "[conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated"
+      },
+      {
+        "UniquenessHash": "0ac0c49e-31b3-c3d9-d969-d9916e3206b5",
+        "TraceID": "AutoRemovedLostPath",
+        "EncodingString": "[conn][%p] AUTO removed a path whose local address was lost"
+      },
+      {
+        "UniquenessHash": "f0d81199-9d5e-4118-8f01-23ae93164a4d",
+        "TraceID": "AutoRemovedOldRoutePath",
+        "EncodingString": "[conn][%p] AUTO removed the path the route moved off"
+      },
+      {
+        "UniquenessHash": "fb359890-c997-c091-ccb2-17591d0a2728",
+        "TraceID": "AutoRemoveOldRoutePathFailed",
+        "EncodingString": "[conn][%p] AUTO failed to remove the path the route moved off, status=0x%x"
+      },
+      {
+        "UniquenessHash": "f949ece9-7b6f-36ce-4133-d2b80ae5e75a",
+        "TraceID": "AutoRemovePathFailed",
+        "EncodingString": "[conn][%p] AUTO failed to remove a path whose address was lost, status=0x%x"
+      },
+      {
+        "UniquenessHash": "1e12cfc0-2cdb-a059-2d8f-765ceb104381",
+        "TraceID": "AutoRouteMigrationAbandoned",
+        "EncodingString": "[conn][%p] AUTO lost the path it opened for a route change"
+      },
+      {
         "UniquenessHash": "5d83e63e-7ce5-0102-8dd2-cbcf5946da2e",
         "TraceID": "BindingCleanup",
         "EncodingString": "[bind][%p] Cleaning up"
@@ -17509,6 +17968,16 @@
         "EncodingString": "[strm][%p] Indicating QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE = %llu"
       },
       {
+        "UniquenessHash": "bc7db1b4-164e-ee13-3216-b89b060ca0ed",
+        "TraceID": "IndicateLocalAddressChanged",
+        "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED"
+      },
+      {
+        "UniquenessHash": "6543cd24-b144-4f9e-9c6c-68b67387bf8e",
+        "TraceID": "IndicateLocalAddressesChanged",
+        "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u"
+      },
+      {
         "UniquenessHash": "27e4602e-c0fc-694a-ed69-7578cd1d81ae",
         "TraceID": "IndicateNotifyObservedAddress",
         "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS"
@@ -17722,6 +18191,11 @@
         "UniquenessHash": "e6c3b194-e19d-d568-1157-675aba101620",
         "TraceID": "LibraryLoadBalancingModeSetAfterInUse",
         "EncodingString": "[ lib] Tried to change load balancing mode after library in use!"
+      },
+      {
+        "UniquenessHash": "752f49ed-e3e4-9cb2-ac74-04ede62feb93",
+        "TraceID": "LibraryLocalAddressesChanged",
+        "EncodingString": "[ lib] Local addresses changed, Generation=%llu, Count=%u"
       },
       {
         "UniquenessHash": "ae77005c-231d-7848-7e06-879ecbd5363d",
@@ -17997,6 +18471,11 @@
         "UniquenessHash": "3f758826-f3d7-22eb-b7df-0453cdad3bc8",
         "TraceID": "MtuPathInitialized",
         "EncodingString": "[conn][%p] Path[%hhu] Mtu Discovery Initialized: max_mtu=%u, cur/min_mtu=%u"
+      },
+      {
+        "UniquenessHash": "9e4e7454-ea15-1ec6-3fb1-13a2b761f340",
+        "TraceID": "MtuProbeTruncated",
+        "EncodingString": "[conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu"
       },
       {
         "UniquenessHash": "92ab8084-33fb-0565-da7b-d2278d05c642",
@@ -18874,6 +19353,11 @@
         "EncodingString": "[conn][%p] Restart (CompleteReset=%hhu)"
       },
       {
+        "UniquenessHash": "e6a7d684-7729-c61a-f5ad-12c0a15e47c1",
+        "TraceID": "RouteLocalAddressUnavailable",
+        "EncodingString": "[conn][%p] No route-derived local address, status=0x%x"
+      },
+      {
         "UniquenessHash": "9bc1fa4d-99a3-dcfe-2650-d4effac253ba",
         "TraceID": "RouteResolutionEnd",
         "EncodingString": "[conn][%p] Route resolution completed on Path[%hhu] with L2 address %hhx:%hhx:%hhx:%hhx:%hhx:%hhx"
@@ -19102,6 +19586,11 @@
         "UniquenessHash": "3f75ae7e-7a36-39a6-df62-7821aaca5bd5",
         "TraceID": "SettingAddAddress",
         "EncodingString": "[sett] AddAddressMode         = %hhu"
+      },
+      {
+        "UniquenessHash": "295bf407-e4e9-2b67-52e4-a7caf85eb265",
+        "TraceID": "SettingAutoMigrationHoldDownMs",
+        "EncodingString": "[sett] AutoMigrationHoldDown  = %u"
       },
       {
         "UniquenessHash": "8a9548eb-5ed9-abe8-6008-94b545f099d7",
@@ -19362,6 +19851,11 @@
         "UniquenessHash": "77ab1610-2ec3-cabb-48c6-b873e735a6c3",
         "TraceID": "SettingIgnoreUnreachable",
         "EncodingString": "[sett] IgnoreUnreachable      = %hhu"
+      },
+      {
+        "UniquenessHash": "f8b0e239-3b4c-72a6-631e-74c77d01ecce",
+        "TraceID": "SettingLocalAddressChangeMode",
+        "EncodingString": "[sett] LocalAddrChangeMode    = %hhu"
       },
       {
         "UniquenessHash": "025f13c0-6d85-2f19-a68e-e80104f42f1f",

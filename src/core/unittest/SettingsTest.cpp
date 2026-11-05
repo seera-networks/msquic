@@ -137,6 +137,8 @@ TEST(SettingsTest, TestAllSettingsFieldsSet)
     SETTINGS_FEATURE_SET_TEST(SendObservedAddressReports, QuicSettingsSettingsToInternal);
     SETTINGS_FEATURE_SET_TEST(ReceiveObservedAddressReports, QuicSettingsSettingsToInternal);
     SETTINGS_FEATURE_SET_TEST(PathValidatedEventEnabled, QuicSettingsSettingsToInternal);
+    SETTINGS_FEATURE_SET_TEST(LocalAddressChangeMode, QuicSettingsSettingsToInternal);
+    SETTINGS_FEATURE_SET_TEST(AutoMigrationHoldDownMs, QuicSettingsSettingsToInternal);
 
     // Bias field count on behalf of erstwhile ReservedRioEnabled
     FieldCount++;
@@ -236,6 +238,8 @@ TEST(SettingsTest, TestAllSettingsFieldsGet)
     SETTINGS_FEATURE_GET_TEST(SendObservedAddressReports, QuicSettingsGetSettings);
     SETTINGS_FEATURE_GET_TEST(ReceiveObservedAddressReports, QuicSettingsGetSettings);
     SETTINGS_FEATURE_GET_TEST(PathValidatedEventEnabled, QuicSettingsGetSettings);
+    SETTINGS_FEATURE_GET_TEST(LocalAddressChangeMode, QuicSettingsGetSettings);
+    SETTINGS_FEATURE_GET_TEST(AutoMigrationHoldDownMs, QuicSettingsGetSettings);
 
     // Bias field count on behalf of erstwhile ReservedRioEnabled
     FieldCount++;

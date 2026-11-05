@@ -753,6 +753,8 @@ public:
     MsQuicSettings& SetSendObservedAddressReports(bool value) { SendObservedAddressReports = value; IsSet.SendObservedAddressReports = TRUE; return *this; }
     MsQuicSettings& SetReceiveObservedAddressReports(bool value) { ReceiveObservedAddressReports = value; IsSet.ReceiveObservedAddressReports = TRUE; return *this; }
     MsQuicSettings& SetPathKeepAlive(uint32_t Time) { PathKeepAliveIntervalMs = Time; IsSet.PathKeepAliveIntervalMs = TRUE; return *this; }
+    MsQuicSettings& SetLocalAddressChangeMode(QUIC_LOCAL_ADDRESS_CHANGE_MODE Mode) { LocalAddressChangeMode = (uint8_t)Mode; IsSet.LocalAddressChangeMode = TRUE; return *this; }
+    MsQuicSettings& SetAutoMigrationHoldDownMs(uint32_t Value) { AutoMigrationHoldDownMs = Value; IsSet.AutoMigrationHoldDownMs = TRUE; return *this; }
 #endif
 
     QUIC_STATUS

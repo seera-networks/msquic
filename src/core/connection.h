@@ -570,6 +570,89 @@ typedef struct QUIC_CONNECTION {
     //
     QUIC_PATH Paths[QUIC_MAX_PATH_COUNT];
 
+    //
+    // Whether a local address change operation is already queued for this
+    // connection. Interlocked, because the library's fan-out sets it from the
+    // platform's callback while the worker clears it.
+    //
+    // One pending operation is enough however many changes arrive: the handler
+    // reads the latest snapshot rather than a delta, so a burst collapses.
+    //
+    BOOLEAN volatile AddressChangeQueued;
+
+    //
+    // Whether this connection holds a reference on the library's address
+    // monitor. Taken when a mode other than DISABLED is first applied, so the
+    // monitor thread only runs while somebody is listening.
+    //
+    BOOLEAN AddressMonitorRef;
+
+    //
+    // AUTO mode wanted to migrate and could not, because there was no unused
+    // destination CID to migrate onto. Reconciliation re-runs when the peer
+    // issues one; until then the connection stays on a path it knows is dead.
+    //
+    BOOLEAN AddressMigrationDeferred;
+
+    //
+    // AUTO mode is accepted but does nothing, because the connection also
+    // negotiated server migration and the path APIs reject our calls. Traced
+    // once rather than on every reconciliation.
+    //
+    BOOLEAN AutoMigrationUnavailableTraced;
+
+    //
+    // When AUTO last migrated of its own accord, for AutoMigrationHoldDownMs.
+    // Zero means never.
+    //
+    uint64_t LastAutoMigrationTimeUs;
+
+    //
+    // The snapshot generation this connection last reconciled against, so a
+    // queued operation that finds nothing new can return without work.
+    //
+    uint64_t LastAddressGeneration;
+
+    //
+    // A local address change arrived before the handshake was confirmed, when
+    // migration is not allowed. Reconciliation re-runs from where paths are
+    // opened at confirmation.
+    //
+    BOOLEAN AddressChangeDirty;
+
+    //
+    // The route-change generation this connection last reconciled against.
+    // Separate from LastAddressGeneration because a route change and an
+    // address change are reported on the same generation counter but mean
+    // different things: the address half is a snapshot to diff, the route half
+    // is "the OS may now send to this peer from somewhere else".
+    //
+    uint64_t LastRouteGeneration;
+
+    //
+    // AUTO mode has opened a path on the address the OS now routes to the peer
+    // from, and is waiting for the peer to answer its PATH_CHALLENGE before
+    // making it active. Make-before-break: unlike a lost address, the path in
+    // use still works, so there is no reason to move onto an unproven one.
+    //
+    // The target is named by its local address rather than by its path ID
+    // because the address is what the decision was made on, is unique among
+    // this connection's paths by construction -- the selection excludes
+    // addresses already in use -- and does not get recycled the way a path ID
+    // slot can.
+    //
+    BOOLEAN RouteMigrationPending;
+    QUIC_ADDR RouteMigrationLocal;
+
+    //
+    // The path above has finished validating and the migration onto it is
+    // waiting to be made. Deferred rather than done where the validation
+    // completes, because that is in the middle of processing a received
+    // packet's frames, on a path pointer the caller keeps using afterwards --
+    // and completing the migration swaps the path array and removes an entry,
+    // which left that pointer naming a path that had just been taken away.
+    //
+    BOOLEAN RouteMigrationReady;
 
     CXPLAT_LIST_ENTRY BoundAddresses;
 
@@ -725,6 +808,7 @@ typedef struct QUIC_CONNECTION {
     // The size of the keep alive padding.
     //
     uint16_t KeepAlivePadding;
+
 
     //
     // Connection blocked timings.
@@ -1215,6 +1299,39 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 void
 QuicConnUnregister(
     _Inout_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Queues reconciliation of this connection's paths against the library's
+// current local address snapshot. Safe to call from the platform callback's
+// context: it only allocates and queues, and queues at most one operation.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+void
+QuicConnQueueLocalAddressChange(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Reconciles the connection's paths against the host's current local
+// addresses. Runs on the connection's worker.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnProcessLocalAddressChange(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Tells AUTO mode that a path finished validating, so a make-before-break
+// migration it started for a route change can complete. A no-op unless that is
+// what the path was opened for.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnAutoPathValidated(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_PATH* Path
     );
 
 //
@@ -1851,6 +1968,13 @@ QuicMtuDiscoveryCheckSearchCompleteTimeout(
         // passed.
         //
         QUIC_PATH* Path = &Connection->Paths[i];
+        //
+        // Active paths only, matching QuicSendPathMtuProbes. An MTU probe
+        // carries a PING, which is not a probing frame, so on a path the peer
+        // does not believe is in use it reads as the endpoint having migrated
+        // there. Measuring a path that is deliberately not in use needs a
+        // padded PATH_CHALLENGE instead.
+        //
         if (!Path->IsActive || !Path->MtuDiscovery.IsSearchComplete) {
             continue;
         }

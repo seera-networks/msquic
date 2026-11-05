@@ -19,6 +19,9 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="address_monitor.c" />
+    <ClCompile Include="address_monitor_win.c" />
+    <ClCompile Include="address_monitor_winkernel.c" />
     <ClCompile Include="crypt.c" />
     <ClCompile Include="crypt_bcrypt.c" />
     <ClCompile Include="datapath_winkernel.c" />

@@ -32,6 +32,10 @@ typedef enum QUIC_CONNECTION_EVENT_TYPE {
     QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_ADDED       = 20,   // Only indicated if QUIC_SETTINGS.AddAddressMode is MANUAL
     QUIC_CONNECTION_EVENT_PATH_VALIDATED                    = 21,
     QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED     = 22,   // Only indicated if QUIC_SETTINGS.AddAddressMode is MANUAL
+    QUIC_CONNECTION_EVENT_PATH_ADDED                        = 23,
+    QUIC_CONNECTION_EVENT_PATH_REMOVED                      = 24,
+    QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED               = 25,
+    QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED           = 26,   // Only indicated if QUIC_SETTINGS.LocalAddressChangeMode is NOTIFY
 #endif
 
 } QUIC_CONNECTION_EVENT_TYPE;
@@ -222,6 +226,10 @@ A flag indicating that the application called [ConnectionClose](ConnectionClose.
 ## QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED
 
 This event is delivered when the local address used for the primary/active path communication has changed.
+
+It is raised whatever moved the active path: `QUIC_PARAM_CONN_ACTIVATE_PATH`, or a migration the connection performed itself under `QUIC_LOCAL_ADDRESS_CHANGE_AUTO`.
+
+> **Note** — `SetParam` runs inline when called from a connection callback, so setting `QUIC_PARAM_CONN_ACTIVATE_PATH` from a callback raises this event *before that call returns*, re-entering the application's handler. An application that holds a non-recursive lock across its handler must not call the path parameters from inside it; queue the work instead.
 
 ### LOCAL_ADDRESS_CHANGED
 
@@ -552,6 +560,34 @@ The content of REMOVE_ADDRESS frame is passed in the `NOTIFY_REMOTE_ADDRESS_REMO
 
 The Sequence Number of the removed address.
 
+
+# QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED
+
+**Preview feature**: This event is in [preview](../PreviewFeatures.md). It should be considered unstable and can be subject to breaking changes.
+
+This event is only indicated if `QUIC_SETTINGS.LocalAddressChangeMode` is `QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY`. It says that the set of addresses the *host* has changed -- a Wi-Fi interface going away, a cellular address appearing, a VPN coming up -- and leaves it to the application to decide what to do about it, through `QUIC_PARAM_CONN_ADD_PATH`, `QUIC_PARAM_CONN_ACTIVATE_PATH` and `QUIC_PARAM_CONN_REMOVE_PATH`.
+
+Nothing is indicated before the handshake is confirmed, since RFC 9000 section 9 does not allow migration until then; a change that happens earlier is reported once at confirmation.
+
+## LOCAL_ADDRESSES_CHANGED
+
+`AddedCount` / `Added`
+
+Addresses the host has that this connection is not already sending from -- the ones it could open a path on now. The port of each is zero. This is computed against the current address set rather than against the previous event, so it is complete whether or not the application saw every indication.
+
+`RemovedCount` / `Removed`
+
+Addresses the host no longer has, with the port zero. This one is informational and best-effort: it covers only the most recent change, so a burst of changes that collapses into a single indication reports only its last step. An application that needs to know which of *its* paths are affected should use `LostPaths`, which is always complete.
+
+`LostPathCount` / `LostPaths`
+
+The connection's paths whose local address the host no longer has. Each entry is a `QUIC_PATH_PARAM` in the form `QUIC_PARAM_CONN_REMOVE_PATH` accepts, so it can be passed straight back.
+
+The arrays are valid only for the duration of the callback.
+
+### NOTIFY and AUTO are not interchangeable
+
+Under `NOTIFY` the application owns the decision and is expected to act on this event. Under `QUIC_LOCAL_ADDRESS_CHANGE_AUTO` the connection owns it, and calling the path parameters from a callback races the policy — there, treat this event and `QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED` as informational. `AUTO` also does nothing at all on a connection that negotiated server-initiated migration, because the path parameters reject our calls on one.
 
 # See Also
 

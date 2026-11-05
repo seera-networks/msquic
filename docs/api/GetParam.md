@@ -103,6 +103,43 @@ uint32_t NumSizes = BufferLength / sizeof(uint32_t);
 
 See also: [Settings.md](../Settings.md#global-parameters)
 
+## QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES
+
+**Preview feature**: This parameter is in [preview](../PreviewFeatures.md). It should be considered unstable and can be subject to breaking changes.
+
+Returns the local addresses the host has that a connection could usefully send from. Addresses still in duplicate address detection, and addresses on an interface that is not operationally up, are left out; loopback, link-local, temporary and deprecated addresses are included, because whether to use one of those is the application's decision. The port of each is zero.
+
+- **Type:** `QUIC_ADDR[]`
+- **Get-only**
+- **Variable-length:** use the double-call pattern. Pass a `BufferLength` of zero to learn the required size.
+
+The query starts the platform's address monitor for the length of the call when no connection already has it running, so it is a little more expensive than most parameter reads. `QUIC_STATUS_NOT_SUPPORTED` means the platform has no address monitor backend.
+
+**Sample usage:**
+```c
+uint32_t BufferLength = 0;
+QUIC_STATUS Status =
+    MsQuic->GetParam(
+        NULL,
+        QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES,
+        &BufferLength,
+        NULL);
+if (Status == QUIC_STATUS_BUFFER_TOO_SMALL) {
+    QUIC_ADDR* Addresses = (QUIC_ADDR*)malloc(BufferLength);
+    Status =
+        MsQuic->GetParam(
+            NULL,
+            QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES,
+            &BufferLength,
+            Addresses);
+    uint32_t Count = BufferLength / sizeof(QUIC_ADDR);
+    // ...
+    free(Addresses);
+}
+```
+
+To be told when this set changes rather than polling it, set `QUIC_SETTINGS.LocalAddressChangeMode` to `QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY` and handle [QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED](QUIC_CONNECTION_EVENT.md#quic_connection_event_local_addresses_changed).
+
 # See Also
 
 [Settings](../Settings.md#api-object-parameters)<br>

@@ -907,6 +907,38 @@ TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingAddAddress,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for SettingLocalAddressChangeMode
+// [sett] LocalAddrChangeMode    = %hhu
+// QuicTraceLogVerbose(SettingLocalAddressChangeMode,      "[sett] LocalAddrChangeMode    = %hhu", Settings->LocalAddressChangeMode);
+// arg2 = arg2 = Settings->LocalAddressChangeMode = arg2
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingLocalAddressChangeMode,
+    TP_ARGS(
+        unsigned char, arg2), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for SettingAutoMigrationHoldDownMs
+// [sett] AutoMigrationHoldDown  = %u
+// QuicTraceLogVerbose(SettingAutoMigrationHoldDownMs,     "[sett] AutoMigrationHoldDown  = %u", Settings->AutoMigrationHoldDownMs);
+// arg2 = arg2 = Settings->AutoMigrationHoldDownMs = arg2
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SETTINGS_C, SettingAutoMigrationHoldDownMs,
+    TP_ARGS(
+        unsigned int, arg2), 
+    TP_FIELDS(
+        ctf_integer(unsigned int, arg2, arg2)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for SettingIgnoreUnreachable
 // [sett] IgnoreUnreachable      = %hhu
 // QuicTraceLogVerbose(SettingIgnoreUnreachable,           "[sett] IgnoreUnreachable      = %hhu", Settings->IgnoreUnreachable);

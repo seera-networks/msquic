@@ -41,9 +41,13 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 static
 void
 QuicMtuDiscoverySendProbePacket(
+    _In_ QUIC_MTU_DISCOVERY* MtuDiscovery,
     _In_ QUIC_CONNECTION* Connection
     )
 {
+    QUIC_PATH* Path =
+        CXPLAT_CONTAINING_RECORD(MtuDiscovery, QUIC_PATH, MtuDiscovery);
+    Path->SendMtuProbe = TRUE;
     QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_DPLPMTUD);
 }
 
@@ -140,7 +144,7 @@ QuicMtuDiscoveryMoveToSearching(
         Path->ID,
         MtuDiscovery->ProbeSize);
 
-    QuicMtuDiscoverySendProbePacket(Connection);
+    QuicMtuDiscoverySendProbePacket(MtuDiscovery, Connection);
 }
 
 //
@@ -262,5 +266,5 @@ QuicMtuDiscoveryProbePacketDiscarded(
         return;
     }
     MtuDiscovery->ProbeCount++;
-    QuicMtuDiscoverySendProbePacket(Connection);
+    QuicMtuDiscoverySendProbePacket(MtuDiscovery, Connection);
 }

@@ -67,6 +67,8 @@ typedef struct QUIC_SETTINGS_INTERNAL {
             uint64_t ConnIDGenDisabled                      : 1;
             uint64_t ServerMigrationEnabled                 : 1;
             uint64_t AddAddressMode                         : 1;
+            uint64_t LocalAddressChangeMode                 : 1;
+            uint64_t AutoMigrationHoldDownMs                : 1;
             uint64_t IgnoreUnreachable                      : 1;
             uint64_t MultipathEnabled                       : 1;
             uint64_t SendObservedAddressReports             : 1;
@@ -130,12 +132,14 @@ typedef struct QUIC_SETTINGS_INTERNAL {
     uint8_t ConnIDGenDisabled               : 1;
     uint8_t ServerMigrationEnabled          : 1;
     uint8_t AddAddressMode                  : 2;    // QUIC_ADD_ADDRESS_MODE
+    uint8_t LocalAddressChangeMode          : 2;    // QUIC_LOCAL_ADDRESS_CHANGE_MODE
     uint8_t IgnoreUnreachable               : 1;
     uint8_t MultipathEnabled                : 1;
     uint8_t SendObservedAddressReports      : 1;
     uint8_t ReceiveObservedAddressReports   : 1;
     uint8_t PathValidatedEventEnabled       : 1;
     uint8_t MtuDiscoveryMissingProbeCount;
+    uint32_t AutoMigrationHoldDownMs;
 } QUIC_SETTINGS_INTERNAL;
 
 //

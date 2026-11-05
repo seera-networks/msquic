@@ -122,6 +122,26 @@ tracepoint(CLOG_LIBRARY_C, LibraryVerifierEnabled );\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for LibraryLocalAddressesChanged
+// [ lib] Local addresses changed, Generation=%llu, Count=%u
+// QuicTraceLogInfo(
+        LibraryLocalAddressesChanged,
+        "[ lib] Local addresses changed, Generation=%llu, Count=%u",
+        ChangeSet->Generation,
+        ChangeSet->AddressCount);
+// arg2 = arg2 = ChangeSet->Generation = arg2
+// arg3 = arg3 = ChangeSet->AddressCount = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_LibraryLocalAddressesChanged
+#define _clog_4_ARGS_TRACE_LibraryLocalAddressesChanged(uniqueId, encoded_arg_string, arg2, arg3)\
+tracepoint(CLOG_LIBRARY_C, LibraryLocalAddressesChanged , arg2, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for LibraryCidLengthSet
 // [ lib] CID Length = %hhu
 // QuicTraceLogInfo(

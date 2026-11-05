@@ -1358,6 +1358,35 @@ struct PathSendCounter : public DatapathHook
     }
 };
 
+//
+// Counts datagrams arriving from a given client port that are at least a given
+// length. An MTU probe is padded to the size it is probing, so it separates by
+// length from everything else a path carries.
+//
+struct PathProbeSizeCounter : public DatapathHook
+{
+    uint16_t PathPort;
+    uint16_t MinLength;
+    long Count {0};
+    PathProbeSizeCounter(uint16_t Port, uint16_t Min) : PathPort(Port), MinLength(Min) {
+        DatapathHooks::Instance->AddHook(this);
+    }
+    ~PathProbeSizeCounter() {
+        DatapathHooks::Instance->RemoveHook(this);
+    }
+    _IRQL_requires_max_(DISPATCH_LEVEL)
+    BOOLEAN
+    Receive(
+        _Inout_ struct CXPLAT_RECV_DATA* Datagram
+        ) {
+        if (QuicAddrGetPort(&Datagram->Route->RemoteAddress) == PathPort &&
+            Datagram->BufferLength >= MinLength) {
+            InterlockedIncrement(&Count);
+        }
+        return FALSE;
+    }
+};
+
 void
 QuicTestPathKeepAlive(
     _In_ const FamilyArgs& Params
@@ -2393,6 +2422,136 @@ QuicTestMultipathPathValidationRetry(
     TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
     TEST_FALSE(ClientContext.PathRemovedEvent.WaitTimeout(100));
     TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
+}
+
+//
+// Every path of a multipath connection gets measured, not just the one the
+// connection happens to be sending on.
+//
+// MTU discovery used to be asked for with a connection-wide send flag and the
+// probe built on whichever path QuicConnChoosePath returned for that flush.
+// The acknowledgement, though, is matched against the sending path's own
+// ProbeSize in QuicMtuDiscoveryOnAckedPacket, so a probe that one path asked
+// for and another carried came back not matching and was dropped as out of
+// order -- and the path that asked was never measured at all. With one active
+// path the two are the same path and nothing shows; with two they are not.
+//
+// The assertion is that no path is left at MinimumMtu. The statistics do not
+// name a path by address, so "all of them grew" is what isolates the path that
+// is not the one being sent on.
+//
+void
+QuicTestMultipathPathsAreMeasured(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    PathTestContext Context;
+    PathTestClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    //
+    // Room to grow: paths start at MinimumMtu and loopback will carry them to
+    // MaximumMtu, so a path still sitting at MinimumMtu was never probed.
+    //
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE)
+        .SetMinimumMtu(QUIC_DPLPMTUD_MIN_MTU)
+        .SetMaximumMtu(1400);
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathTestClientContext::ClientCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    QuicAddr SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    UniquePtr<PathProbeHelper> ProbeHelper(
+        new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort()));
+    TEST_NOT_EQUAL(nullptr, ProbeHelper.get());
+
+    //
+    // Chosen to count MTU probes on the second path and nothing else, which
+    // means counting UDP payload rather than MTU -- the hook sees the payload,
+    // the MTU less the IP and UDP headers, 28 bytes over IPv4 and 48 over IPv6.
+    //
+    // Path validation pads its PATH_CHALLENGE to the path's current MTU, which
+    // is MinimumMtu (1248) here: 1220 over IPv4, 1200 over IPv6. MTU probes
+    // jump straight to 1280: 1252 and 1232. So 1225 is above every validation
+    // challenge and below every probe, for both families -- a threshold below
+    // the challenge would count validation traffic and the assertion would
+    // then pass on a path that was never probed at all.
+    //
+    const uint16_t ProbeOnlyLength = 1225;
+    UniquePtr<PathProbeSizeCounter> Probes(
+        new(std::nothrow) PathProbeSizeCounter(SecondLocalAddr.GetPort(), ProbeOnlyLength));
+    TEST_NOT_EQUAL(nullptr, Probes.get());
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+        if (QUIC_SUCCEEDED(Status)) {
+            break;
+        }
+        SecondLocalAddr.SetEphemeralPort();
+        ProbeHelper.reset(new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort()));
+        TEST_NOT_EQUAL(nullptr, ProbeHelper.get());
+        Probes.reset(
+            new(std::nothrow) PathProbeSizeCounter(SecondLocalAddr.GetPort(), ProbeOnlyLength));
+        TEST_NOT_EQUAL(nullptr, Probes.get());
+    } while (++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    ProbeHelper.reset(nullptr);
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+
+    //
+    // Keep the connection busy, so the flush that carries the probe happens
+    // promptly whichever path the connection is sending on.
+    //
+    Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(15));
+
+    for (uint32_t i = 0; i < 100 && Probes->Count == 0; ++i) {
+        CxPlatSleep(100);
+    }
+
+    Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(0));
+
+    //
+    // A probe-sized datagram from the second path's own port. Building every
+    // probe on the path the flush chose sends it from the first path's port
+    // instead, and this stays at zero -- which is the defect, and it is the
+    // send that is asserted rather than the MTU that results, so the assertion
+    // does not depend on the search converging or on where it stops.
+    //
+    TEST_TRUE(Probes->Count > 0);
 }
 
 #endif

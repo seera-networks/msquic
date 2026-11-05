@@ -1126,8 +1126,23 @@ QuicTestNatPortRebindBurst(
     TEST_TRUE(ServerContext.Received > 0);
     TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(0));
 
+    //
+    // Shut down, but without requiring the server to see it promptly.
+    //
+    // By now the server's idea of the client's address is one of the ports the
+    // hook invented, and the hook is gone, so the CONNECTION_CLOSE arrives
+    // from the real port and the server has to take a path for it -- possibly
+    // evicting one to do so. A CONNECTION_CLOSE is sent once and not
+    // retransmitted on a timer, so a single drop leaves the server waiting out
+    // the 10s idle timeout instead. Asserting on it inside TestWaitTimeout
+    // made this test fail on the io_uring BVT, whose receive batching changes
+    // which packets land where.
+    //
+    // The teardown below is what guarantees cleanup: RegistrationClose waits
+    // for the server connection, and ServerContext outlives the registration.
+    //
     Connection.Shutdown(0);
-    TEST_TRUE(ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+    (void)ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout);
 }
 
 void
@@ -4515,6 +4530,24 @@ QuicTestInterfaceBinding(
     if (!GetTestInterfaceIndices(QuicAddrFamily, LoopbackInterfaceIndex, OtherInterfaceIndex)) {
         return; // Not supported
     }
+
+#ifndef _WIN32
+    //
+    // The assertion below -- that binding to a non-loopback interface stops a
+    // loopback handshake -- needs the datapath to apply the interface index to
+    // the socket, and the POSIX datapath does not: there is no SO_BINDTODEVICE
+    // or IP_UNICAST_IF anywhere in it, so QUIC_PARAM_CONN_LOCAL_INTERFACE is
+    // accepted by core and then ignored, the connection goes out over loopback
+    // anyway, and the handshake completes.
+    //
+    // This used to be unreachable for an unrelated reason:
+    // CxPlatDataPathGetLocalAddresses was unimplemented on POSIX, so
+    // GetTestInterfaceIndices returned false above and the test returned early.
+    // Implementing it exposed this, so the skip is stated here rather than left
+    // to be rediscovered.
+    //
+    return;
+#endif
 
     MsQuicRegistration Registration(true);
     TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());

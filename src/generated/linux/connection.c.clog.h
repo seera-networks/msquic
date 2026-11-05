@@ -340,6 +340,84 @@ tracepoint(CLOG_CONNECTION_C, RecvVerNegCryptoError , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for AutoMigrateFailed
+// [conn][%p] AUTO failed to migrate, status=0x%x
+// QuicTraceLogConnWarning(
+        AutoMigrateFailed,
+        Connection,
+        "AUTO failed to migrate, status=0x%x",
+        Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AutoMigrateFailed
+#define _clog_4_ARGS_TRACE_AutoMigrateFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrateFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRemovePathFailed
+// [conn][%p] AUTO failed to remove a path whose address was lost, status=0x%x
+// QuicTraceLogConnWarning(
+                AutoRemovePathFailed,
+                Connection,
+                "AUTO failed to remove a path whose address was lost, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AutoRemovePathFailed
+#define _clog_4_ARGS_TRACE_AutoRemovePathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AutoRemovePathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRemoveOldRoutePathFailed
+// [conn][%p] AUTO failed to remove the path the route moved off, status=0x%x
+// QuicTraceLogConnWarning(
+                AutoRemoveOldRoutePathFailed,
+                Connection,
+                "AUTO failed to remove the path the route moved off, status=0x%x",
+                RemoveStatus);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemoveStatus = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AutoRemoveOldRoutePathFailed
+#define _clog_4_ARGS_TRACE_AutoRemoveOldRoutePathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AutoRemoveOldRoutePathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrationUnavailable
+// [conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated
+// QuicTraceLogConnWarning(
+                AutoMigrationUnavailable,
+                Connection,
+                "QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoMigrationUnavailable
+#define _clog_3_ARGS_TRACE_AutoMigrationUnavailable(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrationUnavailable , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ApiEventNoHandler
 // [conn][%p] Event silently discarded (no handler).
 // QuicTraceLogConnWarning(
@@ -470,6 +548,244 @@ tracepoint(CLOG_CONNECTION_C, UnreachableInvalid , arg1);\
 #ifndef _clog_6_ARGS_TRACE_ExportKeyingMaterialInvalidState
 #define _clog_6_ARGS_TRACE_ExportKeyingMaterialInvalidState(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
 tracepoint(CLOG_CONNECTION_C, ExportKeyingMaterialInvalidState , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateDeferred
+// [conn][%p] AUTO deferred a migration until the peer issues a new CID
+// QuicTraceLogConnInfo(
+            AutoMigrateDeferred,
+            Connection,
+            "AUTO deferred a migration until the peer issues a new CID");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoMigrateDeferred
+#define _clog_3_ARGS_TRACE_AutoMigrateDeferred(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrateDeferred , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRemovedLostPath
+// [conn][%p] AUTO removed a path whose local address was lost
+// QuicTraceLogConnInfo(
+            AutoRemovedLostPath,
+            Connection,
+            "AUTO removed a path whose local address was lost");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoRemovedLostPath
+#define _clog_3_ARGS_TRACE_AutoRemovedLostPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoRemovedLostPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateMultipathActivate
+// [conn][%p] AUTO made a validated path active before abandoning the old one
+// QuicTraceLogConnInfo(
+                    AutoMigrateMultipathActivate,
+                    Connection,
+                    "AUTO made a validated path active before abandoning the old one");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoMigrateMultipathActivate
+#define _clog_3_ARGS_TRACE_AutoMigrateMultipathActivate(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrateMultipathActivate , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoAddPathFailed
+// [conn][%p] AUTO could not open a path on a new address, status=0x%x
+// QuicTraceLogConnInfo(
+                    AutoAddPathFailed,
+                    Connection,
+                    "AUTO could not open a path on a new address, status=0x%x",
+                    Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AutoAddPathFailed
+#define _clog_4_ARGS_TRACE_AutoAddPathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AutoAddPathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoAddedPath
+// [conn][%p] AUTO opened a path on a new local address
+// QuicTraceLogConnInfo(
+                AutoAddedPath,
+                Connection,
+                "AUTO opened a path on a new local address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoAddedPath
+#define _clog_3_ARGS_TRACE_AutoAddedPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoAddedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowedRoute
+// [conn][%p] AUTO followed a route change onto a validated path
+// QuicTraceLogConnInfo(
+        AutoFollowedRoute,
+        Connection,
+        "AUTO followed a route change onto a validated path");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoFollowedRoute
+#define _clog_3_ARGS_TRACE_AutoFollowedRoute(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoFollowedRoute , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRemovedOldRoutePath
+// [conn][%p] AUTO removed the path the route moved off
+// QuicTraceLogConnInfo(
+            AutoRemovedOldRoutePath,
+            Connection,
+            "AUTO removed the path the route moved off");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoRemovedOldRoutePath
+#define _clog_3_ARGS_TRACE_AutoRemovedOldRoutePath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoRemovedOldRoutePath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoRouteMigrationAbandoned
+// [conn][%p] AUTO lost the path it opened for a route change
+// QuicTraceLogConnInfo(
+            AutoRouteMigrationAbandoned,
+            Connection,
+            "AUTO lost the path it opened for a route change");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoRouteMigrationAbandoned
+#define _clog_3_ARGS_TRACE_AutoRouteMigrationAbandoned(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoRouteMigrationAbandoned , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowRouteAddPathFailed
+// [conn][%p] AUTO could not open a path for a route change, status=0x%x
+// QuicTraceLogConnInfo(
+            AutoFollowRouteAddPathFailed,
+            Connection,
+            "AUTO could not open a path for a route change, status=0x%x",
+            Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AutoFollowRouteAddPathFailed
+#define _clog_4_ARGS_TRACE_AutoFollowRouteAddPathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AutoFollowRouteAddPathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowRouteAddedPath
+// [conn][%p] AUTO opened a path to follow a route change
+// QuicTraceLogConnInfo(
+        AutoFollowRouteAddedPath,
+        Connection,
+        "AUTO opened a path to follow a route change");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoFollowRouteAddedPath
+#define _clog_3_ARGS_TRACE_AutoFollowRouteAddedPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoFollowRouteAddedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateToValidatedPath
+// [conn][%p] AUTO moved to an already validated path
+// QuicTraceLogConnInfo(
+                AutoMigrateToValidatedPath,
+                Connection,
+                "AUTO moved to an already validated path");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoMigrateToValidatedPath
+#define _clog_3_ARGS_TRACE_AutoMigrateToValidatedPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrateToValidatedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateOffline
+// [conn][%p] AUTO has no candidate local address; holding the connection
+// QuicTraceLogConnInfo(
+            AutoMigrateOffline,
+            Connection,
+            "AUTO has no candidate local address; holding the connection");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoMigrateOffline
+#define _clog_3_ARGS_TRACE_AutoMigrateOffline(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrateOffline , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoMigrateImmediate
+// [conn][%p] AUTO migrated the active path to a new local address
+// QuicTraceLogConnInfo(
+        AutoMigrateImmediate,
+        Connection,
+        "AUTO migrated the active path to a new local address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoMigrateImmediate
+#define _clog_3_ARGS_TRACE_AutoMigrateImmediate(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrateImmediate , arg1);\
 
 #endif
 
@@ -962,6 +1278,104 @@ tracepoint(CLOG_CONNECTION_C, ConnDscpSet , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_ApplySettings
 #define _clog_3_ARGS_TRACE_ApplySettings(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, ApplySettings , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for RouteLocalAddressUnavailable
+// [conn][%p] No route-derived local address, status=0x%x
+// QuicTraceLogConnVerbose(
+            RouteLocalAddressUnavailable,
+            Connection,
+            "No route-derived local address, status=0x%x",
+            Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_RouteLocalAddressUnavailable
+#define _clog_4_ARGS_TRACE_RouteLocalAddressUnavailable(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, RouteLocalAddressUnavailable , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateLocalAddressChanged
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED
+// QuicTraceLogConnVerbose(
+        IndicateLocalAddressChanged,
+        Connection,
+        "Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_IndicateLocalAddressChanged
+#define _clog_3_ARGS_TRACE_IndicateLocalAddressChanged(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, IndicateLocalAddressChanged , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoAddPathHeldDown
+// [conn][%p] AUTO held down opening a path on a new address
+// QuicTraceLogConnVerbose(
+            AutoAddPathHeldDown,
+            Connection,
+            "AUTO held down opening a path on a new address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoAddPathHeldDown
+#define _clog_3_ARGS_TRACE_AutoAddPathHeldDown(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoAddPathHeldDown , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowRouteHeldDown
+// [conn][%p] AUTO held down following a route change
+// QuicTraceLogConnVerbose(
+            AutoFollowRouteHeldDown,
+            Connection,
+            "AUTO held down following a route change");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoFollowRouteHeldDown
+#define _clog_3_ARGS_TRACE_AutoFollowRouteHeldDown(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoFollowRouteHeldDown , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateLocalAddressesChanged
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u
+// QuicTraceLogConnVerbose(
+            IndicateLocalAddressesChanged,
+            Connection,
+            "Indicating QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED, Added=%u, Removed=%u, Lost=%u",
+            AddedCount,
+            RemovedCount,
+            LostCount);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = AddedCount = arg3
+// arg4 = arg4 = RemovedCount = arg4
+// arg5 = arg5 = LostCount = arg5
+----------------------------------------------------------*/
+#ifndef _clog_6_ARGS_TRACE_IndicateLocalAddressesChanged
+#define _clog_6_ARGS_TRACE_IndicateLocalAddressesChanged(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_CONNECTION_C, IndicateLocalAddressesChanged , arg1, arg3, arg4, arg5);\
 
 #endif
 

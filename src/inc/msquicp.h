@@ -132,6 +132,24 @@ typedef struct QUIC_PRIVATE_TRANSPORT_PARAMETER {
 #define QUIC_PARAM_GLOBAL_DATAPATH_DSCP_RECV_ENABLED    0x81000007 // BOOLEAN
 
 //
+// Replaces the library's cached set of local addresses with the one supplied
+// and runs the change through exactly the path a platform notification takes,
+// so that a test can drive address changes without touching the host. Set
+// only, debug only.
+//
+#define QUIC_PARAM_GLOBAL_TEST_INJECT_ADDRESS_CHANGE    0x81000008 // QUIC_ADDR[]
+
+//
+// Republishes the library's current set of local addresses, unchanged, marked
+// as having followed a routing change. This is the shape of the notification
+// that route watching exists for -- the host moved where it sends a peer's
+// traffic from, and not one address appeared or disappeared -- which the
+// parameter above cannot express, since it is the snapshot diff that drives
+// that one. Takes no buffer. Set only, debug only.
+//
+#define QUIC_PARAM_GLOBAL_TEST_INJECT_ROUTE_CHANGE      0x81000009 // No payload
+
+//
 // The different private parameters for Configuration.
 //
 

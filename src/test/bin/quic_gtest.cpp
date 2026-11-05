@@ -1022,6 +1022,15 @@ TEST_P(WithFamilyArgs, PathKeepAlive) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathPathsAreMeasured) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathPathsAreMeasured", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathPathsAreMeasured), GetParam()));
+    } else {
+        QuicTestMultipathPathsAreMeasured(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, PathStatistics) {
     TestLoggerT<ParamType> Logger("QuicTestPathStatistics", GetParam());
     if (TestingKernelMode) {
@@ -1111,6 +1120,91 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ValuesIn(WithMtuArgs::Generate()));
 
 #endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
+
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+#if DEBUG
+//
+// Driven by QUIC_PARAM_GLOBAL_TEST_INJECT_ADDRESS_CHANGE, which only exists in
+// debug builds. Deliberately outside QUIC_TEST_DATAPATH_HOOKS_ENABLED: these
+// do not use the datapath hooks, and sitting in that block would have tied
+// them to an unrelated condition.
+//
+TEST_P(WithFamilyArgs, LocalAddressChangeNotify) {
+    //
+    // User-mode only: the injection parameter and the address monitor behind
+    // it have no kernel-mode plumbing in the test driver.
+    //
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeNotify is user-mode only.";
+    }
+    TestLoggerT<ParamType> Logger("QuicTestLocalAddressChangeNotify", GetParam());
+    QuicTestLocalAddressChangeNotify(GetParam());
+}
+
+TEST_P(WithFamilyArgs, LocalAddressChangeDisabled) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeDisabled is user-mode only.";
+    }
+    TestLoggerT<ParamType> Logger("QuicTestLocalAddressChangeDisabled", GetParam());
+    QuicTestLocalAddressChangeDisabled(GetParam());
+}
+
+//
+// Not parameterized by family: a connection to loopback can only be carried by
+// another loopback address, and IPv6 has just the one.
+//
+TEST(Basic, LocalAddressChangeAuto) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAuto is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAuto");
+    QuicTestLocalAddressChangeAuto();
+}
+
+TEST(Basic, LocalAddressChangeAutoOffline) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAutoOffline is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAutoOffline");
+    QuicTestLocalAddressChangeAutoOffline();
+}
+
+TEST(Basic, LocalAddressChangeAutoServerMigration) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAutoServerMigration is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAutoServerMigration");
+    QuicTestLocalAddressChangeAutoServerMigration();
+}
+
+TEST(Basic, LocalAddressChangeAutoRoute) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAutoRoute is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAutoRoute");
+    QuicTestLocalAddressChangeAutoRoute();
+}
+
+TEST(Basic, LocalAddressChangeAutoRouteUnchanged) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAutoRouteUnchanged is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAutoRouteUnchanged");
+    QuicTestLocalAddressChangeAutoRouteUnchanged();
+}
+#endif // DEBUG
+
+//
+// Reads a public parameter and needs no injection, so it runs in release too.
+//
+TEST(ParameterValidation, GetLocalAddresses) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestGetLocalAddressesParam is user-mode only.";
+    }
+    TestLogger Logger("QuicTestGetLocalAddressesParam");
+    QuicTestGetLocalAddressesParam();
+}
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Alpn, ValidAlpnLengths) {
 #ifdef QUIC_TEST_SCHANNEL_FLAGS

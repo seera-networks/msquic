@@ -10,6 +10,7 @@ Abstract:
 --*/
 
 #include "platform_internal.h"
+#include "address_monitor.h"
 
 #ifdef QUIC_CLOG
 #include "datapath_unix.c.clog.h"
@@ -31,11 +32,102 @@ CxPlatDataPathGetLocalAddresses(
     _Out_ uint32_t* AddressesCount
     )
 {
+#if defined(CXPLAT_ADDRESS_MONITOR_SUPPORTED)
+    //
+    // Answered from the address monitor's own enumeration rather than a second
+    // implementation of the same thing. The monitor is not required to be
+    // running: the enumeration does not depend on a subscription, so this works
+    // whether or not anything has asked to be notified.
+    //
+    UNREFERENCED_PARAMETER(Datapath);
+
+    *Addresses = NULL;
+    *AddressesCount = 0;
+
+    CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS* Raw = NULL;
+    uint32_t RawCount = 0;
+    QUIC_STATUS Status = CxPlatAddressMonitorOsEnumerate(NULL, &Raw, &RawCount);
+    if (QUIC_FAILED(Status)) {
+        return Status;
+    }
+
+    //
+    // Tested together, and Raw freed either way. An enumeration can succeed
+    // with nothing to report and still have allocated -- entries skipped for
+    // their family leave a buffer with a zero count -- so returning on the
+    // count alone leaked it.
+    //
+    if (Raw == NULL || RawCount == 0) {
+        if (Raw != NULL) {
+            CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    CXPLAT_LOCAL_ADDRESS* Filtered =
+        CXPLAT_ALLOC_NONPAGED(
+            RawCount * sizeof(CXPLAT_LOCAL_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
+    if (Filtered == NULL) {
+        CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+        return QUIC_STATUS_OUT_OF_MEMORY;
+    }
+
+    uint32_t Count = 0;
+    CxPlatAddressMonitorFilter(Raw, RawCount, Filtered, &Count);
+    CXPLAT_FREE(Raw, QUIC_POOL_DATAPATH_ADDRESSES);
+
+    if (Count == 0) {
+        CXPLAT_FREE(Filtered, QUIC_POOL_DATAPATH_ADDRESSES);
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    CXPLAT_ADAPTER_ADDRESS* Result =
+        CXPLAT_ALLOC_NONPAGED(
+            Count * sizeof(CXPLAT_ADAPTER_ADDRESS), QUIC_POOL_DATAPATH_ADDRESSES);
+    if (Result == NULL) {
+        CXPLAT_FREE(Filtered, QUIC_POOL_DATAPATH_ADDRESSES);
+        return QUIC_STATUS_OUT_OF_MEMORY;
+    }
+
+    for (uint32_t i = 0; i < Count; ++i) {
+        CxPlatZeroMemory(&Result[i], sizeof(Result[i]));
+        Result[i].Address = Filtered[i].Address;
+        Result[i].InterfaceIndex = Filtered[i].InterfaceIndex;
+        Result[i].InterfaceType = Filtered[i].InterfaceType;
+        //
+        // The filter already dropped everything on an interface that is not
+        // operationally up, so what is left is up by construction.
+        //
+        Result[i].OperationStatus = CXPLAT_OPERATION_STATUS_UP;
+    }
+
+    CXPLAT_FREE(Filtered, QUIC_POOL_DATAPATH_ADDRESSES);
+
+    *Addresses = Result;
+    *AddressesCount = Count;
+    return QUIC_STATUS_SUCCESS;
+#else
     UNREFERENCED_PARAMETER(Datapath);
     *Addresses = NULL;
     *AddressesCount = 0;
     return QUIC_STATUS_NOT_SUPPORTED;
+#endif
 }
+//
+// errno captured at the call site and mapped here, never read inside this
+// function: a helper that reached for errno itself is what tripped
+// clang-analyzer-unix.Errno when the address monitor did it, and a zero errno
+// turned into QUIC_STATUS would report failure as success.
+//
+static
+QUIC_STATUS
+CxPlatDataPathStatusFromError(
+    _In_ int Error
+    )
+{
+    return (QUIC_STATUS)(Error != 0 ? Error : EIO);
+}
+
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
@@ -44,9 +136,53 @@ CxPlatDataPathGetLocalAddressForRemote(
     _Out_ QUIC_ADDR* LocalAddress
     )
 {
-    UNREFERENCED_PARAMETER(RemoteAddress);
-    UNREFERENCED_PARAMETER(LocalAddress);
-    return QUIC_STATUS_NOT_SUPPORTED;
+    //
+    // The same trick datapath_winuser.c uses, and for the same reason: connect
+    // on a datagram socket sends nothing, it only makes the stack commit to a
+    // source, and getsockname then reports which one it picked. That answer is
+    // the routing table's, which is the question being asked -- and it needs no
+    // RTM_GETROUTE, so one implementation covers Linux and Apple both.
+    //
+    // The port is left as the stack assigned it, matching the Windows
+    // behaviour. Callers that want an address rather than an endpoint clear it
+    // themselves.
+    //
+    const QUIC_ADDRESS_FAMILY Family = QuicAddrGetFamily(RemoteAddress);
+    const socklen_t RemoteLength =
+        Family == QUIC_ADDRESS_FAMILY_INET ?
+            sizeof(RemoteAddress->Ipv4) : sizeof(RemoteAddress->Ipv6);
+
+    const int Socket = socket(Family, SOCK_DGRAM, 0);
+    if (Socket == -1) {
+        const int SocketError = errno;
+        return CxPlatDataPathStatusFromError(SocketError);
+    }
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+
+    if (connect(Socket, (const struct sockaddr*)RemoteAddress, RemoteLength) != 0) {
+        //
+        // No route to the destination is the common failure, and it is not an
+        // error worth tracing: a caller asking which address reaches an
+        // unreachable peer gets told it cannot be answered.
+        //
+        const int SocketError = errno;
+        Status = CxPlatDataPathStatusFromError(SocketError);
+        goto Error;
+    }
+
+    CxPlatZeroMemory(LocalAddress, sizeof(*LocalAddress));
+    socklen_t LocalLength = sizeof(*LocalAddress);
+    if (getsockname(Socket, (struct sockaddr*)LocalAddress, &LocalLength) != 0) {
+        const int SocketError = errno;
+        Status = CxPlatDataPathStatusFromError(SocketError);
+        goto Error;
+    }
+
+Error:
+
+    close(Socket);
+    return Status;
 }
 
 QUIC_STATUS

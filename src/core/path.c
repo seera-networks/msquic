@@ -341,6 +341,19 @@ QuicPathSetValid(
     // One fewer in-progress validation; re-evaluate (or cancel) the timer.
     //
     QuicConnPathValidationTimerUpdate(Connection);
+
+    //
+    // Only a PATH_RESPONSE means the peer answered us on this path, which is
+    // what make-before-break waits for. The other reasons are handshake
+    // artefacts of the initial path, where there is nothing to migrate onto.
+    //
+    // Last, after the allowance and the timer: completing a migration activates
+    // a path and may remove another, and the bookkeeping for the path that just
+    // validated should be finished before that happens.
+    //
+    if (Reason == QUIC_PATH_VALID_PATH_RESPONSE) {
+        QuicConnAutoPathValidated(Connection, Path);
+    }
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)

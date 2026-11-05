@@ -512,6 +512,14 @@ QuicCryptoHandshakeConfirmed(
     if (QuicConnOpenNewPaths(Connection)) {
         QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
     }
+
+    if (Connection->AddressChangeDirty) {
+        //
+        // A local address change arrived before migration was allowed. Run it
+        // now that it is.
+        //
+        QuicConnProcessLocalAddressChange(Connection);
+    }
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
