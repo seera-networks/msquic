@@ -1409,11 +1409,11 @@ QuicConnAutoCompleteRouteMigration(
         //
         QUIC_ADDR OldLocal = Connection->Paths[i].Route.LocalAddress;
         QUIC_ADDR OldRemote = Connection->Paths[i].Route.RemoteAddress;
-        QUIC_PATH_PARAM Param;
-        Param.LocalAddress = &OldLocal;
-        Param.RemoteAddress = &OldRemote;
+        QUIC_PATH_PARAM RemoveParam;
+        RemoveParam.LocalAddress = &OldLocal;
+        RemoveParam.RemoteAddress = &OldRemote;
 
-        const QUIC_STATUS RemoveStatus = QuicConnRemovePath(Connection, &Param);
+        const QUIC_STATUS RemoveStatus = QuicConnRemovePath(Connection, &RemoveParam);
         if (QUIC_FAILED(RemoveStatus)) {
             QuicTraceLogConnWarning(
                 AutoRemoveOldRoutePathFailed,

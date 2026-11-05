@@ -154,8 +154,8 @@ CxPlatDataPathGetLocalAddressForRemote(
 
     const int Socket = socket(Family, SOCK_DGRAM, 0);
     if (Socket == -1) {
-        const int Error = errno;
-        return CxPlatDataPathStatusFromError(Error);
+        const int SocketError = errno;
+        return CxPlatDataPathStatusFromError(SocketError);
     }
 
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
@@ -166,16 +166,16 @@ CxPlatDataPathGetLocalAddressForRemote(
         // error worth tracing: a caller asking which address reaches an
         // unreachable peer gets told it cannot be answered.
         //
-        const int Error = errno;
-        Status = CxPlatDataPathStatusFromError(Error);
+        const int SocketError = errno;
+        Status = CxPlatDataPathStatusFromError(SocketError);
         goto Error;
     }
 
     CxPlatZeroMemory(LocalAddress, sizeof(*LocalAddress));
     socklen_t LocalLength = sizeof(*LocalAddress);
     if (getsockname(Socket, (struct sockaddr*)LocalAddress, &LocalLength) != 0) {
-        const int Error = errno;
-        Status = CxPlatDataPathStatusFromError(Error);
+        const int SocketError = errno;
+        Status = CxPlatDataPathStatusFromError(SocketError);
         goto Error;
     }
 
