@@ -197,6 +197,36 @@ pub enum ConnectionEvent<'a> {
         path_id: u32,
         is_active: bool,
     },
+    /// The host's set of local addresses changed.
+    ///
+    /// Only indicated when the connection is in
+    /// [`LocalAddressChangeMode::Notify`](crate::LocalAddressChangeMode), the
+    /// mode in which the library reports what changed and leaves the decision
+    /// to the application. In `Auto` the connection acts for itself and reports
+    /// what it did through [`ConnectionEvent::PathAdded`] and
+    /// [`ConnectionEvent::PathRemoved`] instead.
+    ///
+    /// Every slice borrows memory that is only valid for the duration of the
+    /// callback, so anything needed afterwards has to be copied out.
+    ///
+    /// `added` and `removed` are informational and cover only the most recent
+    /// change -- a burst of changes that collapses into one indication reports
+    /// only its last step. `lost_paths` is the one that is always complete: it
+    /// names this connection's paths whose local address the host no longer
+    /// has, each already in the form `QUIC_PARAM_CONN_REMOVE_PATH` takes, so an
+    /// element can be passed straight back.
+    ///
+    /// Addresses in `added` and `removed` carry a zero port.
+    #[cfg(feature = "preview-api")]
+    LocalAddressesChanged {
+        /// Addresses the host has that this connection is not already sending
+        /// from -- what it could open a path on now.
+        added: &'a [crate::Addr],
+        /// Addresses the host no longer has, as of this change.
+        removed: &'a [crate::Addr],
+        /// This connection's paths whose local address is gone.
+        lost_paths: &'a [crate::ffi::QUIC_PATH_PARAM],
+    },
 }
 
 impl<'a> From<&'a QUIC_CONNECTION_EVENT> for ConnectionEvent<'a> {
@@ -325,6 +355,24 @@ impl<'a> From<&'a QUIC_CONNECTION_EVENT> for ConnectionEvent<'a> {
                 let peer_addr = ev.PeerAddress as *const crate::Addr;
                 let local_addr = ev.LocalAddress as *const crate::Addr;
                 Self::PathStatusChanged { peer_address: unsafe { peer_addr.as_ref().unwrap() }, local_address: unsafe { local_addr.as_ref().unwrap() }, path_id: ev.PathId, is_active: ev.IsActive != 0 }
+            }
+            #[cfg(feature = "preview-api")]
+            crate::ffi::QUIC_CONNECTION_EVENT_TYPE_QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED => {
+                let ev = unsafe { value.__bindgen_anon_1.LOCAL_ADDRESSES_CHANGED };
+                //
+                // slice_conv rather than from_raw_parts: each count is
+                // independently zero, and the library passes a null pointer
+                // with a zero count rather than a dangling one.
+                //
+                Self::LocalAddressesChanged {
+                    added: unsafe {
+                        slice_conv(ev.Added as *const crate::Addr, ev.AddedCount as usize)
+                    },
+                    removed: unsafe {
+                        slice_conv(ev.Removed as *const crate::Addr, ev.RemovedCount as usize)
+                    },
+                    lost_paths: unsafe { slice_conv(ev.LostPaths, ev.LostPathCount as usize) },
+                }
             }
             _ => {
                 todo!("unknown event. maybe preview feature.")
@@ -658,6 +706,135 @@ impl From<crate::ffi::QUIC_DATAGRAM_SEND_STATE> for DatagramSendState {
             }
             crate::ffi::QUIC_DATAGRAM_SEND_STATE_QUIC_DATAGRAM_SEND_CANCELED => Self::Canceled,
             _ => panic!("Unknown state: {value:?}"),
+        }
+    }
+}
+
+#[cfg(all(test, feature = "preview-api"))]
+mod local_addresses_changed_tests {
+    use crate::{ffi, ConnectionEvent};
+
+    //
+    // Builds the event the library raises in NOTIFY mode and decodes it. The
+    // arrays are owned by locals here, standing in for the library's stack --
+    // which is exactly their lifetime in a real callback.
+    //
+    fn make_event(
+        added: &[crate::Addr],
+        removed: &[crate::Addr],
+        lost: &[ffi::QUIC_PATH_PARAM],
+    ) -> ffi::QUIC_CONNECTION_EVENT {
+        let mut ev: ffi::QUIC_CONNECTION_EVENT = unsafe { std::mem::zeroed() };
+        ev.Type = ffi::QUIC_CONNECTION_EVENT_TYPE_QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED;
+        ev.__bindgen_anon_1.LOCAL_ADDRESSES_CHANGED = ffi::QUIC_CONNECTION_EVENT__bindgen_ty_1__bindgen_ty_26 {
+            AddedCount: added.len() as u32,
+            Added: if added.is_empty() {
+                std::ptr::null()
+            } else {
+                added.as_ptr() as *const ffi::QUIC_ADDR
+            },
+            RemovedCount: removed.len() as u32,
+            Removed: if removed.is_empty() {
+                std::ptr::null()
+            } else {
+                removed.as_ptr() as *const ffi::QUIC_ADDR
+            },
+            LostPathCount: lost.len() as u32,
+            LostPaths: if lost.is_empty() { std::ptr::null() } else { lost.as_ptr() },
+        };
+        ev
+    }
+
+    fn v4(last_octet: u8) -> crate::Addr {
+        //
+        // Through the public From<SocketAddr>, so the test does not depend on
+        // the shape of the union it is checking the decode against.
+        //
+        crate::Addr::from(std::net::SocketAddr::from((
+            std::net::Ipv4Addr::new(127, 0, 0, last_octet),
+            0,
+        )))
+    }
+
+    #[test]
+    fn decodes_added_removed_and_lost_paths() {
+        let added = [v4(2), v4(3)];
+        let removed = [v4(4)];
+        let mut lost_local = v4(4);
+        let mut lost_remote = v4(1);
+        let lost = [ffi::QUIC_PATH_PARAM {
+            LocalAddress: &mut lost_local as *mut crate::Addr as *mut ffi::QUIC_ADDR,
+            RemoteAddress: &mut lost_remote as *mut crate::Addr as *mut ffi::QUIC_ADDR,
+        }];
+
+        let raw = make_event(&added, &removed, &lost);
+        let decoded = ConnectionEvent::from(&raw);
+
+        match decoded {
+            ConnectionEvent::LocalAddressesChanged {
+                added,
+                removed,
+                lost_paths,
+            } => {
+                assert_eq!(added.len(), 2);
+                assert_eq!(removed.len(), 1);
+                assert_eq!(lost_paths.len(), 1);
+                //
+                // Read back through the safe Addr view, which is the whole
+                // point of the cast: the decode reinterprets QUIC_ADDR as
+                // crate::Addr, so a layout mismatch would show up here.
+                //
+                assert_eq!(
+                    added[0].as_socket().unwrap().ip().to_string(),
+                    "127.0.0.2"
+                );
+                assert_eq!(
+                    added[1].as_socket().unwrap().ip().to_string(),
+                    "127.0.0.3"
+                );
+                assert_eq!(
+                    removed[0].as_socket().unwrap().ip().to_string(),
+                    "127.0.0.4"
+                );
+                //
+                // A lost path is handed back in the form REMOVE_PATH takes, so
+                // its pointers have to be the ones the library put there.
+                //
+                assert_eq!(
+                    lost_paths[0].LocalAddress,
+                    &mut lost_local as *mut crate::Addr as *mut ffi::QUIC_ADDR
+                );
+                assert_eq!(
+                    lost_paths[0].RemoteAddress,
+                    &mut lost_remote as *mut crate::Addr as *mut ffi::QUIC_ADDR
+                );
+            }
+            other => panic!("decoded to the wrong variant: {other:?}"),
+        }
+    }
+
+    //
+    // The case that would be undefined behaviour with a bare from_raw_parts:
+    // the library passes a null pointer with a zero count, which it does
+    // whenever a change has no additions, no removals, or no lost paths. A
+    // route-only change has none of the three.
+    //
+    #[test]
+    fn decodes_all_empty() {
+        let raw = make_event(&[], &[], &[]);
+        let decoded = ConnectionEvent::from(&raw);
+
+        match decoded {
+            ConnectionEvent::LocalAddressesChanged {
+                added,
+                removed,
+                lost_paths,
+            } => {
+                assert!(added.is_empty());
+                assert!(removed.is_empty());
+                assert!(lost_paths.is_empty());
+            }
+            other => panic!("decoded to the wrong variant: {other:?}"),
         }
     }
 }
