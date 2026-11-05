@@ -202,29 +202,56 @@ pub enum ConnectionEvent<'a> {
     /// Only indicated when the connection is in
     /// [`LocalAddressChangeMode::Notify`](crate::LocalAddressChangeMode), the
     /// mode in which the library reports what changed and leaves the decision
-    /// to the application. In `Auto` the connection acts for itself and reports
-    /// what it did through [`ConnectionEvent::PathAdded`] and
-    /// [`ConnectionEvent::PathRemoved`] instead.
+    /// to the application.
     ///
-    /// Every slice borrows memory that is only valid for the duration of the
-    /// callback, so anything needed afterwards has to be copied out.
-    ///
-    /// `added` and `removed` are informational and cover only the most recent
-    /// change -- a burst of changes that collapses into one indication reports
-    /// only its last step. `lost_paths` is the one that is always complete: it
-    /// names this connection's paths whose local address the host no longer
-    /// has, each already in the form `QUIC_PARAM_CONN_REMOVE_PATH` takes, so an
-    /// element can be passed straight back.
+    /// In `Auto` the connection acts for itself and never raises this event.
+    /// What it raises instead depends on whether multipath is negotiated: a
+    /// single-path connection migrates its active path and raises
+    /// [`ConnectionEvent::LocalAddressChanged`], while a multipath connection
+    /// opens and abandons paths and raises [`ConnectionEvent::PathAdded`] and
+    /// [`ConnectionEvent::PathRemoved`]. An application that sets `Auto`
+    /// without multipath and watches only the path events will see nothing
+    /// when its address moves.
     ///
     /// Addresses in `added` and `removed` carry a zero port.
+    ///
+    /// # Lifetimes
+    ///
+    /// Every slice borrows memory that is only valid for the duration of the
+    /// callback, and the two halves need different care:
+    ///
+    /// - `added` and `removed` hold the addresses inline, so copying the
+    ///   [`crate::Addr`] values out is enough.
+    /// - `lost_paths` does not. Each element holds two raw *pointers* into the
+    ///   library's own stack frame, so copying the element copies only those
+    ///   pointers and leaves them dangling the moment the callback returns.
+    ///   Anything kept past the callback has to deep-copy both addresses. The
+    ///   borrow checker cannot help here: the `'a` lifetime covers the slice,
+    ///   not what its pointers refer to.
     #[cfg(feature = "preview-api")]
     LocalAddressesChanged {
         /// Addresses the host has that this connection is not already sending
         /// from -- what it could open a path on now.
+        ///
+        /// A view of the present rather than a delta: the library rebuilds it
+        /// from the current snapshot on every indication instead of diffing
+        /// against the last one. It is therefore complete as it stands, and
+        /// accumulating it across indications is wrong -- the union would
+        /// include addresses the host has since dropped.
         added: &'a [crate::Addr],
         /// Addresses the host no longer has, as of this change.
+        ///
+        /// A delta, and the one list that can be incomplete: it covers only
+        /// the most recent change, so a burst that collapses into a single
+        /// indication reports only its last step. Informational for that
+        /// reason -- `lost_paths` is the list to act on.
         removed: &'a [crate::Addr],
-        /// This connection's paths whose local address is gone.
+        /// This connection's paths whose local address is gone. Always
+        /// complete, unlike `removed`.
+        ///
+        /// Each element is already in the form `QUIC_PARAM_CONN_REMOVE_PATH`
+        /// takes and can be passed straight back -- but only from inside the
+        /// callback, for the lifetime reason above.
         lost_paths: &'a [crate::ffi::QUIC_PATH_PARAM],
     },
 }
@@ -715,6 +742,14 @@ mod local_addresses_changed_tests {
     use crate::{ffi, ConnectionEvent};
 
     //
+    // The decode casts QUIC_ADDR arrays to crate::Addr arrays, so the stride
+    // has to match the C union. sizeof(QUIC_ADDR) is 28 -- the size of
+    // sockaddr_in6, its largest member -- and Addr is #[repr(C)] over the
+    // same pair, so this pins the Rust half against an accidental change.
+    //
+    const _: () = assert!(std::mem::size_of::<crate::Addr>() == 28);
+
+    //
     // Builds the event the library raises in NOTIFY mode and decodes it. The
     // arrays are owned by locals here, standing in for the library's stack --
     // which is exactly their lifetime in a real callback.
@@ -785,9 +820,17 @@ mod local_addresses_changed_tests {
                 assert_eq!(removed.len(), 1);
                 assert_eq!(lost_paths.len(), 1);
                 //
-                // Read back through the safe Addr view, which is the whole
-                // point of the cast: the decode reinterprets QUIC_ADDR as
-                // crate::Addr, so a layout mismatch would show up here.
+                // Read back through the safe Addr view. Note what this does
+                // and does not establish: make_event writes crate::Addr and
+                // the decode reads crate::Addr, so the stride is
+                // self-consistent whatever the C QUIC_ADDR happens to be.
+                // ffi::QUIC_ADDR is an opaque c_void in the bindings, so
+                // there is nothing to size-check it against either. The
+                // assertion below pins the Rust side, which is the half that
+                // could drift here; the C side is 28 bytes, matching
+                // sockaddr_in6, and this is the first slice decode in the
+                // file -- a stride divergence would silently misdecode
+                // everything past index 0 rather than fail outright.
                 //
                 assert_eq!(added[0].as_socket().unwrap().ip().to_string(), "127.0.0.2");
                 assert_eq!(added[1].as_socket().unwrap().ip().to_string(), "127.0.0.3");
@@ -818,6 +861,39 @@ mod local_addresses_changed_tests {
     // whenever a change has no additions, no removals, or no lost paths. A
     // route-only change has none of the three.
     //
+    //
+    // The precondition for ever receiving this event, reached through the
+    // crate root -- which is the only path a downstream crate has. The mode
+    // enum lives in a private module, so it was declared, settable in theory,
+    // and unnameable in practice until it was re-exported: Settings took an
+    // argument of a type no caller outside the crate could write down. Naming
+    // it as crate::LocalAddressChangeMode here is what pins that.
+    //
+    #[test]
+    fn notify_mode_is_settable_through_the_public_api() {
+        //
+        // Naming the type as crate::LocalAddressChangeMode is half the point:
+        // that path is the only one a downstream crate has, and until the
+        // re-export was added the enum lived in a private module, which left
+        // Settings::set_LocalAddressChangeMode taking an argument no outside
+        // caller could write down. If the re-export is dropped again this stops
+        // compiling.
+        //
+        let _settings = crate::Settings::new()
+            .set_LocalAddressChangeMode(crate::LocalAddressChangeMode::Notify);
+
+        //
+        // The other half: that Notify reaches the library as the mode the C
+        // side tests for. QuicConnReconcileLocalAddresses raises this event
+        // only on QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY, so a mismapped
+        // discriminant would mean the event never arrives at all.
+        //
+        assert_eq!(
+            crate::ffi::QUIC_LOCAL_ADDRESS_CHANGE_MODE::from(crate::LocalAddressChangeMode::Notify),
+            crate::ffi::QUIC_LOCAL_ADDRESS_CHANGE_MODE_QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY
+        );
+    }
+
     #[test]
     fn decodes_all_empty() {
         let raw = make_event(&[], &[], &[]);
