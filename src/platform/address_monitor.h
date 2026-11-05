@@ -29,6 +29,26 @@ extern "C" {
 #endif
 
 //
+// macOS specifically. Not "anything that is not Linux", because FreeBSD shares
+// the kqueue datapath and has no backend here; and not iOS, because the iOS
+// SDK does not ship net/route.h at all -- routing sockets are not available to
+// an application there, so there is no notification source to build on.
+//
+// iOS therefore stays on the not-supported stub rather than getting the
+// enumeration with no subscription behind it. A monitor that answers
+// successfully and never reports a change would be worse than none: an
+// application that set NOTIFY or AUTO would believe it had address tracking
+// that could not possibly fire, with nothing to detect that from. #138 records
+// nw_path_monitor as what iOS would need instead.
+//
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+#define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
+#endif
+#endif
+
+//
 // Windows, user mode and kernel alike -- the NETIO subscription and the
 // debounce thread are shared, and only the enumeration differs. Not the
 // restricted builds though: the UWP and GameCore link lines carry neither

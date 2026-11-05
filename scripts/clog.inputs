@@ -19,6 +19,7 @@
 ../src/platform/datapath_unix.c
 ../src/platform/address_monitor.c
 ../src/platform/address_monitor_linux.c
+../src/platform/address_monitor_darwin.c
 ../src/platform/address_monitor_win.c
 ../src/platform/address_monitor_winuser.c
 ../src/platform/address_monitor_winkernel.c

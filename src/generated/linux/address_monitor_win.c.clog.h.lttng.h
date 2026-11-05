@@ -30,9 +30,9 @@ TRACEPOINT_EVENT(CLOG_ADDRESS_MONITOR_WIN_C, AllocFailure,
 // QuicTraceEvent(
             LibraryErrorStatus,
             "[ lib] ERROR, %u, %s.",
-            Error,
+            (uint32_t)Error,
             "NotifyUnicastIpAddressChange");
-// arg2 = arg2 = Error = arg2
+// arg2 = arg2 = (uint32_t)Error = arg2
 // arg3 = arg3 = "NotifyUnicastIpAddressChange" = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_ADDRESS_MONITOR_WIN_C, LibraryErrorStatus,
