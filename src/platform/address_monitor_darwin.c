@@ -21,11 +21,12 @@ Abstract:
     debounce timer. One thread, created only when a consumer asks for
     monitoring, costs less.
 
-    N.B. PF_ROUTE delivery to a sandboxed iOS application is unverified. #138
-    records it as something to check before relying on this there; the
-    enumeration half works regardless, so the worst case on iOS is a monitor
-    that reports the state at startup and never notices a change -- which is
-    what every platform without a backend does today.
+    macOS only, which CI settled rather than speculation: the iOS SDK does not
+    ship net/route.h, so there is no routing socket to subscribe to there at
+    all -- the question #138 raised about PF_ROUTE delivery to a sandboxed
+    application does not even get as far as delivery. address_monitor.h records
+    why iOS gets the not-supported stub instead of an enumeration with nothing
+    behind it.
 
 --*/
 
