@@ -1532,6 +1532,18 @@ QuicConnAutoFollowRoute(
     // needs it: routing tables churn, and a connection that moved on every
     // churn would spend its life validating paths.
     //
+    // Checked after the route lookup rather than before it, which costs a
+    // socket, a connect and a getsockname on every route-change reconciliation
+    // the hold-down then refuses -- at the 100ms default debounce, up to ten per
+    // second per connection during real churn. That is the cheaper mistake.
+    // Gating the lookup on the hold-down would mean never learning the route had
+    // moved, and the generation that reported it is consumed either way, so a
+    // route that moved once inside the window and then settled would be followed
+    // only if something else happened to come along. None of the three calls
+    // touches the network -- connect on a datagram socket only makes the stack
+    // commit to a source -- and they are made on the connection's worker, which
+    // is the constraint the interface actually imposes.
+    //
     if (!QuicConnAutoHoldDownElapsed(Connection)) {
         QuicTraceLogConnVerbose(
             AutoFollowRouteHeldDown,
