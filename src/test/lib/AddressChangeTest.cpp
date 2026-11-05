@@ -660,6 +660,298 @@ QuicTestLocalAddressChangeAutoServerMigration(
     TEST_TRUE(QuicAddrCompare(&ClientLocalAddr.SockAddr, &StillLocalAddr.SockAddr));
 }
 
+static
+QUIC_STATUS
+InjectRouteChange(
+    void
+    )
+{
+    return
+        MsQuic->SetParam(
+            nullptr,
+            QUIC_PARAM_GLOBAL_TEST_INJECT_ROUTE_CHANGE,
+            0,
+            nullptr);
+}
+
+//
+// How many paths the connection is reporting on. The statistics parameter sizes
+// its own buffer, so asking with none is enough to get the count -- which is
+// what make-before-break has to be checked against: the new path and the old
+// one both exist for a while, and the old one has to be gone afterwards.
+//
+static
+uint32_t
+ConnectionPathCount(
+    _In_ MsQuicConnection& Connection
+    )
+{
+    uint32_t Length = 0;
+    const QUIC_STATUS Status =
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_PATH_STATISTICS, &Length, nullptr);
+    if (Status != QUIC_STATUS_BUFFER_TOO_SMALL && QUIC_FAILED(Status)) {
+        return 0;
+    }
+    return Length / (uint32_t)sizeof(QUIC_PATH_STATISTICS);
+}
+
+//
+// AUTO mode following a routing change: the host moves where it sends this
+// peer's traffic from, no address appears or disappears, and the connection
+// migrates by make-before-break.
+//
+// The connection has to start out on an address the routing table disagrees
+// with, and it gets there the way phase 3 already does -- by losing the address
+// it was on, so AUTO moves it to 127.0.0.2. Every 127/8 destination is reached
+// from 127.0.0.1, so a connection on 127.0.0.2 is exactly that state.
+//
+// Deliberately not by binding the client to 127.0.0.2 before Start, which was
+// the first shape of this test. That passed on POSIX and on plain Windows, and
+// failed on every raw-datapath configuration in CI -- xdp-v1.4 with and without
+// QTIP alike -- with the server's handshake never completing, because the raw
+// datapath cannot carry a client bound to a specific loopback address.
+// Reaching the same state through a migration instead uses only what the phase
+// 3 test beside it already proves works everywhere.
+//
+void
+QuicTestLocalAddressChangeAutoRoute(
+    )
+{
+    //
+    // Declared before the registration, so they outlive it -- the server
+    // connection's SHUTDOWN_COMPLETE arrives during RegistrationClose. Same
+    // reason as the tests above.
+    //
+    AddressChangeContext Context;
+    AutoMigrationServerContext ServerContext;
+
+    MsQuicRegistration Registration {true};
+    TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
+    TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
+
+    //
+    // Hold-down off. Following a route is the optional kind of migration, so it
+    // waits out AutoMigrationHoldDownMs, and the migration that sets this test
+    // up happens moments earlier -- well inside the default window.
+    //
+    MsQuicSettings ClientSettings;
+    ClientSettings.SetLocalAddressChangeMode(QUIC_LOCAL_ADDRESS_CHANGE_AUTO);
+    ClientSettings.SetAutoMigrationHoldDownMs(0);
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
+    TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, AutoMigrationServerContext::Callback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, CleanUpManual, AddressChangeContext::Callback, &Context);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QUIC_ADDRESS_FAMILY_INET,
+            QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+
+    QuicAddr ClientLocalAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ClientLocalAddr));
+
+    QUIC_ADDR Alternate;
+    if (!AlternateLoopbackAddress(&ClientLocalAddr.SockAddr, &Alternate)) {
+        //
+        // Not talking to loopback over IPv4, so there is no second address this
+        // connection could be carried by.
+        //
+        return;
+    }
+    QUIC_ADDR Routed = ClientLocalAddr.SockAddr;
+    QuicAddrSetPort(&Routed, 0);
+
+    TEST_EQUAL(1u, ConnectionPathCount(Connection));
+
+    //
+    // Step one, which is the phase 3 behaviour: the address the connection is
+    // on is gone, and the alternate is the only candidate left.
+    //
+    Context.LocalAddrChangedEvent.Reset();
+    ServerContext.PeerAddrChangedEvent.Reset();
+    TEST_QUIC_SUCCEEDED(InjectAddresses(&Alternate, 1));
+    TEST_TRUE(Context.LocalAddrChangedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(1u, Context.LocalAddrChangeCount);
+    TEST_TRUE(QuicAddrCompareIp(&Alternate, &Context.NewLocalAddr));
+
+    //
+    // The server is waited on here too, not just at the end. It observes the
+    // move on its own schedule, and this test makes two of them: without
+    // settling the first, the indication for it arrives after the reset below
+    // and satisfies the wait for the second, which then compares the wrong
+    // address. That is what made the first version of this test flaky -- it
+    // failed two runs in three locally.
+    //
+    TEST_TRUE(ServerContext.PeerAddrChangedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(QuicAddrCompareIp(&Alternate, &ServerContext.NewPeerAddr));
+
+    //
+    // Both addresses back, so nothing is lost and the address half of the
+    // reconciliation has nothing to do. The connection stays where it is: a new
+    // address on its own is not a reason to move a working path.
+    //
+    const QUIC_ADDR Baseline[] = { Routed, Alternate };
+    TEST_QUIC_SUCCEEDED(InjectAddresses(Baseline, ARRAYSIZE(Baseline)));
+
+    QuicAddr BeforeRouteAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(BeforeRouteAddr));
+    TEST_TRUE(QuicAddrCompareIp(&Alternate, &BeforeRouteAddr.SockAddr));
+    TEST_EQUAL(1u, Context.LocalAddrChangeCount);
+
+    //
+    // Now the route moves, and this is the part phase 5 adds. Not one address
+    // changes -- the case the address diff cannot see and route watching exists
+    // for -- and the OS would send to this peer from the address the connection
+    // is no longer on.
+    //
+    Context.LocalAddrChangedEvent.Reset();
+    ServerContext.PeerAddrChangedEvent.Reset();
+    TEST_QUIC_SUCCEEDED(InjectRouteChange());
+
+    //
+    // The connection follows it, without the application asking for anything.
+    //
+    TEST_TRUE(Context.LocalAddrChangedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(2u, Context.LocalAddrChangeCount);
+    TEST_TRUE(QuicAddrCompareIp(&Routed, &Context.NewLocalAddr));
+
+    QuicAddr MigratedLocalAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(MigratedLocalAddr));
+    TEST_TRUE(QuicAddrCompareIp(&Routed, &MigratedLocalAddr.SockAddr));
+
+    //
+    // The end-to-end part: the server saw traffic arrive from the new address.
+    // For this migration that is more than a nicety -- the move only happens
+    // once the peer has answered a PATH_CHALLENGE on the new path, so a server
+    // that never saw the new address would mean the activation happened on an
+    // unvalidated path, which is the thing make-before-break is for.
+    //
+    //
+    // Waited for the address rather than for one indication. Make-before-break
+    // puts a second path up before promoting it, so the server can report more
+    // than one peer address on the way through; what this asserts is that it
+    // ends up seeing traffic from the routed one.
+    //
+    bool ServerSawRouted = false;
+    for (uint32_t Attempt = 0; Attempt < 20 && !ServerSawRouted; ++Attempt) {
+        if (!ServerContext.PeerAddrChangedEvent.WaitTimeout(TestWaitTimeout)) {
+            break;
+        }
+        ServerSawRouted = QuicAddrCompareIp(&Routed, &ServerContext.NewPeerAddr);
+        ServerContext.PeerAddrChangedEvent.Reset();
+    }
+    TEST_TRUE(ServerSawRouted);
+
+    //
+    // And the break half: the path the route moved off is gone, so the
+    // connection is back to one path rather than carrying a spare binding for
+    // an address the host no longer routes through.
+    //
+    TEST_EQUAL(1u, ConnectionPathCount(Connection));
+
+    //
+    // Still up. Make-before-break never takes the working path away, so unlike
+    // the lost-address case there is no window here where the connection had
+    // nowhere to send.
+    //
+    TEST_FALSE(Context.ShutdownEvent.WaitTimeout(100));
+}
+
+//
+// A routing change that does not move this connection. The negative control
+// for the test above: the same injection, on a connection that is already on
+// the address the host routes from, must do nothing -- otherwise the test
+// above would pass on an implementation that migrated on every notification.
+//
+void
+QuicTestLocalAddressChangeAutoRouteUnchanged(
+    )
+{
+    AddressChangeContext Context;
+
+    MsQuicRegistration Registration {true};
+    TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
+    TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
+
+    MsQuicSettings ClientSettings;
+    ClientSettings.SetLocalAddressChangeMode(QUIC_LOCAL_ADDRESS_CHANGE_AUTO);
+    ClientSettings.SetAutoMigrationHoldDownMs(0);
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
+    TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, CleanUpManual, AddressChangeContext::Callback, &Context);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    //
+    // No explicit local address this time, so the connection starts on
+    // whatever the host routes to loopback from -- which is the address the
+    // route-derived answer will name.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QUIC_ADDRESS_FAMILY_INET,
+            QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+
+    QuicAddr ClientLocalAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ClientLocalAddr));
+
+    QUIC_ADDR Alternate;
+    if (!AlternateLoopbackAddress(&ClientLocalAddr.SockAddr, &Alternate)) {
+        return;
+    }
+    QUIC_ADDR ClientAddrNoPort = ClientLocalAddr.SockAddr;
+    QuicAddrSetPort(&ClientAddrNoPort, 0);
+
+    //
+    // Both addresses available, so there is somewhere else to go if the
+    // implementation wrongly decided to move. That is what makes this a
+    // control rather than a test that nothing could have happened.
+    //
+    const QUIC_ADDR Baseline[] = { ClientAddrNoPort, Alternate };
+    TEST_QUIC_SUCCEEDED(InjectAddresses(Baseline, ARRAYSIZE(Baseline)));
+
+    Context.LocalAddrChangedEvent.Reset();
+    TEST_QUIC_SUCCEEDED(InjectRouteChange());
+
+    TEST_FALSE(Context.LocalAddrChangedEvent.WaitTimeout(500));
+    TEST_EQUAL(0u, Context.LocalAddrChangeCount);
+    TEST_EQUAL(1u, ConnectionPathCount(Connection));
+
+    QuicAddr StillLocalAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(StillLocalAddr));
+    TEST_TRUE(QuicAddrCompare(&ClientLocalAddr.SockAddr, &StillLocalAddr.SockAddr));
+
+    TEST_FALSE(Context.ShutdownEvent.WaitTimeout(100));
+}
+
 #endif // DEBUG
 
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES

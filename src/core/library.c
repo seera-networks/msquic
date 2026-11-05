@@ -784,6 +784,7 @@ MsQuicLibraryUninitialize(
     }
     MsQuicLib.LocalAddressesRemovedCount = 0;
     MsQuicLib.LocalAddressesGeneration = 0;
+    MsQuicLib.LocalAddressesRouteGeneration = 0;
 
 #ifndef _KERNEL_MODE
     CxPlatWorkerPoolDelete(MsQuicLib.WorkerPool, CXPLAT_WORKER_POOL_REF_LIBRARY);
@@ -978,6 +979,15 @@ QuicLibraryOnLocalAddressChange(
     MsQuicLib.LocalAddressesRemoved = RemovedCopy;
     MsQuicLib.LocalAddressesRemovedCount = RemovedCount;
     MsQuicLib.LocalAddressesGeneration = ChangeSet->Generation;
+    if (ChangeSet->RouteChanged) {
+        //
+        // Recorded rather than overwritten with FALSE when a later change set
+        // carries no route: the field names the newest generation that had one,
+        // and a consumer that has not reconciled since then still has to see
+        // it.
+        //
+        MsQuicLib.LocalAddressesRouteGeneration = ChangeSet->Generation;
+    }
     CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
 
     if (Previous != NULL) {
@@ -1056,10 +1066,17 @@ QuicLibraryAddRefAddressMonitor(
     CxPlatZeroMemory(&Config, sizeof(Config));
     Config.Callback = QuicLibraryOnLocalAddressChange;
     //
-    // Route watching is phase 5. Asking for it now would subscribe to a far
-    // noisier stream for a flag nothing reads.
+    // Routes as well as addresses. This is the case the feature cannot see
+    // otherwise: with two interfaces up, the OS can move the default route
+    // from one to the other with every address staying exactly where it is,
+    // and an address-only monitor reports nothing at all.
     //
-    Config.WatchRoutes = FALSE;
+    // It is the noisier subscription by a wide margin -- neighbour discovery
+    // and metric changes are route changes too -- which is what the debounce
+    // window is for, and why the connection acts on it only through the
+    // hold-down that gates every optional migration.
+    //
+    Config.WatchRoutes = TRUE;
 
     CXPLAT_ADDRESS_MONITOR* Monitor = NULL;
     Status = CxPlatAddressMonitorInitialize(MsQuicLib.Datapath, &Config, &Monitor);
@@ -1102,6 +1119,12 @@ QuicLibraryAddRefAddressMonitor(
             MsQuicLib.LocalAddressesRemoved = NULL;
             MsQuicLib.LocalAddressesRemovedCount = 0;
             MsQuicLib.LocalAddressesGeneration = Generation;
+            //
+            // Not touched. The seed is an enumeration, not a notification, so
+            // it says nothing about routes either way -- and clearing it here
+            // would discard a route change the backend's thread had already
+            // reported in the window between Initialize and this.
+            //
             Addresses = NULL;
         }
         CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
@@ -1174,6 +1197,7 @@ QuicLibraryReleaseAddressMonitor(
     // behind, would have a connection report every one of its paths as lost.
     //
     MsQuicLib.LocalAddressesGeneration = 0;
+    MsQuicLib.LocalAddressesRouteGeneration = 0;
     CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
 
     if (Addresses != NULL) {
@@ -1192,7 +1216,8 @@ QuicLibraryGetLocalAddresses(
     _Out_ uint32_t* Count,
     _Outptr_result_buffer_maybenull_(*RemovedCount) CXPLAT_LOCAL_ADDRESS** Removed,
     _Out_ uint32_t* RemovedCount,
-    _Out_ uint64_t* Generation
+    _Out_ uint64_t* Generation,
+    _Out_ uint64_t* RouteGeneration
     )
 {
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
@@ -1237,6 +1262,7 @@ QuicLibraryGetLocalAddresses(
         *Removed = RemovedCopy;
         *RemovedCount = MsQuicLib.LocalAddressesRemovedCount;
         *Generation = MsQuicLib.LocalAddressesGeneration;
+        *RouteGeneration = MsQuicLib.LocalAddressesRouteGeneration;
         Copy = NULL;
     }
 
@@ -1250,6 +1276,18 @@ QuicLibraryGetLocalAddresses(
         CXPLAT_FREE(Copy, QUIC_POOL_DATAPATH_ADDRESSES);
     }
     return Status;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+uint64_t
+QuicLibraryGetRouteGeneration(
+    void
+    )
+{
+    CxPlatDispatchLockAcquire(&MsQuicLib.LocalAddressesLock);
+    const uint64_t Generation = MsQuicLib.LocalAddressesRouteGeneration;
+    CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
+    return Generation;
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -1937,6 +1975,68 @@ QuicLibrarySetGlobalParam(
         Status = QUIC_STATUS_SUCCESS;
         break;
     }
+
+    case QUIC_PARAM_GLOBAL_TEST_INJECT_ROUTE_CHANGE: {
+
+        if (BufferLength != 0) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        //
+        // The current snapshot, copied out under the lock and handed back in as
+        // the change set's own. A copy and not the cached pointer, because the
+        // fan-out replaces the cache with what it is given and would otherwise
+        // be handed the buffer it is about to free.
+        //
+        CXPLAT_LOCAL_ADDRESS* RouteAddresses = NULL;
+        uint32_t RouteCount;
+        uint64_t RouteSetGeneration;
+
+        CxPlatDispatchLockAcquire(&MsQuicLib.LocalAddressesLock);
+        RouteCount = MsQuicLib.LocalAddressesCount;
+        RouteSetGeneration = MsQuicLib.LocalAddressesGeneration + 1;
+        if (RouteCount != 0) {
+            RouteAddresses =
+                CXPLAT_ALLOC_NONPAGED(
+                    RouteCount * sizeof(CXPLAT_LOCAL_ADDRESS),
+                    QUIC_POOL_DATAPATH_ADDRESSES);
+            if (RouteAddresses != NULL) {
+                CxPlatCopyMemory(
+                    RouteAddresses,
+                    MsQuicLib.LocalAddresses,
+                    RouteCount * sizeof(CXPLAT_LOCAL_ADDRESS));
+            }
+        }
+        CxPlatDispatchLockRelease(&MsQuicLib.LocalAddressesLock);
+
+        if (RouteCount != 0 && RouteAddresses == NULL) {
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            break;
+        }
+
+        //
+        // No changes and no removals: that is the point. A route moved and the
+        // host's addresses are exactly as they were, which is the one case the
+        // address diff cannot report.
+        //
+        CXPLAT_ADDRESS_CHANGE_SET RouteChangeSet;
+        CxPlatZeroMemory(&RouteChangeSet, sizeof(RouteChangeSet));
+        RouteChangeSet.Generation = RouteSetGeneration;
+        RouteChangeSet.RouteChanged = TRUE;
+        RouteChangeSet.AddressCount = RouteCount;
+        RouteChangeSet.Addresses = RouteAddresses;
+
+        QuicLibraryOnLocalAddressChange(NULL, &RouteChangeSet);
+
+        if (RouteAddresses != NULL) {
+            CXPLAT_FREE(RouteAddresses, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+
+        Status = QUIC_STATUS_SUCCESS;
+        break;
+    }
+
 #endif
 
     case QUIC_PARAM_GLOBAL_DATAPATH_DSCP_RECV_ENABLED: {
@@ -2484,9 +2584,16 @@ QuicLibraryGetGlobalParam(
         CXPLAT_LOCAL_ADDRESS* Removed = NULL;
         uint32_t RemovedCount = 0;
         uint64_t Generation = 0;
+        //
+        // Read and discarded: the parameter reports the host's addresses, and
+        // whether a route moved is a connection's business, not an answer to
+        // this question.
+        //
+        uint64_t RouteGeneration = 0;
         Status =
             QuicLibraryGetLocalAddresses(
-                &Addresses, &Count, &Removed, &RemovedCount, &Generation);
+                &Addresses, &Count, &Removed, &RemovedCount, &Generation,
+                &RouteGeneration);
         QuicLibraryReleaseAddressMonitor();
         if (Removed != NULL) {
             CXPLAT_FREE(Removed, QUIC_POOL_DATAPATH_ADDRESSES);

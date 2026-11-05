@@ -78,6 +78,14 @@ typedef struct CXPLAT_ADDRESS_MONITOR_OS {
     HANDLE InterfaceNotify;
 
     //
+    // The route subscription, taken only when the consumer asked for route
+    // watching. Route notifications are far noisier than address ones -- every
+    // neighbour discovery and every metric change is one -- so a consumer that
+    // does not act on them does not subscribe to them.
+    //
+    HANDLE RouteNotify;
+
+    //
     // Set by the notification callbacks, and by uninitialize to wake the
     // thread. Auto-reset: a wake means "something happened", and the thread
     // re-reads the world rather than counting notifications.
@@ -89,6 +97,16 @@ typedef struct CXPLAT_ADDRESS_MONITOR_OS {
     // so a thread that sees the event set also sees this.
     //
     BOOLEAN volatile Shutdown;
+
+    //
+    // Set by the route callback and cleared by the thread once a resync has
+    // carried it. Separate from NotifyEvent because the event says only
+    // "something happened" and the thread has to know whether a route was part
+    // of it: a route change with an unchanged address snapshot is exactly the
+    // case this subscription exists for, and the shared resync discards it
+    // unless it is told.
+    //
+    BOOLEAN volatile PendingRouteChange;
 
     CXPLAT_THREAD Thread;
     BOOLEAN ThreadStarted;
@@ -197,6 +215,42 @@ CxPlatAddressMonitorInterfaceChangeCallback(
 
 
 //
+// A route changed. Unlike the other two this records that it happened before
+// signalling, because the resync cannot tell from the address snapshot that a
+// route moved -- that is the whole point of watching them.
+//
+// No per-route detail is kept. The row says which route changed; nothing
+// downstream asks, and the consumer re-derives the address it would send from
+// through CxPlatDataPathGetLocalAddressForRemote rather than reading a table
+// this backend parsed.
+//
+static
+VOID
+WINAPI
+CxPlatAddressMonitorRouteChangeCallback(
+    _In_ PVOID CallerContext,
+    _In_opt_ PMIB_IPFORWARD_ROW2 Row,
+    _In_ MIB_NOTIFICATION_TYPE NotificationType
+    )
+{
+    UNREFERENCED_PARAMETER(Row);
+    UNREFERENCED_PARAMETER(NotificationType);
+
+    CXPLAT_ADDRESS_MONITOR* Monitor = (CXPLAT_ADDRESS_MONITOR*)CallerContext;
+    if (Monitor == NULL || Monitor->Os == NULL) {
+        return;
+    }
+
+    //
+    // Written before the event is set, so a thread woken by the event sees it.
+    // The reverse order loses the flag to a thread that was already awake.
+    //
+    Monitor->Os->PendingRouteChange = TRUE;
+    CxPlatEventSet(Monitor->Os->NotifyEvent);
+}
+
+
+//
 // The subscription thread. Its wait timeout is the debounce window, so a burst
 // of notifications -- the normal shape of an interface transition -- produces
 // one resync once the host has been quiet, rather than one per notification.
@@ -209,6 +263,13 @@ CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
     BOOLEAN DebouncePending = FALSE;
     uint64_t DebounceDeadline = 0;
     uint32_t RetryMs = 0;
+
+    //
+    // Accumulated across the debounce window rather than read at the end of it:
+    // the point of debouncing is that a burst becomes one resync, and a route
+    // change anywhere in the burst has to reach that resync.
+    //
+    BOOLEAN RouteChanged = FALSE;
 
     while (!Os->Shutdown) {
         uint32_t TimeoutMs = UINT32_MAX;
@@ -242,6 +303,17 @@ CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
             break;
         }
 
+        //
+        // Taken before the deadline is checked, so a route notification that
+        // arrives in the same wake as the one that closes the window is not
+        // left for the next resync. Cleared as it is taken, which is the only
+        // place it is cleared.
+        //
+        if (Os->PendingRouteChange) {
+            Os->PendingRouteChange = FALSE;
+            RouteChanged = TRUE;
+        }
+
         if (Notified && !DebouncePending) {
             DebouncePending = TRUE;
             DebounceDeadline =
@@ -251,18 +323,25 @@ CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
         if (DebouncePending &&
             CxPlatTimeAtOrBefore64(DebounceDeadline, CxPlatTimeUs64())) {
             //
-            // RouteChanged is always FALSE here: route watching is phase 5, and
-            // this backend subscribes to addresses and interfaces only.
+            // WatchRoutes is tested as well as the flag, so a stray
+            // notification cannot manufacture a route change for a consumer
+            // that never subscribed -- the subscription is not taken in that
+            // case, but the test costs nothing and does not rely on that.
             //
-            if (CxPlatAddressMonitorResync(Monitor, FALSE)) {
+            if (CxPlatAddressMonitorResync(
+                    Monitor, Monitor->WatchRoutes && RouteChanged)) {
                 DebouncePending = FALSE;
                 RetryMs = 0;
+                RouteChanged = FALSE;
             } else {
                 //
                 // The enumeration failed. The window stays armed and backs off
                 // rather than being cleared: there may be no further
                 // notification to retry on, and an address that appeared during
                 // the failure would otherwise stay invisible.
+                //
+                // RouteChanged is deliberately kept too, so a route change is
+                // not lost to an enumeration that happened to fail.
                 //
                 RetryMs =
                     RetryMs == 0 ?
@@ -351,6 +430,29 @@ CxPlatAddressMonitorOsInitialize(
     }
 
     //
+    // Routes only when asked. NotifyRouteChange2 exists in both modes, and
+    // AF_UNSPEC covers both families the way the other two subscriptions do.
+    //
+    if (Monitor->WatchRoutes) {
+        Error =
+            NotifyRouteChange2(
+                AF_UNSPEC,
+                CxPlatAddressMonitorRouteChangeCallback,
+                Monitor,
+                FALSE,
+                &Os->RouteNotify);
+        if (CxPlatNetioFailed(Error)) {
+            QuicTraceEvent(
+                LibraryErrorStatus,
+                "[ lib] ERROR, %u, %s.",
+                (uint32_t)Error,
+                "NotifyRouteChange2");
+            Status = CxPlatNetioToStatus(Error);
+            goto Error;
+        }
+    }
+
+    //
     // The first enumeration is synchronous and silent: callers get a usable
     // snapshot the moment Initialize returns, with no callback for it. The
     // shared Initialize does not do this -- each backend does -- and without it
@@ -436,6 +538,10 @@ CxPlatAddressMonitorOsUninitialize(
     // These callbacks only set an event, so there is nothing for that wait to
     // block behind.
     //
+    if (Os->RouteNotify != NULL) {
+        (void)CancelMibChangeNotify2(Os->RouteNotify);
+        Os->RouteNotify = NULL;
+    }
     if (Os->InterfaceNotify != NULL) {
         (void)CancelMibChangeNotify2(Os->InterfaceNotify);
         Os->InterfaceNotify = NULL;

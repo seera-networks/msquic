@@ -1140,6 +1140,22 @@ TEST(Basic, LocalAddressChangeAutoServerMigration) {
     TestLogger Logger("QuicTestLocalAddressChangeAutoServerMigration");
     QuicTestLocalAddressChangeAutoServerMigration();
 }
+
+TEST(Basic, LocalAddressChangeAutoRoute) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAutoRoute is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAutoRoute");
+    QuicTestLocalAddressChangeAutoRoute();
+}
+
+TEST(Basic, LocalAddressChangeAutoRouteUnchanged) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressChangeAutoRouteUnchanged is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressChangeAutoRouteUnchanged");
+    QuicTestLocalAddressChangeAutoRouteUnchanged();
+}
 #endif // DEBUG
 
 //
