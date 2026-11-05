@@ -29,12 +29,14 @@ extern "C" {
 #endif
 
 //
-// Desktop Windows only. The UWP and GameCore link lines carry neither
-// NotifyUnicastIpAddressChange nor CancelMibChangeNotify2 -- those are
-// documented desktop-only -- so a restricted build gets the not-supported
-// stub, as it did before this backend existed.
+// Windows, user mode and kernel alike -- the NETIO subscription and the
+// debounce thread are shared, and only the enumeration differs. Not the
+// restricted builds though: the UWP and GameCore link lines carry neither
+// NotifyUnicastIpAddressChange nor CancelMibChangeNotify2, which are
+// documented desktop-only, so those get the not-supported stub as they did
+// before this backend existed.
 //
-#if defined(_WIN32) && !defined(_KERNEL_MODE) && !defined(QUIC_RESTRICTED_BUILD)
+#if defined(_WIN32) && !defined(QUIC_RESTRICTED_BUILD)
 #define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
 #endif
 
@@ -118,6 +120,17 @@ typedef struct CXPLAT_ADDRESS_MONITOR {
 
     CXPLAT_ADDRESS_MONITOR_OS* Os;
 } CXPLAT_ADDRESS_MONITOR;
+
+#if defined(_WIN32) && defined(CXPLAT_ADDRESS_MONITOR_SUPPORTED)
+//
+// Sets the scope flags on one filtered entry, from the address bytes. Lives in
+// address_monitor_win.c, which both modes' enumerations share.
+//
+void
+CxPlatAddressMonitorWinSetScopeFlags(
+    _Inout_ CXPLAT_LOCAL_ADDRESS* Address
+    );
+#endif
 
 //
 // Backend hooks. Initialize subscribes and starts delivering; Uninitialize

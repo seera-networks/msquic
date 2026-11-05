@@ -14,7 +14,7 @@ set(SOURCES crypt.c hashtable.c pcp.c platform_worker.c toeplitz.c)
 if("${CX_PLATFORM}" STREQUAL "windows")
     set(SOURCES ${SOURCES} platform_winuser.c storage_winuser.c datapath_win.c datapath_winuser.c datapath_xplat.c address_monitor.c)
     if(NOT QUIC_UWP_BUILD AND NOT QUIC_GAMECORE_BUILD)
-        set(SOURCES ${SOURCES} address_monitor_winuser.c)
+        set(SOURCES ${SOURCES} address_monitor_win.c address_monitor_winuser.c)
     endif()
     if(QUIC_UWP_BUILD OR
        QUIC_GAMECORE_BUILD OR
