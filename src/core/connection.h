@@ -611,6 +611,40 @@ typedef struct QUIC_CONNECTION {
     //
     BOOLEAN AddressChangeDirty;
 
+    //
+    // The route-change generation this connection last reconciled against.
+    // Separate from LastAddressGeneration because a route change and an
+    // address change are reported on the same generation counter but mean
+    // different things: the address half is a snapshot to diff, the route half
+    // is "the OS may now send to this peer from somewhere else".
+    //
+    uint64_t LastRouteGeneration;
+
+    //
+    // AUTO mode has opened a path on the address the OS now routes to the peer
+    // from, and is waiting for the peer to answer its PATH_CHALLENGE before
+    // making it active. Make-before-break: unlike a lost address, the path in
+    // use still works, so there is no reason to move onto an unproven one.
+    //
+    // The target is named by its local address rather than by its path ID
+    // because the address is what the decision was made on, is unique among
+    // this connection's paths by construction -- the selection excludes
+    // addresses already in use -- and does not get recycled the way a path ID
+    // slot can.
+    //
+    BOOLEAN RouteMigrationPending;
+    QUIC_ADDR RouteMigrationLocal;
+
+    //
+    // The path above has finished validating and the migration onto it is
+    // waiting to be made. Deferred rather than done where the validation
+    // completes, because that is in the middle of processing a received
+    // packet's frames, on a path pointer the caller keeps using afterwards --
+    // and completing the migration swaps the path array and removes an entry,
+    // which left that pointer naming a path that had just been taken away.
+    //
+    BOOLEAN RouteMigrationReady;
+
     CXPLAT_LIST_ENTRY BoundAddresses;
 
     CXPLAT_LIST_ENTRY CandidateAddresses;
@@ -1220,6 +1254,18 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicConnProcessLocalAddressChange(
     _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Tells AUTO mode that a path finished validating, so a make-before-break
+// migration it started for a route change can complete. A no-op unless that is
+// what the path was opened for.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnAutoPathValidated(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_PATH* Path
     );
 
 //

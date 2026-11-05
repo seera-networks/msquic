@@ -212,6 +212,14 @@ QuicTestLocalAddressChangeAutoOffline(
 void
 QuicTestLocalAddressChangeAutoServerMigration(
     );
+
+void
+QuicTestLocalAddressChangeAutoRoute(
+    );
+
+void
+QuicTestLocalAddressChangeAutoRouteUnchanged(
+    );
 #endif
 
 //

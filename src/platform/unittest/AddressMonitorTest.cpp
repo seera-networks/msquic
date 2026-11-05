@@ -562,6 +562,14 @@ struct AddressMonitorRealTest : public ::testing::Test
     struct Observed {
         std::mutex Lock;
         uint32_t CallbackCount {0};
+        //
+        // How many change sets carried RouteChanged, and how many carried it
+        // with no address change at all. The second is the one route watching
+        // is for: a route moved and the snapshot is identical, which is the
+        // case the shared resync discards unless the backend tells it.
+        //
+        uint32_t RouteChangedCount {0};
+        uint32_t RouteOnlyCount {0};
         std::vector<std::pair<CXPLAT_ADDRESS_CHANGE_TYPE, QUIC_ADDR>> Changes;
     };
 
@@ -570,10 +578,31 @@ struct AddressMonitorRealTest : public ::testing::Test
         auto* State = static_cast<Observed*>(Context);
         std::lock_guard<std::mutex> Guard(State->Lock);
         ++State->CallbackCount;
+        if (Set->RouteChanged) {
+            ++State->RouteChangedCount;
+            if (Set->ChangeCount == 0) {
+                ++State->RouteOnlyCount;
+            }
+        }
         for (uint32_t i = 0; i < Set->ChangeCount; ++i) {
             State->Changes.emplace_back(
                 Set->Changes[i].Type, Set->Changes[i].Address.Address);
         }
+    }
+
+    //
+    // Waits for a change set that carried a route change and nothing else.
+    //
+    bool WaitForRouteOnlyChange(Observed& State)
+    {
+        for (uint32_t Attempt = 0; Attempt < 50; ++Attempt) {
+            CxPlatSleep(100);
+            std::lock_guard<std::mutex> Guard(State.Lock);
+            if (State.RouteOnlyCount != 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static bool Run(const char* Command)
@@ -749,6 +778,117 @@ TEST_F(AddressMonitorRealTest, DebounceCollapsesABurst)
 
     CxPlatAddressMonitorUninitialize(Monitor);
     Run("ip link del qmonburst >/dev/null 2>&1");
+}
+
+//
+// A route change with the address snapshot untouched. This is the case phase 5
+// exists for -- on a host with two interfaces up, the OS can move the default
+// route from one to the other without a single address appearing or
+// disappearing -- and nothing else in the suite reaches it: every other test
+// drives an address change, which is reported whether routes are watched or
+// not.
+//
+TEST_F(AddressMonitorRealTest, NotifiesOnRouteChange)
+{
+    if (!CanCreateInterface()) {
+        GTEST_SKIP() << "needs a network namespace; run under `unshare -rn`";
+    }
+
+    ASSERT_TRUE(Run("ip link add qmonroute type dummy"));
+    ASSERT_TRUE(Run("ip link set qmonroute up"));
+    ASSERT_TRUE(Run("ip addr add 10.5.5.1/24 dev qmonroute"));
+
+    Observed State;
+
+    CXPLAT_ADDRESS_MONITOR_CONFIG Config;
+    CxPlatZeroMemory(&Config, sizeof(Config));
+    Config.Callback = ChangeCallback;
+    Config.Context = &State;
+    Config.DebounceMs = 50;
+    Config.WatchRoutes = TRUE;
+
+    CXPLAT_ADDRESS_MONITOR* Monitor = nullptr;
+    ASSERT_TRUE(QUIC_SUCCEEDED(CxPlatAddressMonitorInitialize(nullptr, &Config, &Monitor)));
+
+    //
+    // A route to somewhere that needs no new address, over an interface that
+    // already has one. Adding it changes the routing table and nothing else,
+    // so a change set only arrives at all if the route subscription is there
+    // and the resync was told to keep an empty diff.
+    //
+    ASSERT_TRUE(Run("ip route add 10.77.0.0/16 dev qmonroute"));
+    ASSERT_TRUE(WaitForRouteOnlyChange(State));
+
+    //
+    // Taking it away is a change too, and is reported the same way. Checked
+    // separately because the backend keys on RTM_NEWROUTE and RTM_DELROUTE
+    // independently.
+    //
+    {
+        std::lock_guard<std::mutex> Guard(State.Lock);
+        State.RouteOnlyCount = 0;
+    }
+    ASSERT_TRUE(Run("ip route del 10.77.0.0/16 dev qmonroute"));
+    ASSERT_TRUE(WaitForRouteOnlyChange(State));
+
+    //
+    // No address was ever reported, which is what makes this a route test
+    // rather than an address test that happened to pass.
+    //
+    {
+        std::lock_guard<std::mutex> Guard(State.Lock);
+        ASSERT_TRUE(State.Changes.empty());
+    }
+
+    CxPlatAddressMonitorUninitialize(Monitor);
+    Run("ip link del qmonroute >/dev/null 2>&1");
+}
+
+//
+// The negative control for the test above: with WatchRoutes off, the same route
+// changes must reach nobody. Without this, that test would pass on a backend
+// that subscribed to routes unconditionally and reported every one of them to a
+// consumer that never asked -- which is the noisier stream the flag exists to
+// keep off.
+//
+TEST_F(AddressMonitorRealTest, RouteChangeIgnoredWhenNotWatching)
+{
+    if (!CanCreateInterface()) {
+        GTEST_SKIP() << "needs a network namespace; run under `unshare -rn`";
+    }
+
+    ASSERT_TRUE(Run("ip link add qmonnoroute type dummy"));
+    ASSERT_TRUE(Run("ip link set qmonnoroute up"));
+    ASSERT_TRUE(Run("ip addr add 10.6.6.1/24 dev qmonnoroute"));
+
+    Observed State;
+
+    CXPLAT_ADDRESS_MONITOR_CONFIG Config;
+    CxPlatZeroMemory(&Config, sizeof(Config));
+    Config.Callback = ChangeCallback;
+    Config.Context = &State;
+    Config.DebounceMs = 50;
+    Config.WatchRoutes = FALSE;
+
+    CXPLAT_ADDRESS_MONITOR* Monitor = nullptr;
+    ASSERT_TRUE(QUIC_SUCCEEDED(CxPlatAddressMonitorInitialize(nullptr, &Config, &Monitor)));
+
+    ASSERT_TRUE(Run("ip route add 10.88.0.0/16 dev qmonnoroute"));
+    ASSERT_TRUE(Run("ip route del 10.88.0.0/16 dev qmonnoroute"));
+
+    //
+    // Long enough for several debounce windows to have closed.
+    //
+    CxPlatSleep(600);
+
+    {
+        std::lock_guard<std::mutex> Guard(State.Lock);
+        ASSERT_EQ(0u, State.RouteChangedCount);
+        ASSERT_TRUE(State.Changes.empty());
+    }
+
+    CxPlatAddressMonitorUninitialize(Monitor);
+    Run("ip link del qmonnoroute >/dev/null 2>&1");
 }
 
 //

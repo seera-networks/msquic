@@ -771,9 +771,73 @@ QuicConnLocalAddressIsBetter(
 
 
 //
+// What the OS says it would send from to reach Remote, or FALSE when it cannot
+// say. The answer is the host's own routing decision, which is the one input
+// this feature cannot derive from the address snapshot: with two interfaces up
+// and every address unchanged, this is the only thing that tells us which one
+// now carries traffic to this peer.
+//
+// Must not be called from the platform's notification callback. The POSIX
+// implementation opens a socket and connects it, and the Windows one asks the
+// routing stack; neither is something to do on a thread the OS is waiting on.
+// Every caller here runs on the connection's worker.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnGetRouteLocalAddress(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Remote,
+    _Out_ QUIC_ADDR* Local
+    )
+{
+    CxPlatZeroMemory(Local, sizeof(*Local));
+
+    const QUIC_STATUS Status =
+        CxPlatDataPathGetLocalAddressForRemote(Remote, Local);
+    if (QUIC_FAILED(Status)) {
+        //
+        // No route to the peer at all is the ordinary case here, not an error:
+        // an interface going down takes its route with it, and the snapshot
+        // ranking is a perfectly good fallback. Traced at verbose for that
+        // reason -- a platform with no implementation would otherwise log a
+        // warning on every reconciliation.
+        //
+        QuicTraceLogConnVerbose(
+            RouteLocalAddressUnavailable,
+            Connection,
+            "No route-derived local address, status=0x%x",
+            Status);
+        return FALSE;
+    }
+
+    if (QuicAddrIsWildCard(Local)) {
+        //
+        // A wildcard answer names no interface, so it is no better than having
+        // asked nothing. Rejected rather than passed on, because the selection
+        // compares a hint against the snapshot and the wildcard matches
+        // nothing there -- this only makes that explicit.
+        //
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+//
 // Picks the local address AUTO mode should send from to reach Remote, or NULL
 // when the host has nothing usable. Excludes addresses the connection already
 // has a path on, since the caller is looking for somewhere new to go.
+//
+// RouteHint, when given, is the address the OS itself said it would send from
+// to reach Remote. It wins outright over the ranking below, because the ranking
+// is a set of preferences about addresses and the hint is the routing table's
+// answer about this peer: it is the only input here that knows which interface
+// actually reaches Remote, and following it is what makes the connection track
+// the host's own choice of outgoing interface. It still has to clear the same
+// filters as any other candidate and still has to be in the snapshot -- a hint
+// naming an address the monitor does not report is a hint about an address this
+// connection cannot bind.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -784,11 +848,13 @@ QuicConnSelectLocalAddress(
     _In_ uint32_t AddressCount,
     _In_ const QUIC_ADDR* Remote,
     _In_opt_ const CXPLAT_LOCAL_ADDRESS* Replacing,
-    _In_ BOOLEAN ExcludeAddressesInUse
+    _In_ BOOLEAN ExcludeAddressesInUse,
+    _In_opt_ const QUIC_ADDR* RouteHint
     )
 {
     const QUIC_ADDRESS_FAMILY Family = QuicAddrGetFamily(Remote);
     const CXPLAT_LOCAL_ADDRESS* Best = NULL;
+    const CXPLAT_LOCAL_ADDRESS* Hinted = NULL;
 
     //
     // Whether the peer is on this host, and whether it is only reachable
@@ -845,13 +911,29 @@ QuicConnSelectLocalAddress(
             continue;
         }
 
+        //
+        // Recorded rather than returned from inside the loop, so that the
+        // snapshot entry is the one that is used -- the hint carries an address
+        // and a port, the snapshot entry carries the platform's flags, and it
+        // is the flags the caller goes on to make decisions with.
+        //
+        // Compared on the IP alone: the hint comes back from a connected socket
+        // and so names an ephemeral port, which is not the port this connection
+        // will use.
+        //
+        if (RouteHint != NULL &&
+            Hinted == NULL &&
+            QuicAddrCompareIp(&Candidate->Address, RouteHint)) {
+            Hinted = Candidate;
+        }
+
         if (Best == NULL ||
             QuicConnLocalAddressIsBetter(Candidate, Best, Replacing)) {
             Best = Candidate;
         }
     }
 
-    return Best;
+    return Hinted != NULL ? Hinted : Best;
 }
 
 
@@ -1208,6 +1290,359 @@ QuicConnAutoMigrateMultipath(
 
 
 //
+// Finds a path of this connection whose local address is Address, whatever
+// port either carries. The by-address lookup in path.c compares the port too,
+// which is the right thing for an application naming an endpoint and the wrong
+// thing here: the snapshot and the route hint both name an address, and the
+// port is whatever the binding was given.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Ret_maybenull_
+static
+QUIC_PATH*
+QuicConnGetPathByLocalIp(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Address,
+    _In_ const QUIC_ADDR* Remote
+    )
+{
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].Binding == NULL) {
+            continue;
+        }
+        if (QuicAddrCompareIp(&Connection->Paths[i].Route.LocalAddress, Address) &&
+            QuicAddrCompare(&Connection->Paths[i].Route.RemoteAddress, Remote)) {
+            return &Connection->Paths[i];
+        }
+    }
+    return NULL;
+}
+
+
+//
+// Makes the path AUTO opened for a route change the active one, now that the
+// peer has answered its challenge on it. The old path goes away afterwards:
+// this is the "break" half, and it is deliberately last.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicConnAutoCompleteRouteMigration(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_PATH* Path
+    )
+{
+    //
+    // Both markers cleared first, whatever happens below. One that outlives its
+    // attempt would block every later route change, and nothing else clears
+    // them on the paths out of here. Ready is cleared here as well as by the
+    // reconciliation that usually calls this, because the other caller --
+    // finding the path already validated -- has not been through that.
+    //
+    Connection->RouteMigrationReady = FALSE;
+    Connection->RouteMigrationPending = FALSE;
+
+    const QUIC_ADDR Previous = Connection->Paths[0].Route.LocalAddress;
+    const QUIC_ADDR PreviousRemote = Connection->Paths[0].Route.RemoteAddress;
+
+    if (QuicAddrCompareIp(&Previous, &Path->Route.LocalAddress)) {
+        //
+        // Already active. Reached when something else promoted the path first
+        // -- an application ACTIVATE_PATH, or a lost-address migration that
+        // chose the same address -- and there is nothing left to do.
+        //
+        return;
+    }
+
+    QUIC_ADDR NewLocal = Path->Route.LocalAddress;
+    QUIC_ADDR NewRemote = Path->Route.RemoteAddress;
+    QUIC_PATH_PARAM Param;
+    Param.LocalAddress = &NewLocal;
+    Param.RemoteAddress = &NewRemote;
+
+    const QUIC_STATUS Status = QuicConnActivatePath(Connection, &Param);
+    if (QUIC_FAILED(Status)) {
+        //
+        // The new path stays on the connection rather than being torn down:
+        // it is validated and working, the old one still is too, and the next
+        // reconciliation finds the path already there and only has to activate
+        // it. Tearing it down here would mean re-validating from scratch.
+        //
+        QuicConnAutoNoteMigrationFailure(Connection, Status);
+        return;
+    }
+
+    QuicTraceLogConnInfo(
+        AutoFollowedRoute,
+        Connection,
+        "AUTO followed a route change onto a validated path");
+
+    Connection->LastAutoMigrationTimeUs = CxPlatTimeUs64();
+    QuicConnIndicateLocalAddressChanged(Connection, &Previous);
+
+    //
+    // Now the break. The old path is removed rather than left as a spare: this
+    // connection is not multipath -- the multipath branch never gets here --
+    // so a second path costs a binding and a path ID for something nothing
+    // will send on, and the route change is the host saying that address is no
+    // longer the way to this peer.
+    //
+    // Only ever the old path, found by the address it had before the
+    // activation, and never when it is the last one: QuicPathRemove aborts the
+    // connection on the last path, and this migration succeeded.
+    //
+    if (Connection->PathsCount <= 1) {
+        return;
+    }
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount; ++i) {
+        if (!QuicAddrCompareIp(&Connection->Paths[i].Route.LocalAddress, &Previous) ||
+            !QuicAddrCompare(&Connection->Paths[i].Route.RemoteAddress, &PreviousRemote)) {
+            continue;
+        }
+
+        //
+        // Named by endpoint, copied first: QuicConnRemovePath takes a param
+        // block of pointers and moves the path array about, so pointing it at
+        // the entry being removed would have it read what it just shifted.
+        //
+        QUIC_ADDR OldLocal = Connection->Paths[i].Route.LocalAddress;
+        QUIC_ADDR OldRemote = Connection->Paths[i].Route.RemoteAddress;
+        QUIC_PATH_PARAM Param;
+        Param.LocalAddress = &OldLocal;
+        Param.RemoteAddress = &OldRemote;
+
+        const QUIC_STATUS RemoveStatus = QuicConnRemovePath(Connection, &Param);
+        if (QUIC_FAILED(RemoveStatus)) {
+            QuicTraceLogConnWarning(
+                AutoRemoveOldRoutePathFailed,
+                Connection,
+                "AUTO failed to remove the path the route moved off, status=0x%x",
+                RemoveStatus);
+            break;
+        }
+        QuicTraceLogConnInfo(
+            AutoRemovedOldRoutePath,
+            Connection,
+            "AUTO removed the path the route moved off");
+        break;
+    }
+}
+
+
+//
+// Called when a path of this connection completes validation, to see whether
+// it is the one AUTO opened to follow a route change.
+//
+// Only records it. The migration itself is made from the reconciliation
+// operation, because this runs from the middle of QuicConnRecvFrames -- which
+// goes on using its QUIC_PATH* after this returns -- and completing the
+// migration activates one path and removes another, shifting the array under
+// that pointer. Doing it here left the caller holding a slot whose path had
+// just been removed, which is the same shape of bug as processing a receive
+// batch on a path that was taken away for a rebind.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnAutoPathValidated(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_PATH* Path
+    )
+{
+    if (!Connection->RouteMigrationPending ||
+        Connection->Settings.LocalAddressChangeMode != QUIC_LOCAL_ADDRESS_CHANGE_AUTO ||
+        !QuicAddrCompareIp(&Path->Route.LocalAddress, &Connection->RouteMigrationLocal)) {
+        return;
+    }
+
+    Connection->RouteMigrationReady = TRUE;
+    QuicConnQueueLocalAddressChange(Connection);
+}
+
+
+//
+// Follows the host's choice of outgoing interface when it moves, which is the
+// case no address change reports: with Wi-Fi and cellular both up, the OS can
+// send this connection's traffic out of a different interface with every
+// address staying exactly where it was.
+//
+// Make-before-break, unlike the lost-address migration above. The path in use
+// still works here, so there is no reason to move onto one the peer has not
+// answered on -- a route change is an improvement, and an improvement that
+// might not work is worth waiting out. The move itself happens from
+// QuicConnAutoPathValidated.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicConnAutoFollowRoute(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_reads_(AddressCount) const CXPLAT_LOCAL_ADDRESS* Addresses,
+    _In_ uint32_t AddressCount
+    )
+{
+    const QUIC_ADDR ActiveLocal = Connection->Paths[0].Route.LocalAddress;
+    const QUIC_ADDR ActiveRemote = Connection->Paths[0].Route.RemoteAddress;
+
+    //
+    // A pending target with no path left under it had its validation time out,
+    // and the validation timer took the path away. Cleared here because that
+    // timer does not know what the path was for, and leaving the marker set
+    // would block every later route change on this connection.
+    //
+    if (Connection->RouteMigrationPending &&
+        QuicConnGetPathByLocalIp(
+            Connection, &Connection->RouteMigrationLocal, &ActiveRemote) == NULL) {
+        QuicTraceLogConnInfo(
+            AutoRouteMigrationAbandoned,
+            Connection,
+            "AUTO lost the path it opened for a route change");
+        Connection->RouteMigrationPending = FALSE;
+    }
+
+    QUIC_ADDR RouteLocal;
+    if (!QuicConnGetRouteLocalAddress(Connection, &ActiveRemote, &RouteLocal)) {
+        return;
+    }
+
+    if (QuicAddrCompareIp(&RouteLocal, &ActiveLocal)) {
+        //
+        // The route still comes out of the address this connection is on, which
+        // is what almost every route notification means: the table changed
+        // somewhere that has nothing to do with this peer. Any pending attempt
+        // is dropped, because the address it was heading for is no longer the
+        // one the OS would use.
+        //
+        Connection->RouteMigrationPending = FALSE;
+        return;
+    }
+
+    if (Connection->RouteMigrationPending &&
+        QuicAddrCompareIp(&RouteLocal, &Connection->RouteMigrationLocal)) {
+        //
+        // Already waiting on a challenge to this very address. Re-opening would
+        // only restart the validation.
+        //
+        return;
+    }
+
+    //
+    // Optional, so it waits out the hold-down. This is the migration that most
+    // needs it: routing tables churn, and a connection that moved on every
+    // churn would spend its life validating paths.
+    //
+    if (!QuicConnAutoHoldDownElapsed(Connection)) {
+        QuicTraceLogConnVerbose(
+            AutoFollowRouteHeldDown,
+            Connection,
+            "AUTO held down following a route change");
+        return;
+    }
+
+    //
+    // Through the same selection as every other choice, with the route as the
+    // hint it now honours. Going straight to RouteLocal would skip the scope
+    // filters and the snapshot check: an address the OS routes from is still
+    // not one to use if the monitor does not report it, and a hint that cannot
+    // be found in the snapshot is a hint about an address this connection
+    // cannot bind to.
+    //
+    // ExcludeAddressesInUse is FALSE on purpose, so that an address this
+    // connection already has a path on can still be chosen -- that path is
+    // exactly what make-before-break wants to find.
+    //
+    const CXPLAT_LOCAL_ADDRESS* Chosen =
+        QuicConnSelectLocalAddress(
+            Connection, Addresses, AddressCount, &ActiveRemote, NULL, FALSE,
+            &RouteLocal);
+    if (Chosen == NULL || !QuicAddrCompareIp(&Chosen->Address, &RouteLocal)) {
+        //
+        // The selection did not land on the route's address, which means that
+        // address failed a filter or is not in the snapshot. Nothing to follow:
+        // the ranking's own best choice is not acted on here, because without a
+        // route change saying otherwise a working path is left alone.
+        //
+        return;
+    }
+
+    //
+    // A path already on that address is the cheap case. If the peer has
+    // answered on it there is nothing to wait for and it can be made active
+    // now; if not, waiting on the validation already in flight is the whole
+    // point.
+    //
+    QUIC_PATH* Existing =
+        QuicConnGetPathByLocalIp(Connection, &RouteLocal, &ActiveRemote);
+    if (Existing != NULL) {
+        Connection->RouteMigrationLocal = RouteLocal;
+        Connection->RouteMigrationPending = TRUE;
+        if (Existing->IsPeerValidated) {
+            QuicConnAutoCompleteRouteMigration(Connection, Existing);
+        }
+        return;
+    }
+
+    QUIC_ADDR NewLocal = Chosen->Address;
+    if (Connection->State.ShareBinding) {
+        //
+        // A shared binding is keyed on the port, so keep the one the connection
+        // already has rather than asking for a fresh ephemeral.
+        //
+        QuicAddrSetPort(&NewLocal, QuicAddrGetPort(&ActiveLocal));
+    } else {
+        QuicAddrSetPort(&NewLocal, 0);
+    }
+    QUIC_ADDR NewRemote = ActiveRemote;
+    QUIC_PATH_PARAM Param;
+    Param.LocalAddress = &NewLocal;
+    Param.RemoteAddress = &NewRemote;
+
+    QUIC_PATH* NewPath = NULL;
+    const QUIC_STATUS Status = QuicConnAddPath(Connection, &Param, &NewPath);
+    if (QUIC_FAILED(Status)) {
+        //
+        // Out of path IDs, out of CIDs, or the address would not bind. The old
+        // path is untouched and still working, which is the property this whole
+        // branch is built around, so this is a missed improvement and not a
+        // failure: the next route change tries again.
+        //
+        QuicTraceLogConnInfo(
+            AutoFollowRouteAddPathFailed,
+            Connection,
+            "AUTO could not open a path for a route change, status=0x%x",
+            Status);
+        return;
+    }
+
+    //
+    // The hold-down is charged at the attempt, not at the activation. A route
+    // that keeps moving would otherwise have this opening a path per change
+    // while none of them ever got far enough to count as a migration.
+    //
+    Connection->LastAutoMigrationTimeUs = CxPlatTimeUs64();
+    Connection->RouteMigrationLocal = NewPath->Route.LocalAddress;
+    Connection->RouteMigrationPending = TRUE;
+
+    QuicTraceLogConnInfo(
+        AutoFollowRouteAddedPath,
+        Connection,
+        "AUTO opened a path to follow a route change");
+
+    //
+    // A path with no destination CID to send on was opened but not challenged:
+    // QuicConnOpenNewPath defers that until the peer issues one. Nothing is
+    // needed here for it. QuicPathIDAssignCids, which the NEW_CONNECTION_ID
+    // handler calls, arms the validation in full -- challenge, start time,
+    // count and timer -- for exactly the paths in this state, and the
+    // completion above is driven by that validation rather than by another
+    // reconciliation. The pending marker is already set, so the answer lands
+    // where it should whenever the CID arrives.
+    //
+}
+
+
+//
 // AUTO mode. Reconciles the connection's paths with the host's addresses by
 // itself, per the policy tables in #134.
 //
@@ -1224,7 +1659,8 @@ QuicConnAutoMigrate(
     _In_reads_(LostCount) const QUIC_PATH_PARAM* LostPaths,
     _In_ uint32_t LostCount,
     _In_reads_(RemovedCount) const CXPLAT_LOCAL_ADDRESS* Removed,
-    _In_ uint32_t RemovedCount
+    _In_ uint32_t RemovedCount,
+    _In_ BOOLEAN RouteChanged
     )
 {
     //
@@ -1263,6 +1699,12 @@ QuicConnAutoMigrate(
     }
 
     if (Connection->State.MultipathNegotiated) {
+        //
+        // RouteChanged is not passed on. Under multipath the connection already
+        // holds a path on every usable address, so there is no interface for a
+        // route change to move it to -- the peer's scheduler picks between
+        // paths that all exist, and make-before-break has nothing to build.
+        //
         QuicConnAutoMigrateMultipath(
             Connection, Addresses, AddressCount, LostPaths, LostCount, ActiveLost);
         return;
@@ -1270,9 +1712,8 @@ QuicConnAutoMigrate(
 
     //
     // Single path, and the active path is fine. The only thing left that could
-    // want a migration is a route-preference change, which needs the route
-    // watching that phase 5 turns on -- with WatchRoutes off, RouteChanged is
-    // never set and there is nothing here to act on. A new address alone is
+    // want a migration is the host having changed where it sends this peer's
+    // traffic from, which is what RouteChanged reports. A new address alone is
     // not a reason to move a working connection.
     //
     if (!ActiveLost) {
@@ -1280,6 +1721,9 @@ QuicConnAutoMigrate(
         // Other paths that lost their address still get cleaned up.
         //
         QuicConnAutoRemoveLostPaths(Connection, LostPaths, LostCount, &ActiveLocal, &ActiveRemote);
+        if (RouteChanged) {
+            QuicConnAutoFollowRoute(Connection, Addresses, AddressCount);
+        }
         return;
     }
 
@@ -1341,9 +1785,20 @@ QuicConnAutoMigrate(
         }
     }
 
+    //
+    // Asked here rather than once per reconciliation: this is the branch that
+    // has to choose a replacement, and the question -- which address reaches
+    // this peer now -- only has an answer worth having after the old one is
+    // gone.
+    //
+    QUIC_ADDR RouteLocal;
+    const BOOLEAN HaveRoute =
+        QuicConnGetRouteLocalAddress(Connection, &ActiveRemote, &RouteLocal);
+
     const CXPLAT_LOCAL_ADDRESS* Chosen =
         QuicConnSelectLocalAddress(
-            Connection, Addresses, AddressCount, &ActiveRemote, &Replacing, TRUE);
+            Connection, Addresses, AddressCount, &ActiveRemote, &Replacing, TRUE,
+            HaveRoute ? &RouteLocal : NULL);
     if (Chosen == NULL) {
         //
         // Offline. The connection and its dead path are kept: post-handshake
@@ -1507,11 +1962,43 @@ QuicConnProcessLocalAddressChange(
 
     Connection->AddressChangeDirty = FALSE;
 
+    //
+    // A make-before-break migration whose path finished validating while a
+    // packet was being processed. Done here, where activating a path and
+    // removing another is what this operation does anyway, and before the
+    // snapshot is read: it does not depend on one, and the generation gate
+    // below would otherwise skip it whenever no address had changed since the
+    // pass that started it -- which is every time, since a route change is not
+    // an address change.
+    //
+    if (Connection->RouteMigrationReady) {
+        Connection->RouteMigrationReady = FALSE;
+        if (Connection->RouteMigrationPending &&
+            Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_AUTO) {
+            QUIC_PATH* Validated =
+                QuicConnGetPathByLocalIp(
+                    Connection,
+                    &Connection->RouteMigrationLocal,
+                    &Connection->Paths[0].Route.RemoteAddress);
+            if (Validated != NULL && Validated->IsPeerValidated) {
+                QuicConnAutoCompleteRouteMigration(Connection, Validated);
+            } else {
+                //
+                // The path went away between validating and this running, or
+                // never really validated. Nothing to move onto, and the marker
+                // is dropped so a later route change is not blocked by it.
+                //
+                Connection->RouteMigrationPending = FALSE;
+            }
+        }
+    }
+
     CXPLAT_LOCAL_ADDRESS* Addresses = NULL;
     uint32_t AddressCount = 0;
     CXPLAT_LOCAL_ADDRESS* Removed = NULL;
     uint32_t RemovedCount = 0;
     uint64_t Generation = 0;
+    uint64_t RouteGeneration = 0;
     //
     // Declared up here, before the first goto, so that every path to Exit
     // sees them initialized.
@@ -1522,7 +2009,8 @@ QuicConnProcessLocalAddressChange(
 
     if (QUIC_FAILED(
             QuicLibraryGetLocalAddresses(
-                &Addresses, &AddressCount, &Removed, &RemovedCount, &Generation))) {
+                &Addresses, &AddressCount, &Removed, &RemovedCount, &Generation,
+                &RouteGeneration))) {
         return;
     }
 
@@ -1546,6 +2034,22 @@ QuicConnProcessLocalAddressChange(
         //
         goto Exit;
     }
+    //
+    // Whether a routing change has been reported since this connection last
+    // looked. Compared rather than read as a flag, so that two notifications
+    // collapsing into one reconciliation cannot lose the route half of the
+    // first -- the same reason the address snapshot is a generation.
+    //
+    // What "last looked" starts at is seeded when the connection takes its
+    // reference on the monitor, so a route change that happened before this
+    // connection was watching is not news: the connection was established over
+    // whatever route was in place by then, and an application that deliberately
+    // bound a local address should not have it taken away on the first
+    // reconciliation because of something that happened beforehand.
+    //
+    const BOOLEAN RouteChanged = RouteGeneration > Connection->LastRouteGeneration;
+    Connection->LastRouteGeneration = RouteGeneration;
+
     Connection->LastAddressGeneration = Generation;
 
     //
@@ -1685,7 +2189,7 @@ QuicConnProcessLocalAddressChange(
     if (Connection->Settings.LocalAddressChangeMode == QUIC_LOCAL_ADDRESS_CHANGE_AUTO) {
         QuicConnAutoMigrate(
             Connection, Addresses, AddressCount, LostPaths, LostCount,
-            Removed, RemovedCount);
+            Removed, RemovedCount, RouteChanged);
     }
 
 Exit:
@@ -11491,6 +11995,14 @@ QuicConnApplyNewSettings(
         //
         if (QUIC_SUCCEEDED(QuicLibraryAddRefAddressMonitor())) {
             Connection->AddressMonitorRef = TRUE;
+            //
+            // Where "since I last looked" begins for route changes. Taken here
+            // rather than on the first reconciliation, which can be the route
+            // change itself -- before the handshake is confirmed a
+            // reconciliation only marks the connection dirty and reads nothing,
+            // so the first pass that does read can be several generations later.
+            //
+            Connection->LastRouteGeneration = QuicLibraryGetRouteGeneration();
             //
             // Run once up front. Before the handshake is confirmed this only
             // marks the connection dirty, so what the application actually

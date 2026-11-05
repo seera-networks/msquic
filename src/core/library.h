@@ -243,6 +243,16 @@ typedef struct QUIC_LIBRARY {
     CXPLAT_LOCAL_ADDRESS* LocalAddressesRemoved;
     uint32_t LocalAddressesRemovedCount;
     uint64_t LocalAddressesGeneration;
+    //
+    // The generation at which the monitor last reported a routing change, or
+    // zero if it never has. A generation rather than a flag, because a flag is
+    // an edge and a consumer reads this on its own schedule: two notifications
+    // can land between one connection's reconciliations, and if only the first
+    // carried a route change a flag holding the second's value would have lost
+    // it. A connection compares this against the one it last saw, which is the
+    // same level-triggered shape as the snapshot beside it.
+    //
+    uint64_t LocalAddressesRouteGeneration;
 
     //
     // List of all registrations in the current process (or kernel).
@@ -578,7 +588,19 @@ QuicLibraryGetLocalAddresses(
     _Out_ uint32_t* Count,
     _Outptr_result_buffer_maybenull_(*RemovedCount) CXPLAT_LOCAL_ADDRESS** Removed,
     _Out_ uint32_t* RemovedCount,
-    _Out_ uint64_t* Generation
+    _Out_ uint64_t* Generation,
+    _Out_ uint64_t* RouteGeneration
+    );
+
+//
+// The generation at which a routing change was last reported, for a connection
+// that is starting to watch and needs to know where "since I last looked"
+// begins. Zero when none has been.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+uint64_t
+QuicLibraryGetRouteGeneration(
+    void
     );
 
 //

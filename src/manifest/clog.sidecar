@@ -271,6 +271,58 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "AutoFollowedRoute": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO followed a route change onto a validated path",
+      "UniqueId": "AutoFollowedRoute",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoFollowRouteAddedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO opened a path to follow a route change",
+      "UniqueId": "AutoFollowRouteAddedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoFollowRouteAddPathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO could not open a path for a route change, status=0x%x",
+      "UniqueId": "AutoFollowRouteAddPathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoFollowRouteHeldDown": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO held down following a route change",
+      "UniqueId": "AutoFollowRouteHeldDown",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "AutoMigrateDeferred": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] AUTO deferred a migration until the peer issues a new CID",
@@ -371,6 +423,34 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "AutoRemovedOldRoutePath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO removed the path the route moved off",
+      "UniqueId": "AutoRemovedOldRoutePath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AutoRemoveOldRoutePathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO failed to remove the path the route moved off, status=0x%x",
+      "UniqueId": "AutoRemoveOldRoutePathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "AutoRemovePathFailed": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] AUTO failed to remove a path whose address was lost, status=0x%x",
@@ -386,6 +466,18 @@
         }
       ],
       "macroName": "QuicTraceLogConnWarning"
+    },
+    "AutoRouteMigrationAbandoned": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO lost the path it opened for a route change",
+      "UniqueId": "AutoRouteMigrationAbandoned",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
     },
     "BindingCleanup": {
       "ModuleProperites": {},
@@ -11372,6 +11464,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "RouteLocalAddressUnavailable": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] No route-derived local address, status=0x%x",
+      "UniqueId": "RouteLocalAddressUnavailable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "RouteResolutionEnd": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Route resolution completed on Path[%hhu] with L2 address %hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
@@ -15353,6 +15461,26 @@
         "EncodingString": "[conn][%p] AUTO held down opening a path on a new address"
       },
       {
+        "UniquenessHash": "b129fc5c-0290-fc6f-7bfd-26c11e671bc7",
+        "TraceID": "AutoFollowedRoute",
+        "EncodingString": "[conn][%p] AUTO followed a route change onto a validated path"
+      },
+      {
+        "UniquenessHash": "a6f11b77-6f51-999c-ccbb-c10ead34f3ba",
+        "TraceID": "AutoFollowRouteAddedPath",
+        "EncodingString": "[conn][%p] AUTO opened a path to follow a route change"
+      },
+      {
+        "UniquenessHash": "15cf10b9-fcdd-2d25-00ef-4fff2824ddd5",
+        "TraceID": "AutoFollowRouteAddPathFailed",
+        "EncodingString": "[conn][%p] AUTO could not open a path for a route change, status=0x%x"
+      },
+      {
+        "UniquenessHash": "ac0f8df4-dfbf-6d27-6a0d-991b2b0ad31e",
+        "TraceID": "AutoFollowRouteHeldDown",
+        "EncodingString": "[conn][%p] AUTO held down following a route change"
+      },
+      {
         "UniquenessHash": "b367a76a-cb77-80f4-a653-782cc4bad50c",
         "TraceID": "AutoMigrateDeferred",
         "EncodingString": "[conn][%p] AUTO deferred a migration until the peer issues a new CID"
@@ -15393,9 +15521,24 @@
         "EncodingString": "[conn][%p] AUTO removed a path whose local address was lost"
       },
       {
+        "UniquenessHash": "f0d81199-9d5e-4118-8f01-23ae93164a4d",
+        "TraceID": "AutoRemovedOldRoutePath",
+        "EncodingString": "[conn][%p] AUTO removed the path the route moved off"
+      },
+      {
+        "UniquenessHash": "fb359890-c997-c091-ccb2-17591d0a2728",
+        "TraceID": "AutoRemoveOldRoutePathFailed",
+        "EncodingString": "[conn][%p] AUTO failed to remove the path the route moved off, status=0x%x"
+      },
+      {
         "UniquenessHash": "f949ece9-7b6f-36ce-4133-d2b80ae5e75a",
         "TraceID": "AutoRemovePathFailed",
         "EncodingString": "[conn][%p] AUTO failed to remove a path whose address was lost, status=0x%x"
+      },
+      {
+        "UniquenessHash": "1e12cfc0-2cdb-a059-2d8f-765ceb104381",
+        "TraceID": "AutoRouteMigrationAbandoned",
+        "EncodingString": "[conn][%p] AUTO lost the path it opened for a route change"
       },
       {
         "UniquenessHash": "5d83e63e-7ce5-0102-8dd2-cbcf5946da2e",
@@ -18576,6 +18719,11 @@
         "UniquenessHash": "dfd165b7-db65-59a6-211e-8df812cc6524",
         "TraceID": "Restart",
         "EncodingString": "[conn][%p] Restart (CompleteReset=%hhu)"
+      },
+      {
+        "UniquenessHash": "e6a7d684-7729-c61a-f5ad-12c0a15e47c1",
+        "TraceID": "RouteLocalAddressUnavailable",
+        "EncodingString": "[conn][%p] No route-derived local address, status=0x%x"
       },
       {
         "UniquenessHash": "9bc1fa4d-99a3-dcfe-2650-d4effac253ba",

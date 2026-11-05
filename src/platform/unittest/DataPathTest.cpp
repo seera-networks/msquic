@@ -744,6 +744,80 @@ TEST_F(DataPathTest, InitializeInvalid)
     }
 }
 
+//
+// Which local address the OS would send from to reach a given remote. Phase 5's
+// route-derived address selection rests on this, and it was a NOT_SUPPORTED
+// stub on POSIX until that phase.
+//
+// Loopback is the one remote whose answer is pinned by routing and not by how
+// the host happens to be connected: the only address that can reach 127.0.0.1
+// is 127.0.0.1. Every other remote would make this test assert whatever the
+// machine's default route happens to be, which asserts nothing.
+//
+TEST_F(DataPathTest, GetLocalAddressForRemoteLoopback)
+{
+    QUIC_ADDR Remote;
+    CxPlatZeroMemory(&Remote, sizeof(Remote));
+    QuicAddrSetFamily(&Remote, QUIC_ADDRESS_FAMILY_INET);
+    QuicAddrSetToLoopback(&Remote);
+    QuicAddrSetPort(&Remote, 12345);
+
+    QUIC_ADDR Local;
+    VERIFY_QUIC_SUCCESS(CxPlatDataPathGetLocalAddressForRemote(&Remote, &Local));
+
+    ASSERT_EQ(QUIC_ADDRESS_FAMILY_INET, QuicAddrGetFamily(&Local));
+    ASSERT_FALSE(QuicAddrIsWildCard(&Local));
+
+    QUIC_ADDR Expected;
+    CxPlatZeroMemory(&Expected, sizeof(Expected));
+    QuicAddrSetFamily(&Expected, QUIC_ADDRESS_FAMILY_INET);
+    QuicAddrSetToLoopback(&Expected);
+    ASSERT_TRUE(QuicAddrCompareIp(&Expected, &Local));
+}
+
+TEST_F(DataPathTest, GetLocalAddressForRemoteLoopbackV6)
+{
+    QUIC_ADDR Remote;
+    CxPlatZeroMemory(&Remote, sizeof(Remote));
+    QuicAddrSetFamily(&Remote, QUIC_ADDRESS_FAMILY_INET6);
+    QuicAddrSetToLoopback(&Remote);
+    QuicAddrSetPort(&Remote, 12345);
+
+    QUIC_ADDR Local;
+    const QUIC_STATUS Status =
+        CxPlatDataPathGetLocalAddressForRemote(&Remote, &Local);
+    if (QUIC_FAILED(Status)) {
+        //
+        // A host built without IPv6 has no route to ::1 and nothing to assert.
+        //
+        GTEST_SKIP() << "No IPv6 route to loopback: " << Status;
+    }
+
+    ASSERT_EQ(QUIC_ADDRESS_FAMILY_INET6, QuicAddrGetFamily(&Local));
+    ASSERT_FALSE(QuicAddrIsWildCard(&Local));
+
+    QUIC_ADDR Expected;
+    CxPlatZeroMemory(&Expected, sizeof(Expected));
+    QuicAddrSetFamily(&Expected, QUIC_ADDRESS_FAMILY_INET6);
+    QuicAddrSetToLoopback(&Expected);
+    ASSERT_TRUE(QuicAddrCompareIp(&Expected, &Local));
+}
+
+//
+// A remote with no family is not a remote. Checked because the implementation
+// opens a socket of the remote's family first, and that is where it must fail
+// rather than handing back an uninitialized local address.
+//
+TEST_F(DataPathTest, GetLocalAddressForRemoteUnspecified)
+{
+    QUIC_ADDR Remote;
+    CxPlatZeroMemory(&Remote, sizeof(Remote));
+
+    QUIC_ADDR Local;
+    ASSERT_TRUE(
+        QUIC_FAILED(CxPlatDataPathGetLocalAddressForRemote(&Remote, &Local)));
+}
+
 TEST_F(DataPathTest, UdpBind)
 {
     CxPlatDataPath Datapath(&EmptyUdpCallbacks);
