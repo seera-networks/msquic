@@ -531,6 +531,24 @@ tracepoint(CLOG_CONNECTION_C, UnreachableInvalid , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressFull
+// [conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked
+// QuicTraceLogConnWarning(
+                AlternativeAddressFull,
+                Connection,
+                "ALTERNATIVE_ADDRESS advertised more addresses than tracked");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AlternativeAddressFull
+#define _clog_3_ARGS_TRACE_AlternativeAddressFull(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AlternativeAddressFull , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ExportKeyingMaterialInvalidState
 // [conn][%p] Cannot export keying material [Connected=%hhu, HandshakeComplete=%hhu, HasTls=%hhu]
 // QuicTraceLogConnWarning(
@@ -1132,6 +1150,46 @@ tracepoint(CLOG_CONNECTION_C, UpdatePeerPacketTolerance , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_BoundAddressWildcardForQtip
 #define _clog_3_ARGS_TRACE_BoundAddressWildcardForQtip(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressWithdrawn
+// [conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)
+// QuicTraceLogConnInfo(
+            AlternativeAddressWithdrawn,
+            Connection,
+            "ALTERNATIVE_ADDRESS withdrew an address (seq %llu)",
+            Connection->AltAddrs[i].SequenceNumber);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->AltAddrs[i].SequenceNumber = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AlternativeAddressWithdrawn
+#define _clog_4_ARGS_TRACE_AlternativeAddressWithdrawn(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AlternativeAddressWithdrawn , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressAddFailed
+// [conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x
+// QuicTraceLogConnInfo(
+                AlternativeAddressAddFailed,
+                Connection,
+                "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AlternativeAddressAddFailed
+#define _clog_4_ARGS_TRACE_AlternativeAddressAddFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AlternativeAddressAddFailed , arg1, arg3);\
 
 #endif
 
@@ -1934,6 +1992,46 @@ tracepoint(CLOG_CONNECTION_C, UdpRecvDeferred , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressAdded
 #define _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressAdded(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressStale
+// [conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)
+// QuicTraceLogConnVerbose(
+            AlternativeAddressStale,
+            Connection,
+            "Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)",
+            Frame->SequenceNumber,
+            Connection->AltAddrPeerSequenceNumber);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Frame->SequenceNumber = arg3
+// arg4 = arg4 = Connection->AltAddrPeerSequenceNumber = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_AlternativeAddressStale
+#define _clog_5_ARGS_TRACE_AlternativeAddressStale(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_CONNECTION_C, AlternativeAddressStale , arg1, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateNotifyRemoteAddressRemovedAlt
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED
+// QuicTraceLogConnVerbose(
+                IndicateNotifyRemoteAddressRemovedAlt,
+                Connection,
+                "Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressRemovedAlt
+#define _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressRemovedAlt(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressRemovedAlt , arg1);\
 
 #endif
 

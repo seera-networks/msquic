@@ -214,6 +214,14 @@ QuicTestLocalAddressChangeAutoServerMigration(
     );
 
 void
+QuicTestAlternativeServerAddress(
+    );
+
+void
+QuicTestAlternativeServerAddressAuto(
+    );
+
+void
 QuicTestLocalAddressChangeAutoRoute(
     );
 

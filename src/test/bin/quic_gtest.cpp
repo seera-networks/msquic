@@ -1159,6 +1159,27 @@ TEST(Basic, LocalAddressChangeAutoRouteUnchanged) {
 #endif // DEBUG
 
 //
+// Needs no debug-only injection parameter -- the server advertises through the
+// public address parameters -- so it runs in release too, outside the DEBUG
+// guard above.
+//
+TEST(Basic, AlternativeServerAddress) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestAlternativeServerAddress is user-mode only.";
+    }
+    TestLogger Logger("QuicTestAlternativeServerAddress");
+    QuicTestAlternativeServerAddress();
+}
+
+TEST(Basic, AlternativeServerAddressAuto) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestAlternativeServerAddressAuto is user-mode only.";
+    }
+    TestLogger Logger("QuicTestAlternativeServerAddressAuto");
+    QuicTestAlternativeServerAddressAuto();
+}
+
+//
 // Reads a public parameter and needs no injection, so it runs in release too.
 //
 TEST(ParameterValidation, GetLocalAddresses) {

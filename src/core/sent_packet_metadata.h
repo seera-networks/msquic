@@ -89,6 +89,14 @@ typedef struct QUIC_SENT_FRAME_METADATA {
         struct {
             QUIC_VAR_INT Sequence;
         } REMOVE_ADDRESS;
+        struct {
+            //
+            // Which advertised set this frame carried. Needed on acknowledgement
+            // to tell whether it was new enough to have omitted an address that
+            // is being withdrawn.
+            //
+            QUIC_VAR_INT Sequence;
+        } ALTERNATIVE_ADDRESS;
 
     };
     //

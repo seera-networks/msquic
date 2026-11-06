@@ -693,6 +693,45 @@ QuicLossDetectionOnPacketAcknowledged(
             Packet->Frames[i].DATAGRAM.ClientContext = NULL;
             break;
 
+        case QUIC_FRAME_ALTERNATIVE_ADDRESS: {
+            //
+            // The peer has seen an advertised set. Any address withdrawn at or
+            // before this frame's sequence number was left out of it, so the
+            // withdrawal has landed and the entry can go.
+            //
+            // Walked with the next pointer taken first, because the body frees
+            // the entry the link belongs to.
+            //
+            const QUIC_VAR_INT AckedSequence =
+                Packet->Frames[i].ALTERNATIVE_ADDRESS.Sequence;
+            CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
+            while (Entry != &Connection->BoundAddresses) {
+                QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound =
+                    CXPLAT_CONTAINING_RECORD(
+                        Entry,
+                        QUIC_BOUND_ADDRESS_LIST_ENTRY,
+                        Link);
+                Entry = Entry->Flink;
+
+                if (!Bound->Removing ||
+                    Bound->WithdrawnAtAltSequenceNumber > AckedSequence) {
+                    continue;
+                }
+
+                QuicTraceEvent(
+                    ConnObservedAddrRemoved,
+                    "[conn][%p] Removed Observed IP: %!ADDR! for Bound IP: %!ADDR!",
+                    Connection,
+                    CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress),
+                    CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address));
+
+                CxPlatListEntryRemove(&Bound->Link);
+                Connection->BoundAddressesCount--;
+                CXPLAT_FREE(Bound, QUIC_POOL_BOUND_ADDRESS_LIST);
+            }
+            break;
+        }
+
         case QUIC_FRAME_REMOVE_ADDRESS: {
 #pragma warning(push)
 #pragma warning(disable:6001) // Using uninitialized memory
@@ -1144,6 +1183,20 @@ QuicLossDetectionRetransmitFrames(
             }
             break;
         }
+
+        case QUIC_FRAME_ALTERNATIVE_ADDRESS:
+            //
+            // Nothing to look up. The frame carries the whole advertised set,
+            // so re-arming the flag rebuilds it from the bound addresses as
+            // they are now, which is more correct than resending what was lost
+            // -- the set may have moved on, and the rebuilt frame carries a
+            // newer sequence number so the receiver prefers it either way.
+            //
+            NewDataQueued |=
+                QuicSendSetSendFlag(
+                    &Connection->Send,
+                    QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS);
+            break;
 
         case QUIC_FRAME_REMOVE_ADDRESS: {
             QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound = NULL;

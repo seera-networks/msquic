@@ -32,6 +32,7 @@ typedef enum QUIC_OPERATION_TYPE {
     QUIC_OPER_TYPE_TRACE_RUNDOWN,       // A trace rundown was triggered.
     QUIC_OPER_TYPE_ROUTE_COMPLETION,    // Process route completion event.
     QUIC_OPER_TYPE_REMOVE_ADDRESS,      // Process remove address frame.
+    QUIC_OPER_TYPE_WITHDRAW_ALT_ADDRESS,// Drop the path on a withdrawn advertised address.
     QUIC_OPER_TYPE_LOCAL_ADDRESS_CHANGE,// Reconcile paths with the host's local addresses.
 
     //
@@ -274,6 +275,16 @@ typedef struct QUIC_OPERATION {
         struct {
             QUIC_VAR_INT SequenceNumber;
         } REMOVE_ADDRESS;
+        struct {
+            //
+            // The peer address that is no longer advertised. By address, not by
+            // sequence number: the ALTERNATIVE_ADDRESS draft has no per-address
+            // numbers, and the ones its receiver assigns are never written onto
+            // a path -- only NAT-traversal mode does that -- so there would be
+            // nothing for a number to match against.
+            //
+            QUIC_ADDR RemoteAddress;
+        } WITHDRAW_ALT_ADDRESS;
     };
 
 } QUIC_OPERATION;

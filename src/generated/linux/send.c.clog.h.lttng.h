@@ -52,6 +52,29 @@ TRACEPOINT_EVENT(CLOG_SEND_C, ClearSendFlags,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressTruncated
+// [conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u
+// QuicTraceLogConnWarning(
+                        AlternativeAddressTruncated,
+                        Connection,
+                        "ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+                        QUIC_MAX_ALTERNATIVE_ADDRESSES);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = QUIC_MAX_ALTERNATIVE_ADDRESSES = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SEND_C, AlternativeAddressTruncated,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for MtuProbeTruncated
 // [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
 // QuicTraceLogConnInfo(

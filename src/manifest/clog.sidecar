@@ -129,6 +129,86 @@
       ],
       "macroName": "QuicTraceEvent"
     },
+    "AlternativeAddressAddFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
+      "UniqueId": "AlternativeAddressAddFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AlternativeAddressFull": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked",
+      "UniqueId": "AlternativeAddressFull",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AlternativeAddressStale": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)",
+      "UniqueId": "AlternativeAddressStale",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "AlternativeAddressTruncated": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+      "UniqueId": "AlternativeAddressTruncated",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AlternativeAddressWithdrawn": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)",
+      "UniqueId": "AlternativeAddressWithdrawn",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "AmplificationProtectionBlocked": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Cannot send any more because of amplification protection",
@@ -3686,6 +3766,18 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "DecodeTPAlternativeAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] TP: Alternative Address",
+      "UniqueId": "DecodeTPAlternativeAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "DecodeTPCibirEncoding": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] TP: CIBIR Encoding (%llu length, %llu offset)",
@@ -4298,6 +4390,18 @@
         {
           "DefinationEncoding": "llu",
           "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "EncodeTPAlternativeAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] TP: Alternative Address",
+      "UniqueId": "EncodeTPAlternativeAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
         }
       ],
       "macroName": "QuicTraceLogConnVerbose"
@@ -5217,6 +5321,86 @@
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   ADD_ADDRESS [Invalid]",
       "UniqueId": "FrameLogAddAddressInvalid",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogAlternativeAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)",
+      "UniqueId": "FrameLogAlternativeAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg5"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg6"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogAlternativeAddressEntry": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]     %s prio=%llu preferred=%hhu",
+      "UniqueId": "FrameLogAlternativeAddressEntry",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "s",
+          "MacroVariableName": "arg5"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg6"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg7"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogAlternativeAddressInvalid": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]",
+      "UniqueId": "FrameLogAlternativeAddressInvalid",
       "splitArgs": [
         {
           "DefinationEncoding": "c",
@@ -7261,6 +7445,18 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED",
       "UniqueId": "IndicateNotifyRemoteAddressRemoved",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "IndicateNotifyRemoteAddressRemovedAlt": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED",
+      "UniqueId": "IndicateNotifyRemoteAddressRemovedAlt",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -15406,6 +15602,31 @@
         "EncodingString": "Allocation of '%s' failed. (%llu bytes)"
       },
       {
+        "UniquenessHash": "0d14efc2-7e84-9627-e2f4-1748d1fae77b",
+        "TraceID": "AlternativeAddressAddFailed",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x"
+      },
+      {
+        "UniquenessHash": "4c2e170f-b95b-27ab-9752-7e021c07a74e",
+        "TraceID": "AlternativeAddressFull",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked"
+      },
+      {
+        "UniquenessHash": "453ceadb-d0c5-96e8-e716-09f49eeed5cb",
+        "TraceID": "AlternativeAddressStale",
+        "EncodingString": "[conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)"
+      },
+      {
+        "UniquenessHash": "bc5e748b-19f6-45e8-a973-c00de9e17f30",
+        "TraceID": "AlternativeAddressTruncated",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u"
+      },
+      {
+        "UniquenessHash": "93c44140-2347-1aad-0412-6dd793c147aa",
+        "TraceID": "AlternativeAddressWithdrawn",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)"
+      },
+      {
         "UniquenessHash": "908d186e-4adc-6428-393d-cb3f4a90bdb3",
         "TraceID": "AmplificationProtectionBlocked",
         "EncodingString": "[conn][%p] Cannot send any more because of amplification protection"
@@ -16476,6 +16697,11 @@
         "EncodingString": "[conn][%p] TP: ACK Delay Exponent (%llu)"
       },
       {
+        "UniquenessHash": "4013b9bd-cf0b-31b1-c89d-10288dfc3f44",
+        "TraceID": "DecodeTPAlternativeAddress",
+        "EncodingString": "[conn][%p] TP: Alternative Address"
+      },
+      {
         "UniquenessHash": "bcca8105-4c4b-0733-5277-ca216bcd792b",
         "TraceID": "DecodeTPCibirEncoding",
         "EncodingString": "[conn][%p] TP: CIBIR Encoding (%llu length, %llu offset)"
@@ -16674,6 +16900,11 @@
         "UniquenessHash": "0101cc93-9665-3cc3-b1ea-2a6be959530b",
         "TraceID": "EncodeTPAckDelayExponent",
         "EncodingString": "[conn][%p] TP: ACK Delay Exponent (%llu)"
+      },
+      {
+        "UniquenessHash": "b0f26b43-2829-075c-5490-a1e406443f68",
+        "TraceID": "EncodeTPAlternativeAddress",
+        "EncodingString": "[conn][%p] TP: Alternative Address"
       },
       {
         "UniquenessHash": "aaf030f3-46be-72b4-807a-08aea8ec0362",
@@ -16949,6 +17180,21 @@
         "UniquenessHash": "1b80f8cb-e5e7-5753-a786-6e0887adfa1b",
         "TraceID": "FrameLogAddAddressInvalid",
         "EncodingString": "[%c][%cX][%llu]   ADD_ADDRESS [Invalid]"
+      },
+      {
+        "UniquenessHash": "d5072518-f072-49c5-b46e-e452fc6d78b5",
+        "TraceID": "FrameLogAlternativeAddress",
+        "EncodingString": "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)"
+      },
+      {
+        "UniquenessHash": "f68ad6e6-6a1a-7370-8371-74c6864043b8",
+        "TraceID": "FrameLogAlternativeAddressEntry",
+        "EncodingString": "[%c][%cX][%llu]     %s prio=%llu preferred=%hhu"
+      },
+      {
+        "UniquenessHash": "d5126c66-fda0-0739-8537-89b7d7c47fc1",
+        "TraceID": "FrameLogAlternativeAddressInvalid",
+        "EncodingString": "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]"
       },
       {
         "UniquenessHash": "39592ea2-35f5-d3d5-efb2-d330fb4c400b",
@@ -17413,6 +17659,11 @@
       {
         "UniquenessHash": "bdbec039-5ae3-5e4c-78a1-a9ccb45482fe",
         "TraceID": "IndicateNotifyRemoteAddressRemoved",
+        "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED"
+      },
+      {
+        "UniquenessHash": "78f06339-50c9-3138-b830-43456d7dd62e",
+        "TraceID": "IndicateNotifyRemoteAddressRemovedAlt",
         "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED"
       },
       {

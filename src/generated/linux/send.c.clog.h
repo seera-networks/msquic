@@ -18,6 +18,10 @@
 #define _clog_MACRO_QuicTraceLogStreamVerbose  1
 #define QuicTraceLogStreamVerbose(a, ...) _clog_CAT(_clog_ARGN_SELECTOR(__VA_ARGS__), _clog_CAT(_,a(#a, __VA_ARGS__)))
 #endif
+#ifndef _clog_MACRO_QuicTraceLogConnWarning
+#define _clog_MACRO_QuicTraceLogConnWarning  1
+#define QuicTraceLogConnWarning(a, ...) _clog_CAT(_clog_ARGN_SELECTOR(__VA_ARGS__), _clog_CAT(_,a(#a, __VA_ARGS__)))
+#endif
 #ifndef _clog_MACRO_QuicTraceLogConnInfo
 #define _clog_MACRO_QuicTraceLogConnInfo  1
 #define QuicTraceLogConnInfo(a, ...) _clog_CAT(_clog_ARGN_SELECTOR(__VA_ARGS__), _clog_CAT(_,a(#a, __VA_ARGS__)))
@@ -69,6 +73,26 @@ tracepoint(CLOG_SEND_C, SetSendFlag , arg1, arg3, arg4);\
 #ifndef _clog_4_ARGS_TRACE_ClearSendFlags
 #define _clog_4_ARGS_TRACE_ClearSendFlags(uniqueId, arg1, encoded_arg_string, arg3)\
 tracepoint(CLOG_SEND_C, ClearSendFlags , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressTruncated
+// [conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u
+// QuicTraceLogConnWarning(
+                        AlternativeAddressTruncated,
+                        Connection,
+                        "ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+                        QUIC_MAX_ALTERNATIVE_ADDRESSES);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = QUIC_MAX_ALTERNATIVE_ADDRESSES = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AlternativeAddressTruncated
+#define _clog_4_ARGS_TRACE_AlternativeAddressTruncated(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_SEND_C, AlternativeAddressTruncated , arg1, arg3);\
 
 #endif
 

@@ -2289,6 +2289,107 @@ TRACEPOINT_EVENT(CLOG_FRAME_C, FrameLogPunchMeNow,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for FrameLogAlternativeAddressInvalid
+// [%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]
+// QuicTraceLogVerbose(
+            FrameLogAlternativeAddressInvalid,
+            "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_FRAME_C, FrameLogAlternativeAddressInvalid,
+    TP_ARGS(
+        unsigned char, arg2,
+        unsigned char, arg3,
+        unsigned long long, arg4), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(uint64_t, arg4, arg4)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogAlternativeAddress
+// [%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)
+// QuicTraceLogVerbose(
+        FrameLogAlternativeAddress,
+        "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)",
+        PtkConnPre(Connection),
+        PktRxPre(Rx),
+        PacketNumber,
+        Frame.SequenceNumber,
+        Frame.AddressCount);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+// arg5 = arg5 = Frame.SequenceNumber = arg5
+// arg6 = arg6 = Frame.AddressCount = arg6
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_FRAME_C, FrameLogAlternativeAddress,
+    TP_ARGS(
+        unsigned char, arg2,
+        unsigned char, arg3,
+        unsigned long long, arg4,
+        unsigned long long, arg5,
+        unsigned char, arg6), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(uint64_t, arg4, arg4)
+        ctf_integer(uint64_t, arg5, arg5)
+        ctf_integer(unsigned char, arg6, arg6)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogAlternativeAddressEntry
+// [%c][%cX][%llu]     %s prio=%llu preferred=%hhu
+// QuicTraceLogVerbose(
+            FrameLogAlternativeAddressEntry,
+            "[%c][%cX][%llu]     %s prio=%llu preferred=%hhu",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber,
+            AddrStr.Address,
+            Frame.Addresses[i].PriorityHint,
+            Frame.Addresses[i].PreferredToCurrentPath);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+// arg5 = arg5 = AddrStr.Address = arg5
+// arg6 = arg6 = Frame.Addresses[i].PriorityHint = arg6
+// arg7 = arg7 = Frame.Addresses[i].PreferredToCurrentPath = arg7
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_FRAME_C, FrameLogAlternativeAddressEntry,
+    TP_ARGS(
+        unsigned char, arg2,
+        unsigned char, arg3,
+        unsigned long long, arg4,
+        const char *, arg5,
+        unsigned long long, arg6,
+        unsigned char, arg7), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(uint64_t, arg4, arg4)
+        ctf_string(arg5, arg5)
+        ctf_integer(uint64_t, arg6, arg6)
+        ctf_integer(unsigned char, arg7, arg7)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for FrameLogRemoveAddressInvalid
 // [%c][%cX][%llu]   REMOVE_ADDRESS [Invalid]
 // QuicTraceLogVerbose(

@@ -904,6 +904,101 @@ QuicSendWriteFrames(
             }
         }
 
+        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS) {
+
+            //
+            // One frame carrying the server's whole advertised set, per
+            // draft-munizaga-quic-alternative-server-address. Unlike
+            // ADD_ADDRESS below there is nothing per-address to track: a newer
+            // frame replaces the older set outright, so the only thing that
+            // can be stale is the frame itself.
+            //
+            QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+            CxPlatZeroMemory(&Frame, sizeof(Frame));
+
+            for (CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
+                    Entry != &Connection->BoundAddresses;
+                    Entry = Entry->Flink) {
+                QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound =
+                    CXPLAT_CONTAINING_RECORD(
+                        Entry,
+                        QUIC_BOUND_ADDRESS_LIST_ENTRY,
+                        Link);
+
+                //
+                // An address on its way out is not advertised, which is how a
+                // withdrawal happens here: it simply stops appearing.
+                //
+                if (Bound->Removing || !Bound->ObservedAddressSet) {
+                    continue;
+                }
+                if (IS_LOOPBACK(Bound->ObservedAddress)) {
+                    continue;
+                }
+                if (Frame.AddressCount == QUIC_MAX_ALTERNATIVE_ADDRESSES) {
+                    //
+                    // Traced, because the truncation is silent otherwise and
+                    // which addresses survive it depends on list order: a
+                    // connection may hold far more bound addresses than one
+                    // frame advertises, and the ones past the cap are simply
+                    // never offered to the peer.
+                    //
+                    QuicTraceLogConnWarning(
+                        AlternativeAddressTruncated,
+                        Connection,
+                        "ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+                        QUIC_MAX_ALTERNATIVE_ADDRESSES);
+                    break;
+                }
+
+                //
+                // Every entry a backup, with a priority hint of zero. The
+                // server is offering places the client could go, not claiming
+                // any of them beats the path in use -- and the draft makes the
+                // hints advisory, with the client deciding what to probe.
+                // Putting entries before the sentinel would assert a
+                // preference this implementation has no basis for.
+                //
+                Frame.Addresses[Frame.AddressCount].Address = Bound->ObservedAddress;
+                Frame.Addresses[Frame.AddressCount].PriorityHint = 0;
+                Frame.Addresses[Frame.AddressCount].PreferredToCurrentPath = FALSE;
+                Frame.AddressCount++;
+            }
+
+            //
+            // Numbered at encode time, so a frame rebuilt after loss carries a
+            // newer number than the one it replaces. The receiver keeps the
+            // highest it has seen, and the content is the current set either
+            // way, so a retransmission and a genuine change are the same thing
+            // here -- which is what lets the loss handler simply re-arm the
+            // flag without remembering what was in flight.
+            //
+            Frame.SequenceNumber = Connection->AltAddrNextSequenceNumber;
+
+            if (QuicAlternativeAddressFrameEncode(
+                    &Frame,
+                    &Builder->DatagramLength,
+                    AvailableBufferLength,
+                    Builder->Datagram->Buffer)) {
+
+                Connection->AltAddrNextSequenceNumber++;
+                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS;
+                Builder->Metadata->Frames[
+                    Builder->Metadata->FrameCount].ALTERNATIVE_ADDRESS.Sequence =
+                        Frame.SequenceNumber;
+                if (QuicPacketBuilderAddFrame(
+                        Builder, QUIC_FRAME_ALTERNATIVE_ADDRESS, TRUE)) {
+                    return TRUE;
+                }
+            } else {
+                RanOutOfRoom = TRUE;
+            }
+
+            if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
+                return TRUE;
+            }
+        }
+
         if (Send->SendFlags & QUIC_CONN_SEND_FLAG_ADD_ADDRESS) {
 
             CXPLAT_LIST_ENTRY* Entry;

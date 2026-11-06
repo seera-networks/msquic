@@ -696,6 +696,24 @@ tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPServerMigration , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for EncodeTPAlternativeAddress
+// [conn][%p] TP: Alternative Address
+// QuicTraceLogConnVerbose(
+            EncodeTPAlternativeAddress,
+            Connection,
+            "TP: Alternative Address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_EncodeTPAlternativeAddress
+#define _clog_3_ARGS_TRACE_EncodeTPAlternativeAddress(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPAlternativeAddress , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for EncodeTPInitMaxPathId
 // [conn][%p] TP: Max Path Id (%llu)
 // QuicTraceLogConnVerbose(
@@ -1319,6 +1337,24 @@ tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPObservedAddress , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_DecodeTPServerMigration
 #define _clog_3_ARGS_TRACE_DecodeTPServerMigration(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPServerMigration , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for DecodeTPAlternativeAddress
+// [conn][%p] TP: Alternative Address
+// QuicTraceLogConnVerbose(
+                DecodeTPAlternativeAddress,
+                Connection,
+                "TP: Alternative Address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_DecodeTPAlternativeAddress
+#define _clog_3_ARGS_TRACE_DecodeTPAlternativeAddress(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPAlternativeAddress , arg1);\
 
 #endif
 
