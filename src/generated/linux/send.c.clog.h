@@ -103,9 +103,9 @@ tracepoint(CLOG_SEND_C, MtuProbeTruncated , arg1, arg3, arg4, arg5);\
 // Decoder Ring for EcnValidationUnknown
 // [conn][%p] ECN unknown.
 // QuicTraceLogConnInfo(
-                    EcnValidationUnknown,
-                    Connection,
-                    "ECN unknown.");
+                        EcnValidationUnknown,
+                        Connection,
+                        "ECN unknown.");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 #ifndef _clog_3_ARGS_TRACE_EcnValidationUnknown
@@ -119,11 +119,11 @@ tracepoint(CLOG_SEND_C, EcnValidationUnknown , arg1);\
 
 /*----------------------------------------------------------
 // Decoder Ring for ScheduleSendFlags
-// [conn][%p] Adding send flags 0x%x (prev: 0x%x, new: 0x%x)
+// [conn][%p] Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)
 // QuicTraceLogConnVerbose(
             ScheduleSendFlags,
             Connection,
-            "Adding send flags 0x%x (prev: 0x%x, new: 0x%x)",
+            "Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
             SendFlags,
             Send->SendFlags,
             Send->SendFlags | SendFlags);
@@ -143,11 +143,11 @@ tracepoint(CLOG_SEND_C, ScheduleSendFlags , arg1, arg3, arg4, arg5);\
 
 /*----------------------------------------------------------
 // Decoder Ring for RemoveSendFlagsMsg
-// [conn][%p] Removing flags %x
+// [conn][%p] Removing flags %llx
 // QuicTraceLogConnVerbose(
             RemoveSendFlagsMsg,
             QuicSendGetConnection(Send),
-            "Removing flags %x",
+            "Removing flags %llx",
             (SendFlags & Send->SendFlags));
 // arg1 = arg1 = QuicSendGetConnection(Send) = arg1
 // arg3 = arg3 = (SendFlags & Send->SendFlags) = arg3
@@ -181,11 +181,11 @@ tracepoint(CLOG_SEND_C, AmplificationProtectionBlocked , arg1);\
 
 /*----------------------------------------------------------
 // Decoder Ring for SendFlushComplete
-// [conn][%p] Flush complete flags=0x%x
+// [conn][%p] Flush complete flags=0x%llx
 // QuicTraceLogConnVerbose(
         SendFlushComplete,
         Connection,
-        "Flush complete flags=0x%x",
+        "Flush complete flags=0x%llx",
         Send->SendFlags);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Send->SendFlags = arg3

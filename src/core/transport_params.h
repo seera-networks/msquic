@@ -154,6 +154,8 @@ typedef struct QUIC_TRANSPORT_PARAMETERS {
 
     QUIC_VAR_INT NatTraverseConcurrencyLimit;
 
+    QUIC_VAR_INT MaxRecordSize;
+
     //
     // The initial maximum number of paths allowed.
     //

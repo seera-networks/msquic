@@ -13,6 +13,7 @@ set(SOURCES
     MtuTest.cpp
     OwnershipTest.cpp
     PathTest.cpp
+    QMuxTest.cpp
     QuicDrill.cpp
     TestConnection.cpp
     TestListener.cpp

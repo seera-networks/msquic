@@ -59,10 +59,10 @@ tracepoint(CLOG_PATH_C, PathActiveFallback , arg1, arg3, arg4);\
         Connection,
         "Path[%hhu][PathID][%u] Chosen",
         Path->ID,
-        Path->PathID->ID);
+        Path->PathID == NULL ? 0 : Path->PathID->ID);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Path->ID = arg3
-// arg4 = arg4 = Path->PathID->ID = arg4
+// arg4 = arg4 = Path->PathID == NULL ? 0 : Path->PathID->ID = arg4
 ----------------------------------------------------------*/
 #ifndef _clog_5_ARGS_TRACE_PathChosen
 #define _clog_5_ARGS_TRACE_PathChosen(uniqueId, arg1, encoded_arg_string, arg3, arg4)\

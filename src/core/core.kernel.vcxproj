@@ -44,6 +44,7 @@
     <ClCompile Include="packet_builder.c" />
     <ClCompile Include="packet_space.c" />
     <ClCompile Include="path.c" />
+    <ClCompile Include="qmux.c" />
     <ClCompile Include="pathid.c" />
     <ClCompile Include="pathid_set.c" />
     <ClCompile Include="range.c" />
