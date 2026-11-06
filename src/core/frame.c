@@ -2004,6 +2004,9 @@ QuicAlternativeAddressEntryLength(
     _In_ const QUIC_ALTERNATIVE_ADDRESS_ENTRY* const Entry
     )
 {
+    CXPLAT_DBG_ASSERT(
+        QuicAddrGetFamily(&Entry->Address) == QUIC_ADDRESS_FAMILY_INET ||
+        QuicAddrGetFamily(&Entry->Address) == QUIC_ADDRESS_FAMILY_INET6);
     if (QuicAddrGetFamily(&Entry->Address) == QUIC_ADDRESS_FAMILY_INET) {
         return
             QuicVarIntSize(QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV4) +
@@ -2053,21 +2056,29 @@ QuicAlternativeAddressFrameEncode(
         uint8_t* Buffer
     )
 {
+    //
+    // Clamped, not just asserted. A release build with a caller that filled in
+    // more than the array holds would otherwise read past it, in both the
+    // length pass and the write pass.
+    //
     CXPLAT_DBG_ASSERT(Frame->AddressCount <= QUIC_MAX_ALTERNATIVE_ADDRESSES);
+    const uint8_t AddressCount =
+        Frame->AddressCount <= QUIC_MAX_ALTERNATIVE_ADDRESSES ?
+            Frame->AddressCount : QUIC_MAX_ALTERNATIVE_ADDRESSES;
 
     //
     // The sentinel is always written, so the count on the wire is one more
     // than the number of addresses. A frame with no addresses at all is legal
     // and is how the server withdraws everything it had advertised.
     //
-    const QUIC_VAR_INT EntryCount = (QUIC_VAR_INT)Frame->AddressCount + 1;
+    const QUIC_VAR_INT EntryCount = (QUIC_VAR_INT)AddressCount + 1;
 
     uint16_t RequiredLength =
         QuicVarIntSize(QUIC_FRAME_ALTERNATIVE_ADDRESS) +
         QuicVarIntSize(Frame->SequenceNumber) +
         QuicVarIntSize(EntryCount) +
         QuicVarIntSize(QUIC_ALTERNATIVE_ADDRESS_ENTRY_CURRENT_PATH);
-    for (uint8_t i = 0; i < Frame->AddressCount; ++i) {
+    for (uint8_t i = 0; i < AddressCount; ++i) {
         RequiredLength += QuicAlternativeAddressEntryLength(&Frame->Addresses[i]);
     }
 
@@ -2081,20 +2092,41 @@ QuicAlternativeAddressFrameEncode(
     Buffer = QuicVarIntEncode(EntryCount, Buffer);
 
     //
-    // Preferred entries, the sentinel, then the rest. Walked twice rather than
-    // sorted: the draft wants nondecreasing priority hints within each side,
-    // which is the caller's business, and the two groups have to come out in
-    // that order whatever order the array is in.
+    // Preferred entries, the sentinel, then the rest -- each group emitted in
+    // nondecreasing priority order.
     //
-    for (uint8_t i = 0; i < Frame->AddressCount; ++i) {
-        if (Frame->Addresses[i].PreferredToCurrentPath) {
-            Buffer = QuicAlternativeAddressEntryEncode(&Frame->Addresses[i], Buffer);
+    // Ordered here rather than left to the caller. The draft requires it and
+    // the decoder on the far side enforces it, so an unsorted caller would
+    // otherwise have this produce a frame a conforming peer must reject with
+    // FRAME_ENCODING_ERROR, killing the connection. A selection pass over at
+    // most QUIC_MAX_ALTERNATIVE_ADDRESSES entries is not worth avoiding.
+    //
+    for (uint8_t Group = 0; Group < 2; ++Group) {
+        const BOOLEAN Preferred = Group == 0;
+        if (!Preferred) {
+            Buffer = QuicVarIntEncode(QUIC_ALTERNATIVE_ADDRESS_ENTRY_CURRENT_PATH, Buffer);
         }
-    }
-    Buffer = QuicVarIntEncode(QUIC_ALTERNATIVE_ADDRESS_ENTRY_CURRENT_PATH, Buffer);
-    for (uint8_t i = 0; i < Frame->AddressCount; ++i) {
-        if (!Frame->Addresses[i].PreferredToCurrentPath) {
-            Buffer = QuicAlternativeAddressEntryEncode(&Frame->Addresses[i], Buffer);
+
+        BOOLEAN Written[QUIC_MAX_ALTERNATIVE_ADDRESSES];
+        CxPlatZeroMemory(Written, sizeof(Written));
+        for (;;) {
+            uint8_t Next = QUIC_MAX_ALTERNATIVE_ADDRESSES;
+            for (uint8_t i = 0; i < AddressCount; ++i) {
+                if (Written[i] ||
+                    !!Frame->Addresses[i].PreferredToCurrentPath != !!Preferred) {
+                    continue;
+                }
+                if (Next == QUIC_MAX_ALTERNATIVE_ADDRESSES ||
+                    Frame->Addresses[i].PriorityHint <
+                        Frame->Addresses[Next].PriorityHint) {
+                    Next = i;
+                }
+            }
+            if (Next == QUIC_MAX_ALTERNATIVE_ADDRESSES) {
+                break;
+            }
+            Written[Next] = TRUE;
+            Buffer = QuicAlternativeAddressEntryEncode(&Frame->Addresses[Next], Buffer);
         }
     }
 

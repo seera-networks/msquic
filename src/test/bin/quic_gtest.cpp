@@ -1171,6 +1171,14 @@ TEST(Basic, AlternativeServerAddress) {
     QuicTestAlternativeServerAddress();
 }
 
+TEST(Basic, AlternativeServerAddressAuto) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestAlternativeServerAddressAuto is user-mode only.";
+    }
+    TestLogger Logger("QuicTestAlternativeServerAddressAuto");
+    QuicTestAlternativeServerAddressAuto();
+}
+
 //
 // Reads a public parameter and needs no injection, so it runs in release too.
 //

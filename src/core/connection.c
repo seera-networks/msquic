@@ -3970,7 +3970,16 @@ QuicConnGenerateLocalTransportParameters(
     // single frame-level sequence number of this draft cannot express that --
     // so a client relying on NAT traversal does not ask the server to switch.
     //
+    // Not offered with server migration enabled either. A client that
+    // negotiates that hands path creation to the server, and
+    // QuicConnProcessAddAddress refuses every address a client is told about in
+    // that state -- so offering the extension would have the client acknowledge
+    // the frames, advance its sequence number and store the set, then reject
+    // every address in it. Silently inert is the worst of the three outcomes;
+    // not negotiating says so honestly.
+    //
     if (QuicConnIsClient(Connection) &&
+        !Connection->Settings.ServerMigrationEnabled &&
         Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_NAT_TRAVERSAL) {
         LocalTP->Flags |= QUIC_TP_FLAG_ALTERNATIVE_ADDRESS;
     }
@@ -4699,6 +4708,7 @@ QuicConnProcessPeerTransportParameters(
                 !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS);
         } else {
             Connection->State.AlternativeAddressNegotiated =
+                !Connection->Settings.ServerMigrationEnabled &&
                 Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_NAT_TRAVERSAL;
         }
 
@@ -7516,7 +7526,16 @@ QuicConnRecvFrames(
                     break;
                 }
             }
-            if (Bound != NULL) {
+            //
+            // Not one that is on its way out. QuicConnRemoveBoundAddress
+            // releases the binding and leaves the entry on the list until the
+            // withdrawal is acknowledged, and QuicConnSendPunchProbe takes a
+            // reference on that binding without checking -- so a peer naming a
+            // withdrawn entry's sequence number during that window would
+            // dereference NULL. Both withdrawal branches produce the state, so
+            // the test belongs here rather than in either of them.
+            //
+            if (Bound != NULL && !Bound->Removing) {
                 QuicConnSendPunchProbe(Connection, Bound, &Frame.Address);
             }
             break;
@@ -9363,6 +9382,13 @@ QuicConnAddBoundAddress(
     Bound->SequenceNumber = QUIC_VAR_INT_MAX;
     Bound->SendAddAddress = FALSE;
     Bound->Removing = FALSE;
+    //
+    // Explicit, because the entry comes from an unzeroed allocation and every
+    // field here is set by hand. Left out, the acknowledgement path would read
+    // it for any entry marked Removing and could free a bound address while its
+    // withdrawal was still in flight.
+    //
+    Bound->WithdrawnAtAltSequenceNumber = 0;
     Bound->SendRemoveAddress = FALSE;
 
     CxPlatListInsertTail(&Connection->BoundAddresses, &Bound->Link);
@@ -10254,9 +10280,13 @@ QuicConnProcessAlternativeAddress(
 
     //
     // Which stored addresses the new set no longer contains. Removals are
-    // applied before additions so that an address being withdrawn frees its
-    // path before a new one asks for a slot, which matters at
-    // QUIC_MAX_PATH_COUNT.
+    // worked out first, but they do not take effect first: each is queued as an
+    // operation while the additions below call QuicConnAddPath inline. So a
+    // frame that swaps one address for another while the connection is already
+    // at QUIC_MAX_PATH_COUNT fails to add the new one -- the slot is not freed
+    // until the queued withdrawal runs. The next frame the server sends picks
+    // it up, and the alternative, tearing paths down from inside frame
+    // processing, is the one thing the receive path cannot survive.
     //
     // Compared on the full endpoint, address and port both: the draft
     // advertises endpoints, two ports on one host are two different places to
@@ -10304,13 +10334,19 @@ QuicConnProcessAlternativeAddress(
             // path down underneath that is what the receive path cannot
             // survive.
             //
+            // By address rather than by sequence number. The numbers this
+            // receiver assigns exist for the application event above; nothing
+            // puts them on a path outside NAT-traversal mode, so the
+            // sequence-number operation would match nothing and the withdrawn
+            // address would keep its path and keep being probed.
+            //
             QUIC_OPERATION* Oper =
-                QuicConnAllocOperation(Connection, QUIC_OPER_TYPE_REMOVE_ADDRESS);
+                QuicConnAllocOperation(Connection, QUIC_OPER_TYPE_WITHDRAW_ALT_ADDRESS);
             if (Oper == NULL) {
                 QuicTraceEvent(
                     AllocFailure,
                     "Allocation of '%s' failed. (%llu bytes)",
-                    "alternative address removal operation",
+                    "alternative address withdrawal operation",
                     0);
                 //
                 // Dropped rather than retried. The stored entry is gone, so
@@ -10320,8 +10356,8 @@ QuicConnProcessAlternativeAddress(
                 // disagreeing with what was applied.
                 //
             } else {
-                Oper->REMOVE_ADDRESS.SequenceNumber =
-                    Connection->AltAddrs[i].SequenceNumber;
+                Oper->WITHDRAW_ALT_ADDRESS.RemoteAddress =
+                    Connection->AltAddrs[i].Address;
                 QuicConnQueueOper(Connection, Oper);
             }
         }
@@ -10354,26 +10390,33 @@ QuicConnProcessAlternativeAddress(
         }
 
         const QUIC_VAR_INT SequenceNumber = Connection->AddAddressSequenceNumber++;
-        Connection->AltAddrs[Connection->AltAddrCount].Address = Frame->Addresses[j].Address;
-        Connection->AltAddrs[Connection->AltAddrCount].SequenceNumber = SequenceNumber;
-        Connection->AltAddrCount++;
-
         const QUIC_STATUS Status =
             QuicConnAltAddrApplyAdded(Connection, &Frame->Addresses[j].Address, SequenceNumber);
         if (QUIC_FAILED(Status)) {
             //
-            // Recorded as advertised regardless. The peer is advertising it
-            // whether or not we could act on it, and keeping the stored set
-            // equal to the last frame is what makes the next diff correct --
-            // dropping it here would have the next frame look like a fresh
-            // addition and retry forever.
+            // Left out of the stored set, so the next frame that still
+            // advertises it is treated as a fresh addition and tries again.
+            //
+            // Recording it would be worse than it sounds: the only thing the
+            // draft lets a server do is send its set again, and an entry
+            // already in the stored set is skipped as known -- so an address
+            // that failed once, because the path array was full or no
+            // destination CID was spare, would never be attempted again for
+            // the life of the connection even after room appeared. Retrying is
+            // driven by the server's frames, not by a loop here, so there is
+            // nothing to spin.
             //
             QuicTraceLogConnInfo(
                 AlternativeAddressAddFailed,
                 Connection,
                 "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
                 Status);
+            continue;
         }
+
+        Connection->AltAddrs[Connection->AltAddrCount].Address = Frame->Addresses[j].Address;
+        Connection->AltAddrs[Connection->AltAddrCount].SequenceNumber = SequenceNumber;
+        Connection->AltAddrCount++;
     }
 
     return QUIC_STATUS_SUCCESS;
@@ -10453,6 +10496,51 @@ QuicConnProcessRemoveAddressOper(
             Connection,
             Status,
             "Process REMOVE_ADDRESS frame");
+    }
+}
+
+//
+// Drops the path on an address the peer has stopped advertising. Matched on the
+// remote address because that is the only thing the ALTERNATIVE_ADDRESS draft
+// identifies an address by -- its receiver assigns sequence numbers for the
+// application's benefit, but nothing writes them onto a path outside
+// NAT-traversal mode, so QuicConnProcessRemoveAddressOper would find nothing
+// and withdraw nothing.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnProcessWithdrawAltAddressOper(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* RemoteAddress
+    )
+{
+    //
+    // Never the active path. The peer withdrawing the address the connection
+    // is currently using is not a reason to tear down the only way of reaching
+    // it: QuicConnRemovePath on the last path aborts the connection, and on the
+    // active one it promotes a replacement. Leaving it alone keeps the
+    // connection on a working path, and the address-monitor migration paths
+    // remain free to move it for their own reasons.
+    //
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount; ++i) {
+        if (!QuicAddrCompare(&Connection->Paths[i].Route.RemoteAddress, RemoteAddress)) {
+            continue;
+        }
+
+        QUIC_ADDR Local = Connection->Paths[i].Route.LocalAddress;
+        QUIC_ADDR Remote = Connection->Paths[i].Route.RemoteAddress;
+        QUIC_PATH_PARAM PathParam = { &Local, &Remote };
+        const QUIC_STATUS Status = QuicConnRemovePath(Connection, &PathParam);
+        if (QUIC_FAILED(Status)) {
+            QuicTraceEvent(
+                ConnErrorStatus,
+                "[conn][%p] ERROR, %u, %s.",
+                Connection,
+                Status,
+                "Remove path for withdrawn advertised address");
+        }
+        return;
     }
 }
 
@@ -12762,6 +12850,11 @@ QuicConnDrainOperations(
 
         case QUIC_OPER_TYPE_REMOVE_ADDRESS:
             QuicConnProcessRemoveAddressOper(Connection, Oper->REMOVE_ADDRESS.SequenceNumber);
+            break;
+
+        case QUIC_OPER_TYPE_WITHDRAW_ALT_ADDRESS:
+            QuicConnProcessWithdrawAltAddressOper(
+                Connection, &Oper->WITHDRAW_ALT_ADDRESS.RemoteAddress);
             break;
 
         case QUIC_OPER_TYPE_LOCAL_ADDRESS_CHANGE:

@@ -177,6 +177,22 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "AlternativeAddressTruncated": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+      "UniqueId": "AlternativeAddressTruncated",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "AlternativeAddressWithdrawn": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)",
@@ -15599,6 +15615,11 @@
         "UniquenessHash": "453ceadb-d0c5-96e8-e716-09f49eeed5cb",
         "TraceID": "AlternativeAddressStale",
         "EncodingString": "[conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)"
+      },
+      {
+        "UniquenessHash": "bc5e748b-19f6-45e8-a973-c00de9e17f30",
+        "TraceID": "AlternativeAddressTruncated",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u"
       },
       {
         "UniquenessHash": "93c44140-2347-1aad-0412-6dd793c147aa",

@@ -936,6 +936,18 @@ QuicSendWriteFrames(
                     continue;
                 }
                 if (Frame.AddressCount == QUIC_MAX_ALTERNATIVE_ADDRESSES) {
+                    //
+                    // Traced, because the truncation is silent otherwise and
+                    // which addresses survive it depends on list order: a
+                    // connection may hold far more bound addresses than one
+                    // frame advertises, and the ones past the cap are simply
+                    // never offered to the peer.
+                    //
+                    QuicTraceLogConnWarning(
+                        AlternativeAddressTruncated,
+                        Connection,
+                        "ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+                        QUIC_MAX_ALTERNATIVE_ADDRESSES);
                     break;
                 }
 

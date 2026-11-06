@@ -218,6 +218,10 @@ QuicTestAlternativeServerAddress(
     );
 
 void
+QuicTestAlternativeServerAddressAuto(
+    );
+
+void
 QuicTestLocalAddressChangeAutoRoute(
     );
 
