@@ -722,6 +722,14 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_TP_FLAG_SERVER_MIGRATION                       0x08000000
 #define QUIC_TP_FLAG_NAT_TRAVERSE                           0x10000000
 #define QUIC_TP_FLAG_INITIAL_MAX_PATH_ID                    0x20000000
+//
+// 0x40000000 is deliberately skipped: the QMux branch uses it for
+// QX_TP_FLAG_MAX_RECORD_SIZE, and taking it here would re-conflict on every
+// merge of this branch into that one. With 0x80000000 used below, Flags --
+// a uint32_t -- is now full, so the next parameter added here has to widen
+// it rather than find a spare bit.
+//
+#define QUIC_TP_FLAG_ALTERNATIVE_ADDRESS                    0x80000000
 
 #define QUIC_TP_MAX_PACKET_SIZE_DEFAULT                     65527
 #define QUIC_TP_MAX_UDP_PAYLOAD_SIZE_MIN                    1200

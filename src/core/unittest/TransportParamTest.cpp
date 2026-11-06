@@ -287,3 +287,90 @@ TEST(TransportParamTest, ObservedAddress)
         EncodeDecodeAndCompare(&OriginalTP, true);
     }
 }
+
+//
+// draft-munizaga-quic-alternative-server-address-02 alternative_address.
+//
+// Client to server only, value is a possibly empty list of the address types
+// supported beyond the three the draft makes implicit.
+//
+TEST(TransportParamTest, AlternativeAddressClientRoundTrip)
+{
+    QUIC_TRANSPORT_PARAMETERS Original = {0};
+    Original.Flags = QUIC_TP_FLAG_ALTERNATIVE_ADDRESS;
+    EncodeDecodeAndCompare(&Original);
+}
+
+//
+// A server is forbidden to send it, and the draft makes that
+// TRANSPORT_PARAMETER_ERROR rather than something to ignore. Encoding as a
+// server and decoding as one has to fail -- if it were merely ignored, a
+// client would have no way to tell a conforming server from one that thinks
+// this parameter means something coming the other way.
+//
+TEST(TransportParamTest, AlternativeAddressRejectedFromServer)
+{
+    QUIC_TRANSPORT_PARAMETERS Original = {0};
+    Original.Flags = QUIC_TP_FLAG_ALTERNATIVE_ADDRESS;
+    EncodeDecodeAndCompare(&Original, true, false);
+}
+
+//
+// The hand-built value cases. The encoder only ever writes an empty list, so
+// a non-empty or malformed one has to be assembled directly.
+//
+struct AltAddrTpValueTest : public ::testing::Test {
+    static BOOLEAN DecodeWithValue(const uint8_t* Value, uint16_t ValueLength) {
+        uint8_t Buffer[64];
+        CxPlatZeroMemory(Buffer, sizeof(Buffer));
+        uint8_t* Cursor = Buffer;
+        Cursor = QuicVarIntEncode(0xff0969d85cULL, Cursor);
+        Cursor = QuicVarIntEncode(ValueLength, Cursor);
+        if (ValueLength != 0) {
+            CxPlatCopyMemory(Cursor, Value, ValueLength);
+            Cursor += ValueLength;
+        }
+
+        QUIC_TRANSPORT_PARAMETERS Decoded = {0};
+        TransportParametersScope TPScope(&Decoded);
+        return
+            QuicCryptoTlsDecodeTransportParameters(
+                &JunkConnection,
+                FALSE, // From a client.
+                Buffer,
+                (uint16_t)(Cursor - Buffer),
+                &Decoded);
+    }
+};
+
+TEST_F(AltAddrTpValueTest, AcceptsStrictlyIncreasingList)
+{
+    const uint8_t Value[] = { 0x03, 0x04, 0x07 };
+    ASSERT_TRUE(DecodeWithValue(Value, sizeof(Value)));
+}
+
+TEST_F(AltAddrTpValueTest, RejectsDuplicateTypes)
+{
+    const uint8_t Value[] = { 0x03, 0x03 };
+    ASSERT_FALSE(DecodeWithValue(Value, sizeof(Value)));
+}
+
+TEST_F(AltAddrTpValueTest, RejectsDecreasingTypes)
+{
+    const uint8_t Value[] = { 0x05, 0x04 };
+    ASSERT_FALSE(DecodeWithValue(Value, sizeof(Value)));
+}
+
+//
+// A varint whose length prefix runs past the end of the parameter value.
+//
+TEST_F(AltAddrTpValueTest, RejectsTruncatedList)
+{
+    const uint8_t Value[] = { 0x40 }; // Two-byte varint, only one byte present.
+    ASSERT_FALSE(DecodeWithValue(Value, sizeof(Value)));
+}
+
+TEST_F(AltAddrTpValueTest, AcceptsEmptyList)
+{
+    ASSERT_TRUE(DecodeWithValue(nullptr, 0));
+}

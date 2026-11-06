@@ -1790,6 +1790,82 @@ tracepoint(CLOG_FRAME_C, FrameLogPunchMeNow , arg2, arg3, arg4, arg5, arg6, arg7
 
 
 /*----------------------------------------------------------
+// Decoder Ring for FrameLogAlternativeAddressInvalid
+// [%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]
+// QuicTraceLogVerbose(
+            FrameLogAlternativeAddressInvalid,
+            "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_FrameLogAlternativeAddressInvalid
+#define _clog_5_ARGS_TRACE_FrameLogAlternativeAddressInvalid(uniqueId, encoded_arg_string, arg2, arg3, arg4)\
+tracepoint(CLOG_FRAME_C, FrameLogAlternativeAddressInvalid , arg2, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogAlternativeAddress
+// [%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)
+// QuicTraceLogVerbose(
+        FrameLogAlternativeAddress,
+        "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)",
+        PtkConnPre(Connection),
+        PktRxPre(Rx),
+        PacketNumber,
+        Frame.SequenceNumber,
+        Frame.AddressCount);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+// arg5 = arg5 = Frame.SequenceNumber = arg5
+// arg6 = arg6 = Frame.AddressCount = arg6
+----------------------------------------------------------*/
+#ifndef _clog_7_ARGS_TRACE_FrameLogAlternativeAddress
+#define _clog_7_ARGS_TRACE_FrameLogAlternativeAddress(uniqueId, encoded_arg_string, arg2, arg3, arg4, arg5, arg6)\
+tracepoint(CLOG_FRAME_C, FrameLogAlternativeAddress , arg2, arg3, arg4, arg5, arg6);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogAlternativeAddressEntry
+// [%c][%cX][%llu]     %s prio=%llu preferred=%hhu
+// QuicTraceLogVerbose(
+            FrameLogAlternativeAddressEntry,
+            "[%c][%cX][%llu]     %s prio=%llu preferred=%hhu",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber,
+            AddrStr.Address,
+            Frame.Addresses[i].PriorityHint,
+            Frame.Addresses[i].PreferredToCurrentPath);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+// arg5 = arg5 = AddrStr.Address = arg5
+// arg6 = arg6 = Frame.Addresses[i].PriorityHint = arg6
+// arg7 = arg7 = Frame.Addresses[i].PreferredToCurrentPath = arg7
+----------------------------------------------------------*/
+#ifndef _clog_8_ARGS_TRACE_FrameLogAlternativeAddressEntry
+#define _clog_8_ARGS_TRACE_FrameLogAlternativeAddressEntry(uniqueId, encoded_arg_string, arg2, arg3, arg4, arg5, arg6, arg7)\
+tracepoint(CLOG_FRAME_C, FrameLogAlternativeAddressEntry , arg2, arg3, arg4, arg5, arg6, arg7);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for FrameLogRemoveAddressInvalid
 // [%c][%cX][%llu]   REMOVE_ADDRESS [Invalid]
 // QuicTraceLogVerbose(

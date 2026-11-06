@@ -555,6 +555,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, UnreachableInvalid,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressFull
+// [conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked
+// QuicTraceLogConnWarning(
+                AlternativeAddressFull,
+                Connection,
+                "ALTERNATIVE_ADDRESS advertised more addresses than tracked");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AlternativeAddressFull,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ExportKeyingMaterialInvalidState
 // [conn][%p] Cannot export keying material [Connected=%hhu, HandshakeComplete=%hhu, HasTls=%hhu]
 // QuicTraceLogConnWarning(
@@ -1223,6 +1242,52 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, BoundAddressWildcardForQtip,
         const void *, arg1), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressWithdrawn
+// [conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)
+// QuicTraceLogConnInfo(
+            AlternativeAddressWithdrawn,
+            Connection,
+            "ALTERNATIVE_ADDRESS withdrew an address (seq %llu)",
+            Connection->AltAddrs[i].SequenceNumber);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->AltAddrs[i].SequenceNumber = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AlternativeAddressWithdrawn,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressAddFailed
+// [conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x
+// QuicTraceLogConnInfo(
+                AlternativeAddressAddFailed,
+                Connection,
+                "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AlternativeAddressAddFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
     )
 )
 
@@ -2141,6 +2206,52 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, UdpRecvDeferred,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressStale
+// [conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)
+// QuicTraceLogConnVerbose(
+            AlternativeAddressStale,
+            Connection,
+            "Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)",
+            Frame->SequenceNumber,
+            Connection->AltAddrPeerSequenceNumber);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Frame->SequenceNumber = arg3
+// arg4 = arg4 = Connection->AltAddrPeerSequenceNumber = arg4
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AlternativeAddressStale,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3,
+        unsigned long long, arg4), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
+        ctf_integer(uint64_t, arg4, arg4)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateNotifyRemoteAddressRemovedAlt
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED
+// QuicTraceLogConnVerbose(
+                IndicateNotifyRemoteAddressRemovedAlt,
+                Connection,
+                "Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressRemovedAlt,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(

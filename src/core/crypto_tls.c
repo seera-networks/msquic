@@ -72,6 +72,7 @@ typedef enum eSniNameType {
 #define QUIC_TP_ID_SERVER_MIGRATION                         0x3e764478      // N/A
 #define QUIC_TP_ID_NAT_TRAVERSE                             0x3d7e9f0bca12fea6 // varint
 #define QUIC_TP_ID_INITIAL_MAX_PATH_ID                      0x3e // varint (draft-ietf-quic-multipath-21, suggested)
+#define QUIC_TP_ID_ALTERNATIVE_ADDRESS                      0xff0969d85cULL // varint[] (draft-munizaga-quic-alternative-server-address-02)
 
 BOOLEAN
 QuicTpIdIsReserved(
@@ -933,6 +934,18 @@ QuicCryptoTlsEncodeTransportParameters(
                 QUIC_TP_ID_SERVER_MIGRATION,
                 0);
     }
+    if (TransportParams->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS) {
+        //
+        // Zero length. The parameter's value lists the address types supported
+        // *beyond* CURRENT_PATH, IPv4 and IPv6, which the draft makes implicit;
+        // this implementation supports no others, so the list is empty and the
+        // parameter conveys only that the extension is wanted.
+        //
+        RequiredTPLen +=
+            TlsTransportParamLength(
+                QUIC_TP_ID_ALTERNATIVE_ADDRESS,
+                0);
+    }
     if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_PATH_ID) {
         RequiredTPLen +=
             TlsTransportParamLength(
@@ -1330,6 +1343,18 @@ QuicCryptoTlsEncodeTransportParameters(
             EncodeTPServerMigration,
             Connection,
             "TP: Server Migration");
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS) {
+        TPBuf =
+            TlsWriteTransportParam(
+                QUIC_TP_ID_ALTERNATIVE_ADDRESS,
+                0,
+                NULL,
+                TPBuf);
+        QuicTraceLogConnVerbose(
+            EncodeTPAlternativeAddress,
+            Connection,
+            "TP: Alternative Address");
     }
     if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_PATH_ID) {
         TPBuf =
@@ -2129,6 +2154,65 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
                 Connection,
                 "TP: Server Migration");
             break;
+
+        case QUIC_TP_ID_ALTERNATIVE_ADDRESS: {
+            //
+            // Client to server only. A server that sends it has to be rejected
+            // rather than ignored -- the draft says TRANSPORT_PARAMETER_ERROR,
+            // and quietly accepting it would have a client believe it had
+            // negotiated an extension whose frames it is forbidden to receive.
+            //
+            if (IsServerTP) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Server sent QUIC_TP_ID_ALTERNATIVE_ADDRESS");
+                goto Exit;
+            }
+
+            //
+            // The value is a possibly empty list of the address types supported
+            // beyond the three the draft makes implicit, strictly increasing
+            // and without duplicates. The types themselves are not stored:
+            // this implementation sends only the implicit three, so the list
+            // cannot change what it would put in a frame. It is still parsed,
+            // because a malformed one is an error the peer needs told about
+            // and because skipping it would accept a list this code had not
+            // actually understood.
+            //
+            uint16_t ValueOffset = 0;
+            QUIC_VAR_INT PreviousType = 0;
+            BOOLEAN HaveType = FALSE;
+            while (ValueOffset < Length) {
+                QUIC_VAR_INT ExtraType;
+                if (!QuicVarIntDecode(Length, TPBuf + Offset, &ValueOffset, &ExtraType)) {
+                    QuicTraceEvent(
+                        ConnError,
+                        "[conn][%p] ERROR, %s.",
+                        Connection,
+                        "Truncated QUIC_TP_ID_ALTERNATIVE_ADDRESS list");
+                    goto Exit;
+                }
+                if (HaveType && ExtraType <= PreviousType) {
+                    QuicTraceEvent(
+                        ConnError,
+                        "[conn][%p] ERROR, %s.",
+                        Connection,
+                        "Unordered QUIC_TP_ID_ALTERNATIVE_ADDRESS list");
+                    goto Exit;
+                }
+                PreviousType = ExtraType;
+                HaveType = TRUE;
+            }
+
+            TransportParams->Flags |= QUIC_TP_FLAG_ALTERNATIVE_ADDRESS;
+            QuicTraceLogConnVerbose(
+                DecodeTPAlternativeAddress,
+                Connection,
+                "TP: Alternative Address");
+            break;
+        }
 
         case QUIC_TP_ID_NAT_TRAVERSE:
             if (!IsServerTP) {

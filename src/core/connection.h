@@ -238,6 +238,14 @@ typedef union QUIC_CONNECTION_STATE {
 #endif
         BOOLEAN ServerMigrationNegotiated : 1;
 
+        //
+        // The peer negotiated draft-munizaga-quic-alternative-server-address.
+        // Client-sent, so on a server this means the client asked for the
+        // extension and ALTERNATIVE_ADDRESS frames may be sent; on a client it
+        // means our own parameter went out and such frames may be received.
+        //
+        BOOLEAN AlternativeAddressNegotiated : 1;
+
         BOOLEAN NatTraverseNegotiated : 1;
 
     };
@@ -544,6 +552,39 @@ typedef struct QUIC_CONNECTION {
     QUIC_VAR_INT AddAddressSequenceNumber;
 
     //
+    // The sequence number to put on the next ALTERNATIVE_ADDRESS frame we
+    // send, and the highest one we have accepted from the peer.
+    //
+    // The draft has the receiver ignore any frame whose sequence number does
+    // not exceed the last one processed, which is what makes a reordered frame
+    // harmless: a newer frame replaces the advertised set wholesale, so acting
+    // on an older one would resurrect addresses the peer had withdrawn.
+    //
+    QUIC_VAR_INT AltAddrNextSequenceNumber;
+    QUIC_VAR_INT AltAddrPeerSequenceNumber;
+    BOOLEAN AltAddrPeerSequenceNumberValid;
+
+    //
+    // The set of addresses the peer most recently advertised, kept so the next
+    // frame can be diffed against it. The draft sends the whole set every
+    // time and withdraws by omission, while everything downstream here is
+    // built around "this address appeared" and "this address went away" -- so
+    // the diff is what bridges the two, and it is the only reason this copy
+    // exists.
+    //
+    // Each entry carries the sequence number this connection assigned it, not
+    // one the peer sent: the draft has no per-address sequence numbers, and
+    // the path machinery identifies a peer address by one. Assigning them
+    // locally keeps QuicConnProcessAddAddress and the REMOVE_ADDRESS operation
+    // usable unchanged.
+    //
+    uint8_t AltAddrCount;
+    struct {
+        QUIC_ADDR Address;
+        QUIC_VAR_INT SequenceNumber;
+    } AltAddrs[QUIC_MAX_ALTERNATIVE_ADDRESSES];
+
+    //
     // The sequence number to use for sending an punch me now.
     //
     QUIC_VAR_INT PunchMeNowSequenceNumber;
@@ -820,6 +861,16 @@ typedef struct QUIC_BOUND_ADDRESS_LIST_ENTRY {
     QUIC_ADDR ObservedAddress;
     QUIC_BINDING* Binding;
     QUIC_VAR_INT SequenceNumber;
+    //
+    // The ALTERNATIVE_ADDRESS sequence number of the first frame that will
+    // leave this address out, set when it is marked Removing. Withdrawal in
+    // that draft is by omission, so the entry can only be freed once a frame
+    // at least this new has been acknowledged -- an older frame still in
+    // flight when the address was withdrawn carried it, and treating its
+    // acknowledgement as proof of withdrawal would drop the entry before the
+    // peer had been told.
+    //
+    QUIC_VAR_INT WithdrawnAtAltSequenceNumber;
     BOOLEAN SequenceNumberValid : 1;
     BOOLEAN ObservedAddressSet : 1;
     BOOLEAN SendAddAddress : 1;
@@ -1788,6 +1839,18 @@ QUIC_STATUS
 QuicConnProcessAddAddress(
     _In_ QUIC_CONNECTION* Connection,
     _In_ QUIC_ADD_ADDRESS_EX* Frame
+    );
+
+//
+// Processes an ALTERNATIVE_ADDRESS frame: the peer's whole advertised set.
+// Diffs it against the stored copy and drives the same add and remove paths
+// the per-address frames do.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+QuicConnProcessAlternativeAddress(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ALTERNATIVE_ADDRESS_EX* Frame
     );
 
 _IRQL_requires_max_(PASSIVE_LEVEL)

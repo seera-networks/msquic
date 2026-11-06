@@ -1141,6 +1141,14 @@ TEST(Basic, LocalAddressChangeAutoServerMigration) {
     QuicTestLocalAddressChangeAutoServerMigration();
 }
 
+TEST(Basic, AlternativeServerAddress) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestAlternativeServerAddress is user-mode only.";
+    }
+    TestLogger Logger("QuicTestAlternativeServerAddress");
+    QuicTestAlternativeServerAddress();
+}
+
 TEST(Basic, LocalAddressChangeAutoRoute) {
     if (TestingKernelMode) {
         GTEST_SKIP() << "QuicTestLocalAddressChangeAutoRoute is user-mode only.";

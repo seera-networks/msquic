@@ -3959,6 +3959,22 @@ QuicConnGenerateLocalTransportParameters(
         LocalTP->InitialMaxPathId = QUIC_ACTIVE_PATH_ID_LIMIT - 1;
     }
 
+    //
+    // draft-munizaga-quic-alternative-server-address is a client-sent
+    // parameter: it is how a client says it will accept the server's list of
+    // alternative addresses. A server must not send it at all.
+    //
+    // Offered except in NAT-traversal mode, which is left on the older
+    // ADD_ADDRESS and PUNCH_ME_NOW frames. Those pair a punch request to an
+    // advertised address by that frame's per-address sequence number, and the
+    // single frame-level sequence number of this draft cannot express that --
+    // so a client relying on NAT traversal does not ask the server to switch.
+    //
+    if (QuicConnIsClient(Connection) &&
+        Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_NAT_TRAVERSAL) {
+        LocalTP->Flags |= QUIC_TP_FLAG_ALTERNATIVE_ADDRESS;
+    }
+
     if (QuicConnIsServer(Connection)) {
 
         if (Connection->Streams.Types[STREAM_ID_FLAG_IS_CLIENT | STREAM_ID_FLAG_IS_BI_DIR].MaxTotalStreamCount) {
@@ -4669,6 +4685,21 @@ QuicConnProcessPeerTransportParameters(
         if (Connection->Settings.ServerMigrationEnabled) {
             Connection->State.ServerMigrationNegotiated =
                 !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_SERVER_MIGRATION);
+        }
+
+        //
+        // Asymmetric, because the parameter is: a server learns the client
+        // wants the extension by receiving it, and a client knows it is in
+        // effect because it sent it. The client cannot read this off the
+        // peer's parameters -- a server is forbidden to echo it -- so it is
+        // taken from the same condition that decided to send it.
+        //
+        if (QuicConnIsServer(Connection)) {
+            Connection->State.AlternativeAddressNegotiated =
+                !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS);
+        } else {
+            Connection->State.AlternativeAddressNegotiated =
+                Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_NAT_TRAVERSAL;
         }
 
         if (Connection->Settings.MultipathEnabled) {
@@ -7491,6 +7522,51 @@ QuicConnRecvFrames(
             break;
         }
 
+        case QUIC_FRAME_ALTERNATIVE_ADDRESS: {
+            QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+            if (!QuicAlternativeAddressFrameDecode(PayloadLength, Payload, &Offset, &Frame)) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Decoding ALTERNATIVE_ADDRESS frame");
+                QuicConnTransportError(Connection, QUIC_ERROR_FRAME_ENCODING_ERROR);
+                return FALSE;
+            }
+
+            //
+            // Server to client only, and only when the client asked for it.
+            // Both are PROTOCOL_VIOLATION per the draft rather than something
+            // to ignore: a server receiving one, or a client receiving one it
+            // never negotiated, means the peer is not speaking the extension
+            // we agreed on.
+            //
+            if (QuicConnIsServer(Connection) ||
+                !Connection->State.AlternativeAddressNegotiated) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Unexpected ALTERNATIVE_ADDRESS frame");
+                QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+                return FALSE;
+            }
+
+            AckEliciting = TRUE;
+
+            const QUIC_STATUS Status =
+                QuicConnProcessAlternativeAddress(Connection, &Frame);
+            if (QUIC_FAILED(Status)) {
+                QuicTraceEvent(
+                    ConnErrorStatus,
+                    "[conn][%p] ERROR, %u, %s.",
+                    Connection,
+                    Status,
+                    "Process ALTERNATIVE_ADDRESS frame");
+            }
+            break;
+        }
+
         case QUIC_FRAME_REMOVE_ADDRESS: {
             QUIC_REMOVE_ADDRESS_EX Frame;
             if (!QuicRemoveAddressFrameDecode(PayloadLength, Payload, &Offset, &Frame)) {
@@ -9364,8 +9440,29 @@ QuicConnAddObservedAddress(
 
     Bound->SequenceNumber = Connection->AddAddressSequenceNumber++;
     Bound->SequenceNumberValid = TRUE;
-    Bound->SendAddAddress = TRUE;
-    QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_ADD_ADDRESS);
+
+    //
+    // One mechanism or the other, never both. With the extension negotiated
+    // the whole set goes out in a single ALTERNATIVE_ADDRESS frame, so the
+    // per-address ADD_ADDRESS frame would be a second, redundant advertisement
+    // of the same thing -- and the peer would have to reconcile two sets.
+    //
+    // The sequence number above is still assigned either way: the bound entry
+    // is matched by it on the ADD_ADDRESS retransmission path, and leaving it
+    // unset would make that lookup depend on which mechanism is in use.
+    //
+    //
+    // Server only. The draft makes ALTERNATIVE_ADDRESS a server-to-client
+    // frame, and a client has the flag set whenever it offered the parameter --
+    // so without the role test a client advertising its own bound address
+    // would send a frame the server is required to reject.
+    //
+    if (QuicConnIsServer(Connection) && Connection->State.AlternativeAddressNegotiated) {
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS);
+    } else {
+        Bound->SendAddAddress = TRUE;
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_ADD_ADDRESS);
+    }
 
     return QUIC_STATUS_SUCCESS;
 }
@@ -9688,7 +9785,27 @@ QuicConnRemoveBoundAddress(
             Bound->Binding = NULL;
         }
 
-        if (Bound->SequenceNumberValid) {
+        if (Bound->SequenceNumberValid &&
+            QuicConnIsServer(Connection) &&
+            Connection->State.AlternativeAddressNegotiated) {
+            //
+            // Withdrawn by omission: the entry is marked Removing so the next
+            // ALTERNATIVE_ADDRESS frame leaves it out, and that absence is the
+            // whole message. There is no per-address withdrawal frame in this
+            // draft, which is why the entry has to survive long enough to be
+            // left out of one -- freeing it here would advertise nothing and
+            // the peer would keep the address.
+            //
+            Bound->Removing = TRUE;
+            //
+            // The next frame encoded is the first that will omit this address,
+            // and it will carry exactly this number -- the writer uses the
+            // counter's current value and then increments. Acknowledging
+            // anything older proves nothing about this withdrawal.
+            //
+            Bound->WithdrawnAtAltSequenceNumber = Connection->AltAddrNextSequenceNumber;
+            QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS);
+        } else if (Bound->SequenceNumberValid) {
             CXPLAT_DBG_ASSERT(Connection->State.NatTraverseNegotiated);
             Bound->SendRemoveAddress = TRUE;
             Bound->Removing = TRUE;
@@ -10062,6 +10179,200 @@ QuicConnProcessAddAddress(
                     QUIC_CONN_TIMER_PROBE_AFTER_PUNCH,
                     Connection->Paths[0].SmoothedRtt);
             }
+        }
+    }
+
+    return QUIC_STATUS_SUCCESS;
+}
+
+//
+// Applies one address the peer has just started advertising, by handing it to
+// the same code the per-address ADD_ADDRESS frame uses. Synthesizing the frame
+// rather than refactoring that function is deliberate: the two drafts differ
+// in how an address arrives, not in what should happen to it, and sharing the
+// body keeps AUTO, MANUAL and NAT_TRAVERSAL behaving identically either way.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_STATUS
+QuicConnAltAddrApplyAdded(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Address,
+    _In_ QUIC_VAR_INT SequenceNumber
+    )
+{
+    QUIC_ADD_ADDRESS_EX Added;
+    CxPlatZeroMemory(&Added, sizeof(Added));
+    Added.SequenceNumber = SequenceNumber;
+    Added.Address = *Address;
+    return QuicConnProcessAddAddress(Connection, &Added);
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+QuicConnProcessAlternativeAddress(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ALTERNATIVE_ADDRESS_EX* Frame
+    )
+{
+    if (Connection->State.ClosedLocally) {
+        return QUIC_STATUS_INVALID_STATE;
+    }
+
+    //
+    // Server to client only. A server receiving one is a protocol violation
+    // per the draft, and the caller turns this status into one.
+    //
+    if (QuicConnIsServer(Connection)) {
+        return QUIC_STATUS_INVALID_STATE;
+    }
+
+    //
+    // Not negotiated means the peer was never told it could send this, so the
+    // frame is not one we agreed to parse.
+    //
+    if (!Connection->State.AlternativeAddressNegotiated) {
+        return QUIC_STATUS_INVALID_STATE;
+    }
+
+    //
+    // Stale or replayed. Ignored rather than failed: reordering is normal, and
+    // the draft asks only that the older set not be applied.
+    //
+    if (Connection->AltAddrPeerSequenceNumberValid &&
+        Frame->SequenceNumber <= Connection->AltAddrPeerSequenceNumber) {
+        QuicTraceLogConnVerbose(
+            AlternativeAddressStale,
+            Connection,
+            "Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)",
+            Frame->SequenceNumber,
+            Connection->AltAddrPeerSequenceNumber);
+        return QUIC_STATUS_SUCCESS;
+    }
+    Connection->AltAddrPeerSequenceNumber = Frame->SequenceNumber;
+    Connection->AltAddrPeerSequenceNumberValid = TRUE;
+
+    //
+    // Which stored addresses the new set no longer contains. Removals are
+    // applied before additions so that an address being withdrawn frees its
+    // path before a new one asks for a slot, which matters at
+    // QUIC_MAX_PATH_COUNT.
+    //
+    // Compared on the full endpoint, address and port both: the draft
+    // advertises endpoints, two ports on one host are two different places to
+    // send, and the path machinery already distinguishes them.
+    //
+    uint8_t Kept = 0;
+    for (uint8_t i = 0; i < Connection->AltAddrCount; ++i) {
+        BOOLEAN StillAdvertised = FALSE;
+        for (uint8_t j = 0; j < Frame->AddressCount; ++j) {
+            if (QuicAddrCompare(&Connection->AltAddrs[i].Address, &Frame->Addresses[j].Address)) {
+                StillAdvertised = TRUE;
+                break;
+            }
+        }
+
+        if (StillAdvertised) {
+            //
+            // Compacted in place, keeping the sequence number it was given, so
+            // an address that stays advertised keeps naming the same path.
+            //
+            Connection->AltAddrs[Kept++] = Connection->AltAddrs[i];
+            continue;
+        }
+
+        QuicTraceLogConnInfo(
+            AlternativeAddressWithdrawn,
+            Connection,
+            "ALTERNATIVE_ADDRESS withdrew an address (seq %llu)",
+            Connection->AltAddrs[i].SequenceNumber);
+
+        if (Connection->Settings.AddAddressMode == QUIC_ADD_ADDRESS_MANUAL) {
+            QUIC_CONNECTION_EVENT Event;
+            Event.Type = QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED;
+            Event.NOTIFY_REMOTE_ADDRESS_REMOVED.SequenceNumber =
+                Connection->AltAddrs[i].SequenceNumber;
+            QuicTraceLogConnVerbose(
+                IndicateNotifyRemoteAddressRemovedAlt,
+                Connection,
+                "Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED");
+            (void)QuicConnIndicateEvent(Connection, &Event);
+        } else {
+            //
+            // Queued, not done here, for the reason the REMOVE_ADDRESS frame
+            // handler queues it: this runs from frame processing, and tearing a
+            // path down underneath that is what the receive path cannot
+            // survive.
+            //
+            QUIC_OPERATION* Oper =
+                QuicConnAllocOperation(Connection, QUIC_OPER_TYPE_REMOVE_ADDRESS);
+            if (Oper == NULL) {
+                QuicTraceEvent(
+                    AllocFailure,
+                    "Allocation of '%s' failed. (%llu bytes)",
+                    "alternative address removal operation",
+                    0);
+                //
+                // Dropped rather than retried. The stored entry is gone, so
+                // the path is orphaned until the peer advertises the address
+                // again -- which costs a path slot but cannot wedge the
+                // connection, and is better than leaving the stored set
+                // disagreeing with what was applied.
+                //
+            } else {
+                Oper->REMOVE_ADDRESS.SequenceNumber =
+                    Connection->AltAddrs[i].SequenceNumber;
+                QuicConnQueueOper(Connection, Oper);
+            }
+        }
+    }
+    Connection->AltAddrCount = Kept;
+
+    //
+    // Then whatever is new. Bounded by the stored array, which is the same
+    // size as the frame's own limit, so the only way to run out is for the
+    // peer to advertise more than this build tracks.
+    //
+    for (uint8_t j = 0; j < Frame->AddressCount; ++j) {
+        BOOLEAN AlreadyKnown = FALSE;
+        for (uint8_t i = 0; i < Connection->AltAddrCount; ++i) {
+            if (QuicAddrCompare(&Connection->AltAddrs[i].Address, &Frame->Addresses[j].Address)) {
+                AlreadyKnown = TRUE;
+                break;
+            }
+        }
+        if (AlreadyKnown) {
+            continue;
+        }
+
+        if (Connection->AltAddrCount == QUIC_MAX_ALTERNATIVE_ADDRESSES) {
+            QuicTraceLogConnWarning(
+                AlternativeAddressFull,
+                Connection,
+                "ALTERNATIVE_ADDRESS advertised more addresses than tracked");
+            break;
+        }
+
+        const QUIC_VAR_INT SequenceNumber = Connection->AddAddressSequenceNumber++;
+        Connection->AltAddrs[Connection->AltAddrCount].Address = Frame->Addresses[j].Address;
+        Connection->AltAddrs[Connection->AltAddrCount].SequenceNumber = SequenceNumber;
+        Connection->AltAddrCount++;
+
+        const QUIC_STATUS Status =
+            QuicConnAltAddrApplyAdded(Connection, &Frame->Addresses[j].Address, SequenceNumber);
+        if (QUIC_FAILED(Status)) {
+            //
+            // Recorded as advertised regardless. The peer is advertising it
+            // whether or not we could act on it, and keeping the stored set
+            // equal to the last frame is what makes the next diff correct --
+            // dropping it here would have the next frame look like a fresh
+            // addition and retry forever.
+            //
+            QuicTraceLogConnInfo(
+                AlternativeAddressAddFailed,
+                Connection,
+                "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
+                Status);
         }
     }
 

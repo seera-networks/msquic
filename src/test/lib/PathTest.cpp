@@ -2555,3 +2555,177 @@ QuicTestMultipathPathsAreMeasured(
 }
 
 #endif
+
+//
+// draft-munizaga-quic-alternative-server-address end to end.
+//
+// The server advertises an address, then withdraws it, and the client is
+// expected to report both. MANUAL mode is used so the client reports rather
+// than opening a path: the advertised address is a synthetic one the host
+// cannot reach, which keeps the test deterministic and is enough to prove the
+// frame round-tripped and the receive-side diff turned a whole-set frame back
+// into an add and a remove.
+//
+struct AltServerAddressTestContext {
+    CxPlatEvent HandshakeCompleteEvent;
+    CxPlatEvent AddedEvent;
+    CxPlatEvent RemovedEvent;
+    CxPlatEvent ShutdownEvent;
+    MsQuicConnection* Connection {nullptr};
+    QuicAddr AddedAddress;
+    uint64_t AddedSequenceNumber {UINT64_MAX};
+    uint64_t RemovedSequenceNumber {UINT64_MAX};
+    uint32_t AddedCount {0};
+    uint32_t RemovedCount {0};
+
+    static QUIC_STATUS QUIC_API ConnCallback(
+        _In_ MsQuicConnection* Conn,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_CONNECTION_EVENT* Event
+        ) noexcept
+    {
+        auto Ctx = static_cast<AltServerAddressTestContext*>(Context);
+        if (Event->Type == QUIC_CONNECTION_EVENT_CONNECTED) {
+            Ctx->Connection = Conn;
+            Ctx->HandshakeCompleteEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE) {
+            Ctx->HandshakeCompleteEvent.Set();
+            Ctx->AddedEvent.Set();
+            Ctx->RemovedEvent.Set();
+            Ctx->ShutdownEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_ADDED) {
+            Ctx->AddedAddress.SockAddr = *Event->NOTIFY_REMOTE_ADDRESS_ADDED.Address;
+            Ctx->AddedSequenceNumber = Event->NOTIFY_REMOTE_ADDRESS_ADDED.SequenceNumber;
+            Ctx->AddedCount++;
+            Ctx->AddedEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED) {
+            Ctx->RemovedSequenceNumber = Event->NOTIFY_REMOTE_ADDRESS_REMOVED.SequenceNumber;
+            Ctx->RemovedCount++;
+            Ctx->RemovedEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED) {
+            MsQuic->StreamClose(Event->PEER_STREAM_STARTED.Stream);
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+};
+
+void
+QuicTestAlternativeServerAddress(
+    )
+{
+    //
+    // Declared before the registration so they outlive it; the auto-accepted
+    // server connection's SHUTDOWN_COMPLETE arrives during RegistrationClose.
+    //
+    AltServerAddressTestContext ServerContext;
+    AltServerAddressTestContext ClientContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    //
+    // MANUAL, so an advertised address is reported to the application instead
+    // of having a path opened on it. Set on the struct directly because there
+    // is no helper for this field.
+    //
+    MsQuicSettings ClientSettings;
+    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_MANUAL;
+    ClientSettings.IsSet.AddAddressMode = TRUE;
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, AltServerAddressTestContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(
+        Registration, CleanUpManual, AltServerAddressTestContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QUIC_ADDRESS_FAMILY_INET,
+            QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(ClientContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
+
+    //
+    // A second address for the server to bind, and the address the outside
+    // world would see it as. The bound one has to be real enough to bind; the
+    // observed one is what goes on the wire, and is deliberately a TEST-NET-1
+    // address so the client cannot accidentally reach it.
+    //
+    QuicAddr BoundAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_TRUE(QuicAddrFromString("127.0.0.1", 0, &BoundAddr.SockAddr));
+    BoundAddr.SetEphemeralPort();
+
+    QuicAddr ObservedAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_TRUE(QuicAddrFromString("192.0.2.1", 4433, &ObservedAddr.SockAddr));
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    uint32_t Try = 0;
+    do {
+        Status =
+            ServerContext.Connection->SetParam(
+                QUIC_PARAM_CONN_ADD_BOUND_ADDRESS,
+                sizeof(BoundAddr.SockAddr),
+                &BoundAddr.SockAddr);
+        if (QUIC_FAILED(Status)) {
+            BoundAddr.SetEphemeralPort();
+        }
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    //
+    // Attaching the observed address is what makes the server advertise: the
+    // bound entry alone has nothing to tell the peer.
+    //
+    QUIC_ADD_OBSERVED_ADDRESS AddObserved = { &BoundAddr.SockAddr, &ObservedAddr.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_ADD_OBSERVED_ADDRESS,
+            sizeof(AddObserved),
+            &AddObserved));
+
+    //
+    // The client learns of it, which is the frame having been encoded, sent,
+    // decoded and diffed against an empty stored set.
+    //
+    TEST_TRUE(ClientContext.AddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(1u, ClientContext.AddedCount);
+    TEST_TRUE(QuicAddrCompare(&ObservedAddr.SockAddr, &ClientContext.AddedAddress.SockAddr));
+
+    //
+    // Now withdraw it. There is no withdrawal frame in this draft: the server
+    // sends its set again without the address, and the diff on the far side is
+    // what turns that absence into a removal.
+    //
+    TEST_QUIC_SUCCEEDED(
+        ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_REMOVE_BOUND_ADDRESS,
+            sizeof(BoundAddr.SockAddr),
+            &BoundAddr.SockAddr));
+
+    TEST_TRUE(ClientContext.RemovedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(1u, ClientContext.RemovedCount);
+    //
+    // Reported with the sequence number the addition carried. The draft has no
+    // per-address sequence numbers, so this is one the receiver assigned and
+    // kept across the two indications -- the thing that lets an application
+    // match a removal to what it was told was added.
+    //
+    TEST_EQUAL(ClientContext.AddedSequenceNumber, ClientContext.RemovedSequenceNumber);
+
+    Connection.Shutdown(QUIC_TEST_NO_ERROR);
+    TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+}

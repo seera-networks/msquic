@@ -1994,6 +1994,230 @@ QuicPunchMeNowFrameDecode(
     return TRUE;
 }
 
+//
+// One entry's encoded length. CURRENT_PATH carries only its type; the address
+// entries carry a priority hint and a fixed-width address and port.
+//
+static
+uint16_t
+QuicAlternativeAddressEntryLength(
+    _In_ const QUIC_ALTERNATIVE_ADDRESS_ENTRY* const Entry
+    )
+{
+    if (QuicAddrGetFamily(&Entry->Address) == QUIC_ADDRESS_FAMILY_INET) {
+        return
+            QuicVarIntSize(QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV4) +
+            QuicVarIntSize(Entry->PriorityHint) +
+            sizeof(Entry->Address.Ipv4.sin_addr) +
+            sizeof(Entry->Address.Ipv4.sin_port);
+    }
+    return
+        QuicVarIntSize(QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV6) +
+        QuicVarIntSize(Entry->PriorityHint) +
+        sizeof(Entry->Address.Ipv6.sin6_addr) +
+        sizeof(Entry->Address.Ipv6.sin6_port);
+}
+
+static
+uint8_t*
+QuicAlternativeAddressEntryEncode(
+    _In_ const QUIC_ALTERNATIVE_ADDRESS_ENTRY* const Entry,
+    _Out_ uint8_t* Buffer
+    )
+{
+    if (QuicAddrGetFamily(&Entry->Address) == QUIC_ADDRESS_FAMILY_INET) {
+        Buffer = QuicVarIntEncode(QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV4, Buffer);
+        Buffer = QuicVarIntEncode(Entry->PriorityHint, Buffer);
+        CxPlatCopyMemory(Buffer, &Entry->Address.Ipv4.sin_addr, sizeof(Entry->Address.Ipv4.sin_addr));
+        Buffer += sizeof(Entry->Address.Ipv4.sin_addr);
+        CxPlatCopyMemory(Buffer, &Entry->Address.Ipv4.sin_port, sizeof(Entry->Address.Ipv4.sin_port));
+        Buffer += sizeof(Entry->Address.Ipv4.sin_port);
+        return Buffer;
+    }
+    Buffer = QuicVarIntEncode(QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV6, Buffer);
+    Buffer = QuicVarIntEncode(Entry->PriorityHint, Buffer);
+    CxPlatCopyMemory(Buffer, &Entry->Address.Ipv6.sin6_addr, sizeof(Entry->Address.Ipv6.sin6_addr));
+    Buffer += sizeof(Entry->Address.Ipv6.sin6_addr);
+    CxPlatCopyMemory(Buffer, &Entry->Address.Ipv6.sin6_port, sizeof(Entry->Address.Ipv6.sin6_port));
+    Buffer += sizeof(Entry->Address.Ipv6.sin6_port);
+    return Buffer;
+}
+
+_Success_(return != FALSE)
+BOOLEAN
+QuicAlternativeAddressFrameEncode(
+    _In_ const QUIC_ALTERNATIVE_ADDRESS_EX * const Frame,
+    _Inout_ uint16_t* Offset,
+    _In_ uint16_t BufferLength,
+    _Out_writes_to_(BufferLength, *Offset)
+        uint8_t* Buffer
+    )
+{
+    CXPLAT_DBG_ASSERT(Frame->AddressCount <= QUIC_MAX_ALTERNATIVE_ADDRESSES);
+
+    //
+    // The sentinel is always written, so the count on the wire is one more
+    // than the number of addresses. A frame with no addresses at all is legal
+    // and is how the server withdraws everything it had advertised.
+    //
+    const QUIC_VAR_INT EntryCount = (QUIC_VAR_INT)Frame->AddressCount + 1;
+
+    uint16_t RequiredLength =
+        QuicVarIntSize(QUIC_FRAME_ALTERNATIVE_ADDRESS) +
+        QuicVarIntSize(Frame->SequenceNumber) +
+        QuicVarIntSize(EntryCount) +
+        QuicVarIntSize(QUIC_ALTERNATIVE_ADDRESS_ENTRY_CURRENT_PATH);
+    for (uint8_t i = 0; i < Frame->AddressCount; ++i) {
+        RequiredLength += QuicAlternativeAddressEntryLength(&Frame->Addresses[i]);
+    }
+
+    if (BufferLength < *Offset + RequiredLength) {
+        return FALSE;
+    }
+
+    Buffer = Buffer + *Offset;
+    Buffer = QuicVarIntEncode(QUIC_FRAME_ALTERNATIVE_ADDRESS, Buffer);
+    Buffer = QuicVarIntEncode(Frame->SequenceNumber, Buffer);
+    Buffer = QuicVarIntEncode(EntryCount, Buffer);
+
+    //
+    // Preferred entries, the sentinel, then the rest. Walked twice rather than
+    // sorted: the draft wants nondecreasing priority hints within each side,
+    // which is the caller's business, and the two groups have to come out in
+    // that order whatever order the array is in.
+    //
+    for (uint8_t i = 0; i < Frame->AddressCount; ++i) {
+        if (Frame->Addresses[i].PreferredToCurrentPath) {
+            Buffer = QuicAlternativeAddressEntryEncode(&Frame->Addresses[i], Buffer);
+        }
+    }
+    Buffer = QuicVarIntEncode(QUIC_ALTERNATIVE_ADDRESS_ENTRY_CURRENT_PATH, Buffer);
+    for (uint8_t i = 0; i < Frame->AddressCount; ++i) {
+        if (!Frame->Addresses[i].PreferredToCurrentPath) {
+            Buffer = QuicAlternativeAddressEntryEncode(&Frame->Addresses[i], Buffer);
+        }
+    }
+
+    *Offset += RequiredLength;
+
+    return TRUE;
+}
+
+_Success_(return != FALSE)
+BOOLEAN
+QuicAlternativeAddressFrameDecode(
+    _In_ uint16_t BufferLength,
+    _In_reads_bytes_(BufferLength)
+        const uint8_t * const Buffer,
+    _Inout_ uint16_t* Offset,
+    _Out_ QUIC_ALTERNATIVE_ADDRESS_EX* Frame
+    )
+{
+    CxPlatZeroMemory(Frame, sizeof(*Frame));
+
+    QUIC_VAR_INT EntryCount;
+    if (!QuicVarIntDecode(BufferLength, Buffer, Offset, &Frame->SequenceNumber) ||
+        !QuicVarIntDecode(BufferLength, Buffer, Offset, &EntryCount)) {
+        return FALSE;
+    }
+
+    //
+    // Bounded by what is left in the buffer before the loop runs: the smallest
+    // an entry can be is one byte, so a count larger than the remaining bytes
+    // cannot be honest and would otherwise have this spin to the end of the
+    // buffer failing one decode at a time.
+    //
+    if (EntryCount > (QUIC_VAR_INT)(BufferLength - *Offset)) {
+        return FALSE;
+    }
+
+    BOOLEAN SeenCurrentPath = FALSE;
+    //
+    // Ordering is checked per side, and over every entry parsed rather than
+    // only the ones kept, so a frame that violates the draft is rejected the
+    // same way whether or not this build had room to store the offender.
+    //
+    QUIC_VAR_INT LastPriority = 0;
+    BOOLEAN HavePriority = FALSE;
+
+    for (QUIC_VAR_INT i = 0; i < EntryCount; ++i) {
+        QUIC_VAR_INT EntryType;
+        if (!QuicVarIntDecode(BufferLength, Buffer, Offset, &EntryType)) {
+            return FALSE;
+        }
+
+        if (EntryType == QUIC_ALTERNATIVE_ADDRESS_ENTRY_CURRENT_PATH) {
+            if (SeenCurrentPath) {
+                return FALSE; // Exactly one, per the draft.
+            }
+            SeenCurrentPath = TRUE;
+            HavePriority = FALSE; // The two sides are ordered independently.
+            continue;
+        }
+
+        if (EntryType != QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV4 &&
+            EntryType != QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV6) {
+            //
+            // Only the three always-supported types are negotiated by this
+            // implementation, so anything else is an address type the peer was
+            // told not to send. The draft makes that a FRAME_ENCODING_ERROR
+            // rather than something to skip -- and it could not be skipped
+            // anyway, since an unknown type has no known length.
+            //
+            return FALSE;
+        }
+
+        QUIC_VAR_INT PriorityHint;
+        if (!QuicVarIntDecode(BufferLength, Buffer, Offset, &PriorityHint)) {
+            return FALSE;
+        }
+        if (HavePriority && PriorityHint < LastPriority) {
+            return FALSE;
+        }
+        LastPriority = PriorityHint;
+        HavePriority = TRUE;
+
+        QUIC_ADDR Address;
+        CxPlatZeroMemory(&Address, sizeof(Address));
+        if (EntryType == QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV4) {
+            if (BufferLength < *Offset + sizeof(Address.Ipv4.sin_addr) + sizeof(Address.Ipv4.sin_port)) {
+                return FALSE;
+            }
+            Address.Ipv4.sin_family = QUIC_ADDRESS_FAMILY_INET;
+            CxPlatCopyMemory(&Address.Ipv4.sin_addr, Buffer + *Offset, sizeof(Address.Ipv4.sin_addr));
+            *Offset += sizeof(Address.Ipv4.sin_addr);
+            CxPlatCopyMemory(&Address.Ipv4.sin_port, Buffer + *Offset, sizeof(Address.Ipv4.sin_port));
+            *Offset += sizeof(Address.Ipv4.sin_port);
+        } else {
+            if (BufferLength < *Offset + sizeof(Address.Ipv6.sin6_addr) + sizeof(Address.Ipv6.sin6_port)) {
+                return FALSE;
+            }
+            Address.Ipv6.sin6_family = QUIC_ADDRESS_FAMILY_INET6;
+            CxPlatCopyMemory(&Address.Ipv6.sin6_addr, Buffer + *Offset, sizeof(Address.Ipv6.sin6_addr));
+            *Offset += sizeof(Address.Ipv6.sin6_addr);
+            CxPlatCopyMemory(&Address.Ipv6.sin6_port, Buffer + *Offset, sizeof(Address.Ipv6.sin6_port));
+            *Offset += sizeof(Address.Ipv6.sin6_port);
+        }
+
+        //
+        // Kept only if there is room. Everything above still ran, so the bytes
+        // are consumed and the ordering rule is enforced either way.
+        //
+        if (Frame->AddressCount < QUIC_MAX_ALTERNATIVE_ADDRESSES) {
+            Frame->Addresses[Frame->AddressCount].PriorityHint = PriorityHint;
+            Frame->Addresses[Frame->AddressCount].Address = Address;
+            Frame->Addresses[Frame->AddressCount].PreferredToCurrentPath = !SeenCurrentPath;
+            Frame->AddressCount++;
+        }
+    }
+
+    //
+    // The sentinel is mandatory, and it is what tells the two groups apart, so
+    // a frame without one is rejected rather than guessed at.
+    //
+    return SeenCurrentPath;
+}
+
 _Success_(return != FALSE)
 BOOLEAN
 QuicRemoveAddressFrameEncode(
@@ -3287,6 +3511,59 @@ QuicFrameLogPunchMeNow(
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 static BOOLEAN
+QuicFrameLogAlternativeAddress(
+    _In_opt_ QUIC_CONNECTION* Connection,
+    _In_ BOOLEAN Rx,
+    _In_ uint64_t PacketNumber,
+    _In_ uint16_t PacketLength,
+    _In_reads_bytes_(PacketLength)
+        const uint8_t * const Packet,
+    _Inout_ uint16_t* Offset
+    )
+{
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    if (!QuicAlternativeAddressFrameDecode(PacketLength, Packet, Offset, &Frame)) {
+        QuicTraceLogVerbose(
+            FrameLogAlternativeAddressInvalid,
+            "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber);
+        return FALSE;
+    }
+
+    QuicTraceLogVerbose(
+        FrameLogAlternativeAddress,
+        "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)",
+        PtkConnPre(Connection),
+        PktRxPre(Rx),
+        PacketNumber,
+        Frame.SequenceNumber,
+        Frame.AddressCount);
+
+    //
+    // One line per address, since which addresses were advertised is the whole
+    // content of the frame and a count alone makes a trace useless for
+    // working out why a client did or did not probe something.
+    //
+    for (uint8_t i = 0; i < Frame.AddressCount; ++i) {
+        QUIC_ADDR_STR AddrStr = { 0 };
+        QuicAddrToString(&Frame.Addresses[i].Address, &AddrStr);
+        QuicTraceLogVerbose(
+            FrameLogAlternativeAddressEntry,
+            "[%c][%cX][%llu]     %s prio=%llu preferred=%hhu",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber,
+            AddrStr.Address,
+            Frame.Addresses[i].PriorityHint,
+            Frame.Addresses[i].PreferredToCurrentPath);
+    }
+    return TRUE;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static BOOLEAN
 QuicFrameLogRemoveAddress(
     _In_opt_ QUIC_CONNECTION* Connection,
     _In_ BOOLEAN Rx,
@@ -3611,6 +3888,12 @@ QuicFrameLog(
 
     case QUIC_FRAME_REMOVE_ADDRESS:
         if (!QuicFrameLogRemoveAddress(Connection, Rx, PacketNumber, PacketLength, Packet, Offset)) {
+            return FALSE;
+        }
+        break;
+
+    case QUIC_FRAME_ALTERNATIVE_ADDRESS:
+        if (!QuicFrameLogAlternativeAddress(Connection, Rx, PacketNumber, PacketLength, Packet, Offset)) {
             return FALSE;
         }
         break;

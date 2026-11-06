@@ -1367,3 +1367,258 @@ TEST_P(ConnectionCloseFrameDecodeTest, DecodeConnectionCloseFrameFail) {
 }
 
 INSTANTIATE_TEST_SUITE_P(FrameTest, ConnectionCloseFrameDecodeTest, ::testing::ValuesIn(ConnectionCloseFrameParams::GenerateDecodeFailParams()));
+
+//
+// draft-munizaga-quic-alternative-server-address-02 ALTERNATIVE_ADDRESS.
+//
+// The frame type is a four byte varint, so the decoder is handed an offset of
+// 4 to start just past it, the way the tests above skip their single type byte.
+//
+#define ALT_ADDR_TYPE_LEN 4
+
+struct AltAddrFrameTest : public ::testing::Test {
+    static QUIC_ADDR V4(uint8_t Last, uint16_t Port) {
+        QUIC_ADDR Addr;
+        CxPlatZeroMemory(&Addr, sizeof(Addr));
+        QuicAddrSetFamily(&Addr, QUIC_ADDRESS_FAMILY_INET);
+        uint8_t Bytes[4] = {192, 0, 2, Last};
+        CxPlatCopyMemory(&Addr.Ipv4.sin_addr, Bytes, sizeof(Bytes));
+        QuicAddrSetPort(&Addr, Port);
+        return Addr;
+    }
+    static QUIC_ADDR V6(uint8_t Last, uint16_t Port) {
+        QUIC_ADDR Addr;
+        CxPlatZeroMemory(&Addr, sizeof(Addr));
+        QuicAddrSetFamily(&Addr, QUIC_ADDRESS_FAMILY_INET6);
+        uint8_t Bytes[16] = {0x20, 0x01, 0x0d, 0xb8, 0,0,0,0, 0,0,0,0, 0,0,0, Last};
+        CxPlatCopyMemory(&Addr.Ipv6.sin6_addr, Bytes, sizeof(Bytes));
+        QuicAddrSetPort(&Addr, Port);
+        return Addr;
+    }
+
+    //
+    // Builds a frame by hand so a test can produce the malformations the draft
+    // calls out, which the encoder will not emit.
+    //
+    struct Builder {
+        uint8_t Buffer[512];
+        uint8_t* Cursor;
+        uint64_t Entries;
+        Builder() : Cursor(Buffer), Entries(0) {
+            CxPlatZeroMemory(Buffer, sizeof(Buffer));
+        }
+        void Start(uint64_t Sequence, uint64_t EntryCount) {
+            Cursor = QuicVarIntEncode(QUIC_FRAME_ALTERNATIVE_ADDRESS, Cursor);
+            Cursor = QuicVarIntEncode(Sequence, Cursor);
+            Cursor = QuicVarIntEncode(EntryCount, Cursor);
+        }
+        void CurrentPath() {
+            Cursor = QuicVarIntEncode(0x00, Cursor);
+        }
+        void Ipv4(const QUIC_ADDR& Addr, uint64_t Priority) {
+            Cursor = QuicVarIntEncode(0x01, Cursor);
+            Cursor = QuicVarIntEncode(Priority, Cursor);
+            CxPlatCopyMemory(Cursor, &Addr.Ipv4.sin_addr, 4); Cursor += 4;
+            CxPlatCopyMemory(Cursor, &Addr.Ipv4.sin_port, 2); Cursor += 2;
+        }
+        void RawType(uint64_t Type) {
+            Cursor = QuicVarIntEncode(Type, Cursor);
+        }
+        uint16_t Length() const { return (uint16_t)(Cursor - Buffer); }
+    };
+
+    static bool Decode(Builder& B, QUIC_ALTERNATIVE_ADDRESS_EX* Frame) {
+        uint16_t Offset = ALT_ADDR_TYPE_LEN;
+        return !!QuicAlternativeAddressFrameDecode(B.Length(), B.Buffer, &Offset, Frame);
+    }
+};
+
+TEST_F(AltAddrFrameTest, RoundTripPreferredAndBackup)
+{
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    CxPlatZeroMemory(&Frame, sizeof(Frame));
+    Frame.SequenceNumber = 7;
+    Frame.AddressCount = 3;
+    Frame.Addresses[0].Address = V4(1, 443);
+    Frame.Addresses[0].PriorityHint = 1;
+    Frame.Addresses[0].PreferredToCurrentPath = TRUE;
+    Frame.Addresses[1].Address = V6(2, 4433);
+    Frame.Addresses[1].PriorityHint = 5;
+    Frame.Addresses[1].PreferredToCurrentPath = FALSE;
+    Frame.Addresses[2].Address = V4(3, 8443);
+    Frame.Addresses[2].PriorityHint = 9;
+    Frame.Addresses[2].PreferredToCurrentPath = FALSE;
+
+    uint8_t Buffer[256];
+    CxPlatZeroMemory(Buffer, sizeof(Buffer));
+    uint16_t Offset = 0;
+    ASSERT_TRUE(QuicAlternativeAddressFrameEncode(&Frame, &Offset, sizeof(Buffer), Buffer));
+
+    QUIC_ALTERNATIVE_ADDRESS_EX Decoded;
+    uint16_t DecodeOffset = ALT_ADDR_TYPE_LEN;
+    ASSERT_TRUE(QuicAlternativeAddressFrameDecode(Offset, Buffer, &DecodeOffset, &Decoded));
+    ASSERT_EQ(Offset, DecodeOffset); // Consumed exactly the frame.
+
+    ASSERT_EQ(7u, Decoded.SequenceNumber);
+    ASSERT_EQ(3, Decoded.AddressCount);
+    //
+    // The preferred one comes out first because the encoder puts that group
+    // before the sentinel, whatever order the caller's array was in.
+    //
+    ASSERT_TRUE(Decoded.Addresses[0].PreferredToCurrentPath);
+    ASSERT_TRUE(QuicAddrCompare(&Frame.Addresses[0].Address, &Decoded.Addresses[0].Address));
+    ASSERT_EQ(1u, Decoded.Addresses[0].PriorityHint);
+    ASSERT_FALSE(Decoded.Addresses[1].PreferredToCurrentPath);
+    ASSERT_TRUE(QuicAddrCompare(&Frame.Addresses[1].Address, &Decoded.Addresses[1].Address));
+    ASSERT_FALSE(Decoded.Addresses[2].PreferredToCurrentPath);
+    ASSERT_TRUE(QuicAddrCompare(&Frame.Addresses[2].Address, &Decoded.Addresses[2].Address));
+}
+
+//
+// Withdrawing everything. A frame with no addresses is legal and is the only
+// way this draft says "forget what I told you".
+//
+TEST_F(AltAddrFrameTest, RoundTripEmptySet)
+{
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    CxPlatZeroMemory(&Frame, sizeof(Frame));
+    Frame.SequenceNumber = 42;
+
+    uint8_t Buffer[32];
+    CxPlatZeroMemory(Buffer, sizeof(Buffer));
+    uint16_t Offset = 0;
+    ASSERT_TRUE(QuicAlternativeAddressFrameEncode(&Frame, &Offset, sizeof(Buffer), Buffer));
+
+    QUIC_ALTERNATIVE_ADDRESS_EX Decoded;
+    uint16_t DecodeOffset = ALT_ADDR_TYPE_LEN;
+    ASSERT_TRUE(QuicAlternativeAddressFrameDecode(Offset, Buffer, &DecodeOffset, &Decoded));
+    ASSERT_EQ(42u, Decoded.SequenceNumber);
+    ASSERT_EQ(0, Decoded.AddressCount);
+}
+
+TEST_F(AltAddrFrameTest, RejectsMissingCurrentPath)
+{
+    Builder B;
+    B.Start(1, 1);
+    B.Ipv4(V4(1, 443), 0);
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    ASSERT_FALSE(Decode(B, &Frame));
+}
+
+TEST_F(AltAddrFrameTest, RejectsTwoCurrentPaths)
+{
+    Builder B;
+    B.Start(1, 2);
+    B.CurrentPath();
+    B.CurrentPath();
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    ASSERT_FALSE(Decode(B, &Frame));
+}
+
+TEST_F(AltAddrFrameTest, RejectsDecreasingPriorityWithinASide)
+{
+    Builder B;
+    B.Start(1, 3);
+    B.Ipv4(V4(1, 443), 5);
+    B.Ipv4(V4(2, 443), 4); // Lower priority value after a higher one.
+    B.CurrentPath();
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    ASSERT_FALSE(Decode(B, &Frame));
+}
+
+//
+// The two sides are ordered independently, so the sentinel resets the check.
+// Without that reset a perfectly legal frame would be rejected.
+//
+TEST_F(AltAddrFrameTest, AllowsPriorityResetAcrossCurrentPath)
+{
+    Builder B;
+    B.Start(1, 4);
+    B.Ipv4(V4(1, 443), 5);
+    B.Ipv4(V4(2, 443), 9);
+    B.CurrentPath();
+    B.Ipv4(V4(3, 443), 1); // Lower than the 9 before the sentinel: fine.
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    ASSERT_TRUE(Decode(B, &Frame));
+    ASSERT_EQ(3, Frame.AddressCount);
+    ASSERT_TRUE(Frame.Addresses[0].PreferredToCurrentPath);
+    ASSERT_TRUE(Frame.Addresses[1].PreferredToCurrentPath);
+    ASSERT_FALSE(Frame.Addresses[2].PreferredToCurrentPath);
+}
+
+TEST_F(AltAddrFrameTest, RejectsUnnegotiatedAddressType)
+{
+    Builder B;
+    B.Start(1, 2);
+    B.CurrentPath();
+    B.RawType(0x03); // Not one of the three implicit types.
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    ASSERT_FALSE(Decode(B, &Frame));
+}
+
+TEST_F(AltAddrFrameTest, RejectsTruncatedAddress)
+{
+    Builder B;
+    B.Start(1, 2);
+    B.CurrentPath();
+    B.RawType(0x01);
+    B.RawType(0);   // Priority hint.
+    B.Cursor += 3;  // Three of the six address+port bytes.
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    ASSERT_FALSE(Decode(B, &Frame));
+}
+
+//
+// An entry count larger than the bytes available. Rejected up front rather
+// than by failing one entry decode at a time, since the smallest entry is a
+// single byte.
+//
+TEST_F(AltAddrFrameTest, RejectsImpossibleEntryCount)
+{
+    Builder B;
+    B.Start(1, 1000);
+    B.CurrentPath();
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    ASSERT_FALSE(Decode(B, &Frame));
+}
+
+//
+// More addresses than this build tracks. The extras are dropped rather than
+// treated as an error, and -- the part worth testing -- the bytes are still
+// consumed and the ordering rule still applied, so the frame stays parseable
+// and a violation among the dropped entries is still caught.
+//
+TEST_F(AltAddrFrameTest, DropsAddressesPastTheLimit)
+{
+    const uint64_t Count = QUIC_MAX_ALTERNATIVE_ADDRESSES + 3;
+    Builder B;
+    B.Start(1, Count + 1);
+    B.CurrentPath();
+    for (uint64_t i = 0; i < Count; ++i) {
+        B.Ipv4(V4((uint8_t)(i + 1), 443), i);
+    }
+
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    uint16_t Offset = ALT_ADDR_TYPE_LEN;
+    ASSERT_TRUE(QuicAlternativeAddressFrameDecode(B.Length(), B.Buffer, &Offset, &Frame));
+    ASSERT_EQ(QUIC_MAX_ALTERNATIVE_ADDRESSES, Frame.AddressCount);
+    ASSERT_EQ(B.Length(), Offset); // Every entry consumed, kept or not.
+}
+
+TEST_F(AltAddrFrameTest, RejectsBadOrderingAmongDroppedAddresses)
+{
+    Builder B;
+    B.Start(1, QUIC_MAX_ALTERNATIVE_ADDRESSES + 3);
+    B.CurrentPath();
+    for (uint64_t i = 0; i < QUIC_MAX_ALTERNATIVE_ADDRESSES; ++i) {
+        B.Ipv4(V4((uint8_t)(i + 1), 443), 10);
+    }
+    //
+    // Past the limit, so this entry is never stored -- but it still breaks the
+    // nondecreasing rule and still has to be rejected.
+    //
+    B.Ipv4(V4(99, 443), 1);
+    QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+    uint16_t Offset = ALT_ADDR_TYPE_LEN;
+    ASSERT_FALSE(QuicAlternativeAddressFrameDecode(B.Length(), B.Buffer, &Offset, &Frame));
+}
