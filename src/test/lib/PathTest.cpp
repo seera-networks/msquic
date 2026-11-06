@@ -2556,6 +2556,8 @@ QuicTestMultipathPathsAreMeasured(
 
 #endif
 
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
+
 //
 // draft-munizaga-quic-alternative-server-address end to end.
 //
@@ -2729,3 +2731,5 @@ QuicTestAlternativeServerAddress(
     Connection.Shutdown(QUIC_TEST_NO_ERROR);
     TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
 }
+
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES
