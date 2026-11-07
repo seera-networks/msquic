@@ -2963,8 +2963,17 @@ QuicTestPathOrigins(
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
 
+    //
+    // MANUAL explicitly, because AUTO is the default (QUIC_DEFAULT_ADD_ADDRESS_MODE).
+    // Without this the assertion below that no path is the reconciler's would
+    // hold only because nothing happened to be advertised during the run, and
+    // a route change mid-test would fail it for the wrong reason.
+    //
+    MsQuicSettings ClientSettings;
+    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_MANUAL;
+    ClientSettings.IsSet.AddAddressMode = TRUE;
     MsQuicCredentialConfig ClientCredConfig;
-    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ClientCredConfig);
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
     MsQuicAutoAcceptListener Listener(
@@ -2990,7 +2999,13 @@ QuicTestPathOrigins(
     //
     // The connection's first path came from the handshake.
     //
-    uint8_t Origins[QUIC_MAX_PATH_COUNT] = { 0 };
+    //
+    // Pre-filled with a value no origin uses, so that a handler which wrote
+    // nothing -- or wrote at the wrong offset -- cannot pass by leaving the
+    // buffer as it found it.
+    //
+    uint8_t Origins[QUIC_MAX_PATH_COUNT];
+    memset(Origins, 0xFF, sizeof(Origins));
     uint32_t Length = sizeof(Origins);
     TEST_QUIC_SUCCEEDED(
         MsQuic->GetParam(
@@ -3027,6 +3042,7 @@ QuicTestPathOrigins(
     } while (QUIC_FAILED(Status) && ++Try <= 3);
     TEST_QUIC_SUCCEEDED(Status);
 
+    memset(Origins, 0xFF, sizeof(Origins));
     Length = sizeof(Origins);
     TEST_QUIC_SUCCEEDED(
         MsQuic->GetParam(
@@ -3042,6 +3058,11 @@ QuicTestPathOrigins(
     uint32_t InitialCount = 0;
     uint32_t ApplicationCount = 0;
     for (uint32_t i = 0; i < Length; ++i) {
+        //
+        // NONE would mean a slot that never went through QuicPathInitialize
+        // was reported as in use.
+        //
+        TEST_NOT_EQUAL((uint8_t)QUIC_PATH_ORIGIN_NONE, Origins[i]);
         if (Origins[i] == QUIC_PATH_ORIGIN_INITIAL) {
             InitialCount++;
         } else if (Origins[i] == QUIC_PATH_ORIGIN_APPLICATION) {
@@ -3052,8 +3073,9 @@ QuicTestPathOrigins(
     TEST_EQUAL(1u, ApplicationCount);
 
     //
-    // And nothing is labelled as the reconciler's: this connection never asked
-    // for automatic path management, so stage 3 would have nothing to remove.
+    // And nothing is labelled as the reconciler's. The connection is in MANUAL,
+    // so nothing may open a path on its own behalf and stage 3 would have
+    // nothing here to remove.
     //
     for (uint32_t i = 0; i < Length; ++i) {
         TEST_NOT_EQUAL((uint8_t)QUIC_PATH_ORIGIN_RECONCILER, Origins[i]);
@@ -3142,7 +3164,8 @@ QuicTestPathOriginsAdvertised(
 
     TEST_TRUE(AltServerAddressWaitForPathCount(Connection, 2));
 
-    uint8_t Origins[QUIC_MAX_PATH_COUNT] = { 0 };
+    uint8_t Origins[QUIC_MAX_PATH_COUNT];
+    memset(Origins, 0xFF, sizeof(Origins));
     uint32_t Length = sizeof(Origins);
     TEST_QUIC_SUCCEEDED(
         MsQuic->GetParam(
@@ -3151,6 +3174,7 @@ QuicTestPathOriginsAdvertised(
 
     uint32_t ReconcilerCount = 0;
     for (uint32_t i = 0; i < Length; ++i) {
+        TEST_NOT_EQUAL((uint8_t)QUIC_PATH_ORIGIN_NONE, Origins[i]);
         if (Origins[i] == QUIC_PATH_ORIGIN_RECONCILER) {
             ReconcilerCount++;
         }

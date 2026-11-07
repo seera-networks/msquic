@@ -1179,20 +1179,34 @@ TEST(Basic, AlternativeServerAddressAuto) {
     QuicTestAlternativeServerAddressAuto();
 }
 
+//
+// These two read the origins back through a debug-only parameter, so in a
+// release build they skip rather than run. The skip is deliberate and explicit:
+// leaving the registration unguarded with an empty body would report a green
+// pass in release while testing nothing at all.
+//
 TEST(Basic, PathOrigins) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathOrigins needs QUIC_PARAM_CONN_TEST_PATH_ORIGINS, which is debug only.";
+#else
     if (TestingKernelMode) {
         GTEST_SKIP() << "QuicTestPathOrigins is user-mode only.";
     }
     TestLogger Logger("QuicTestPathOrigins");
     QuicTestPathOrigins();
+#endif
 }
 
 TEST(Basic, PathOriginsAdvertised) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathOriginsAdvertised needs QUIC_PARAM_CONN_TEST_PATH_ORIGINS, which is debug only.";
+#else
     if (TestingKernelMode) {
         GTEST_SKIP() << "QuicTestPathOriginsAdvertised is user-mode only.";
     }
     TestLogger Logger("QuicTestPathOriginsAdvertised");
     QuicTestPathOriginsAdvertised();
+#endif
 }
 
 //

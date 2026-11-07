@@ -182,6 +182,18 @@ typedef struct QUIC_PRIVATE_TRANSPORT_PARAMETER {
 typedef enum QUIC_PATH_ORIGIN {
 
     //
+    // Not a real origin: no path in Connection->Paths carries it, because
+    // QuicPathInitialize is the only thing that sets InUse and it always
+    // records an origin. Zero is spent on it deliberately. QUIC_CONNECTION is
+    // zero-allocated and QuicPathRemove clears only InUse on the slot it
+    // vacates, so without this the stale and never-initialized slots would
+    // read as the one origin automatic removal must never touch -- a mistake
+    // that would look correct. Reading NONE instead means someone walked the
+    // array past PathsCount, and is worth asserting on.
+    //
+    QUIC_PATH_ORIGIN_NONE = 0,
+
+    //
     // The connection's first path, from the handshake. Never removed by
     // reconciliation -- QuicPathRemove promotes a replacement into Paths[0]
     // rather than leaving the slot empty, so "the initial path" is a statement
@@ -220,8 +232,10 @@ typedef enum QUIC_PATH_ORIGIN {
 } QUIC_PATH_ORIGIN;
 
 //
-// How each of the connection's paths came to exist: one QUIC_PATH_ORIGIN per
-// in-use path, in path-array order. Get only, debug only.
+// How each of the connection's paths came to exist: one byte per in-use path,
+// in path-array order, each holding a QUIC_PATH_ORIGIN value. Bytes rather
+// than the enum itself, so size the buffer as uint8_t[QUIC_MAX_PATH_COUNT].
+// Get only, debug only.
 //
 // Exists so a test can check that reconciliation will leave an
 // application-created path alone, which is the whole point of recording the
