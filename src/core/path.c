@@ -22,11 +22,18 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathInitialize(
     _In_ QUIC_CONNECTION* Connection,
-    _In_ QUIC_PATH* Path
+    _In_ QUIC_PATH* Path,
+    _In_ QUIC_PATH_ORIGIN Origin
     )
 {
     CxPlatZeroMemory(Path, sizeof(QUIC_PATH));
     Path->ID = Connection->NextPathId++; // TODO - Check for duplicates after wrap around?
+    //
+    // Taken as a parameter rather than defaulted, so that a new creation site
+    // has to say what it is instead of silently inheriting someone else's
+    // answer. Automatic removal keys on it.
+    //
+    Path->Origin = (uint8_t)Origin;
     Path->InUse = TRUE;
     Path->RemoteAddressSequenceNumberValid = FALSE;
     Path->RemoteAddressSequenceNumber = QUIC_VAR_INT_MAX;
@@ -579,7 +586,7 @@ QuicConnGetPathForPacket(
 
     CXPLAT_DBG_ASSERT(Connection->PathsCount < QUIC_MAX_PATH_COUNT);
     QUIC_PATH* Path = &Connection->Paths[1];
-    QuicPathInitialize(Connection, Path);
+    QuicPathInitialize(Connection, Path, QUIC_PATH_ORIGIN_PEER);
     Connection->PathsCount++;
 
     if (Connection->Paths[0].DestCid->CID.Length == 0) {

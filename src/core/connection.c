@@ -135,7 +135,7 @@ QuicConnAlloc(
     QUIC_PATHID *PathID = NULL;
 
     QUIC_PATH* Path = &Connection->Paths[0];
-    QuicPathInitialize(Connection, Path);
+    QuicPathInitialize(Connection, Path, QUIC_PATH_ORIGIN_INITIAL);
     Path->IsActive = TRUE;
     Connection->PathsCount = 1;
 
@@ -593,6 +593,7 @@ QUIC_STATUS
 QuicConnAddPath(
     _In_ QUIC_CONNECTION* Connection,
     _In_ QUIC_PATH_PARAM* Param,
+    _In_ QUIC_PATH_ORIGIN Origin,
     _Out_ QUIC_PATH** NewPath
     );
 
@@ -1152,7 +1153,8 @@ QuicConnAutoMigrateMultipath(
             Param.RemoteAddress = &NewRemote;
 
             QUIC_PATH* NewPath = NULL;
-            const QUIC_STATUS Status = QuicConnAddPath(Connection, &Param, &NewPath);
+            const QUIC_STATUS Status =
+                QuicConnAddPath(Connection, &Param, QUIC_PATH_ORIGIN_RECONCILER, &NewPath);
             if (QUIC_FAILED(Status)) {
                 //
                 // Out of path IDs or CIDs. Stop rather than spin: the next
@@ -1497,7 +1499,8 @@ QuicConnAutoFollowRoute(
     Param.RemoteAddress = &NewRemote;
 
     QUIC_PATH* NewPath = NULL;
-    const QUIC_STATUS Status = QuicConnAddPath(Connection, &Param, &NewPath);
+    const QUIC_STATUS Status =
+        QuicConnAddPath(Connection, &Param, QUIC_PATH_ORIGIN_RECONCILER, &NewPath);
     if (QUIC_FAILED(Status)) {
         //
         // Out of path IDs, out of CIDs, or the address would not bind. The old
@@ -9401,6 +9404,7 @@ QUIC_STATUS
 QuicConnAddPath(
     _In_ QUIC_CONNECTION* Connection,
     _In_ QUIC_PATH_PARAM* Param,
+    _In_ QUIC_PATH_ORIGIN Origin,
     _Out_ QUIC_PATH** NewPath
     )
 {
@@ -9470,10 +9474,16 @@ QuicConnAddPath(
     }
 
     if (!Connection->State.LocalAddressSet && !Connection->State.RemoteAddressSet) {
+        //
+        // Before Start, this is not a second path at all: it is the connection
+        // saying what addresses its handshake will use. So the origin is
+        // deliberately not applied here -- Paths[0] stays INITIAL, because that
+        // is what it still is.
+        //
         Path = &Connection->Paths[0];
     } else {
         Path = &Connection->Paths[1];
-        QuicPathInitialize(Connection, Path);
+        QuicPathInitialize(Connection, Path, Origin);
         Path->Allowance = UINT32_MAX;
         Connection->PathsCount++;
     }
@@ -10136,7 +10146,8 @@ QuicConnProcessAddAddress(
 
     QUIC_PATH_PARAM PathParam = { &LocalAddress, &Frame->Address };
     QUIC_PATH* Path = NULL;
-    QUIC_STATUS Status = QuicConnAddPath(Connection, &PathParam, &Path);
+    QUIC_STATUS Status =
+        QuicConnAddPath(Connection, &PathParam, QUIC_PATH_ORIGIN_RECONCILER, &Path);
     if (QUIC_FAILED(Status)) {
         return Status;
     }
@@ -10757,7 +10768,7 @@ QuicConnSendPunchProbe(
 
     QUIC_PATH TempPath = { 0 };
 
-    QuicPathInitialize(Connection, &TempPath);
+    QuicPathInitialize(Connection, &TempPath, QUIC_PATH_ORIGIN_TRANSIENT);
     TempPath.Allowance = UINT32_MAX;
 
     BOOLEAN FatalError = FALSE;
@@ -11447,7 +11458,13 @@ QuicConnParamSet(
             break;
         }
         QUIC_PATH* Path = NULL;
-        Status = QuicConnAddPath(Connection, (QUIC_PATH_PARAM*)Buffer, &Path);
+        //
+        // The application asked, so the application owns it: reconciliation
+        // must leave this path alone.
+        //
+        Status =
+            QuicConnAddPath(
+                Connection, (QUIC_PATH_PARAM*)Buffer, QUIC_PATH_ORIGIN_APPLICATION, &Path);
         if (QUIC_FAILED(Status)) {
             break;
         }
@@ -12361,6 +12378,36 @@ QuicConnParamGet(
         Status =
             QuicConnGetPathStatistics(Connection, BufferLength, (QUIC_PATH_STATISTICS *)Buffer);
         break;
+
+#if DEBUG
+    case QUIC_PARAM_CONN_TEST_PATH_ORIGINS: {
+
+        //
+        // Every in-use path, in array order, so a test can tell which paths
+        // reconciliation owns. Debug only: it reports internal state that is
+        // nobody's business outside the library.
+        //
+        CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+        const uint32_t RequiredLength = Connection->PathsCount;
+
+        if (*BufferLength < RequiredLength) {
+            *BufferLength = RequiredLength;
+            Status = QUIC_STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+        if (Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+            ((uint8_t*)Buffer)[i] = Connection->Paths[i].Origin;
+        }
+        *BufferLength = RequiredLength;
+        Status = QUIC_STATUS_SUCCESS;
+        break;
+    }
+#endif
 
     case QUIC_PARAM_CONN_CLOSE_ASYNC:
 

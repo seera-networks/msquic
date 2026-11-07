@@ -50,6 +50,11 @@ typedef struct QUIC_PATH {
     uint8_t ID;
 
     //
+    // How this path came to exist. See QUIC_PATH_ORIGIN.
+    //
+    uint8_t Origin;
+
+    //
     // Indicates the path object is actively in use.
     //
     BOOLEAN InUse : 1;
@@ -284,7 +289,8 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathInitialize(
     _In_ QUIC_CONNECTION* Connection,
-    _In_ QUIC_PATH* Path
+    _In_ QUIC_PATH* Path,
+    _In_ QUIC_PATH_ORIGIN Origin
     );
 
 //
