@@ -2815,8 +2815,10 @@ QuicTestAlternativeServerAddress(
 //
 // This exists because the MANUAL test above cannot see any of that: it asserts
 // on the application events, so it passed while AUTO mode did nothing at all.
-// It covers the half that can be reached today -- an advertised address
-// becoming a real path -- and records why the other half cannot be.
+// It covers both halves: an advertised address becoming a real path, and the
+// server taking it back again. The second was unreachable until #156 was
+// fixed -- the server crashed on its own bound-address teardown before the
+// client could be observed reacting.
 //
 void
 QuicTestAlternativeServerAddressAuto(
@@ -2920,8 +2922,14 @@ QuicTestAlternativeServerAddressAuto(
     TEST_TRUE(AltServerAddressWaitForPathCount(Connection, 1));
 
     //
-    // Still up. Withdrawing a non-active path must not disturb the connection.
+    // Both sides still up. The server is the one that matters here and is the
+    // one that was broken: #156 was its own teardown freeing a CID its active
+    // path still used. Asserting only on the client would not catch it --
+    // the failure is a silent abort or use-after-free, so no CONNECTION_CLOSE
+    // reaches the client, and with asserts compiled out a corrupted server
+    // leaves this test green.
     //
+    TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(100));
     TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
 
     Connection.Shutdown(QUIC_TEST_NO_ERROR);

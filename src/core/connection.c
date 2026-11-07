@@ -9983,10 +9983,16 @@ QuicConnRemovePath(
             if (!Connection->State.MultipathNegotiated) {
                 uint8_t RemovingPathIndex = (uint8_t)i;
                 //
-                // Same shared-CID test as QuicConnRemoveBoundAddress makes, for
-                // the same reason: this path's destination CID may be the
-                // active path's, and retiring it would have the peer's
-                // acknowledgement free it while that path still sends on it.
+                // The same shared-CID test QuicConnRemoveBoundAddress makes,
+                // kept here for symmetry rather than because it can fire today.
+                // Aliasing only happens in QuicConnGetPathForPacket, whose
+                // creation gate is the exact complement of the role check at
+                // the top of this function -- a connection that can hold an
+                // aliased path cannot reach here -- and it also needs a
+                // zero-length peer CID, which only a server sees. Retiring a
+                // CID another path still uses would be wrong whichever function
+                // did it, so the test belongs at both, but a reader should not
+                // go looking for the case that reaches this one.
                 //
                 if (Path->DestCid != NULL &&
                     Connection->State.HandshakeConfirmed &&
