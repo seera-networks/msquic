@@ -1210,6 +1210,34 @@ TEST(Basic, PathOriginsAdvertised) {
 }
 
 //
+// Stage 3 of #157. Debug only for the same reason: they read the paths'
+// endpoints and origins back through debug-only parameters.
+//
+TEST(Basic, PathReconcilerSwapAtPathLimit) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathReconcilerSwapAtPathLimit needs QUIC_PARAM_CONN_TEST_PATH_ADDRESSES, which is debug only.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathReconcilerSwapAtPathLimit is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathReconcilerSwapAtPathLimit");
+    QuicTestPathReconcilerSwapAtPathLimit();
+#endif
+}
+
+TEST(Basic, PathReconcilerKeepsApplicationPath) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathReconcilerKeepsApplicationPath needs QUIC_PARAM_CONN_TEST_PATH_ADDRESSES, which is debug only.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathReconcilerKeepsApplicationPath is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathReconcilerKeepsApplicationPath");
+    QuicTestPathReconcilerKeepsApplicationPath();
+#endif
+}
+
+//
 // Reads a public parameter and needs no injection, so it runs in release too.
 //
 TEST(ParameterValidation, GetLocalAddresses) {

@@ -1870,8 +1870,7 @@ QuicConnProcessAddAddress(
 
 //
 // Rebuilds the candidate pair table from the host's local addresses and the
-// remote addresses this connection knows about. Nothing reads the table yet;
-// stage 3 of #157 is what makes paths follow it.
+// remote addresses this connection knows about.
 //
 // Must run on the connection's worker: the per-remote route lookup can block.
 //
@@ -1882,12 +1881,25 @@ QuicConnRebuildCandidatePairs(
     );
 
 //
-// Asks for a rebuild on the connection's worker. Safe to call from frame
-// processing, which the rebuild itself is not.
+// The reconciler: rebuilds the table, removes the paths it no longer holds a
+// pair for, then opens paths for the best pairs that have none -- in that
+// order, which is the reason it is one function and not three callers.
+//
+// Must run on the connection's worker, and never from frame processing.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
-QuicConnQueueCandidateRebuild(
+QuicConnReconcilePaths(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Asks for a reconciliation on the connection's worker. Safe to call from frame
+// processing, which the reconciliation itself is not.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnQueueReconcile(
     _In_ QUIC_CONNECTION* Connection
     );
 

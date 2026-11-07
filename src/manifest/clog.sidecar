@@ -11368,6 +11368,74 @@
       ],
       "macroName": "QuicTraceLogStreamWarning"
     },
+    "ReconcileAddedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler opened a path for a table pair",
+      "UniqueId": "ReconcileAddedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ReconcileAddPathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler could not open a path, status=0x%x",
+      "UniqueId": "ReconcileAddPathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ReconcileCreateHeldDown": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler held down opening paths",
+      "UniqueId": "ReconcileCreateHeldDown",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ReconcileRemovedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler removed a path whose pair left the table",
+      "UniqueId": "ReconcileRemovedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ReconcileRemovePathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler failed to remove a path, status=0x%x",
+      "UniqueId": "ReconcileRemovePathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "RecoverCrypto": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Recovering crypto from %llu up to %llu",
@@ -18894,6 +18962,31 @@
         "UniquenessHash": "933b832f-9c45-2489-6266-de2ff7e2ac21",
         "TraceID": "ReceiveTooBig",
         "EncodingString": "[strm][%p] Tried to write beyond end of buffer!"
+      },
+      {
+        "UniquenessHash": "fd6cb018-7495-0d87-e197-27fd82eb98c3",
+        "TraceID": "ReconcileAddedPath",
+        "EncodingString": "[conn][%p] Reconciler opened a path for a table pair"
+      },
+      {
+        "UniquenessHash": "f76439a8-3ebe-fc40-006f-9333ff3aca61",
+        "TraceID": "ReconcileAddPathFailed",
+        "EncodingString": "[conn][%p] Reconciler could not open a path, status=0x%x"
+      },
+      {
+        "UniquenessHash": "e59c1235-3ec2-fc7f-3ae1-15001c2ee2ac",
+        "TraceID": "ReconcileCreateHeldDown",
+        "EncodingString": "[conn][%p] Reconciler held down opening paths"
+      },
+      {
+        "UniquenessHash": "3255a2b2-6aef-4629-0ad0-7b66a950e3f1",
+        "TraceID": "ReconcileRemovedPath",
+        "EncodingString": "[conn][%p] Reconciler removed a path whose pair left the table"
+      },
+      {
+        "UniquenessHash": "07290e82-054a-9026-6abe-7f36a5b99f16",
+        "TraceID": "ReconcileRemovePathFailed",
+        "EncodingString": "[conn][%p] Reconciler failed to remove a path, status=0x%x"
       },
       {
         "UniquenessHash": "94b619d7-6b5a-e1b4-d3ee-1b66a383ebbc",
