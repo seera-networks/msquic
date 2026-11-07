@@ -284,8 +284,12 @@ QuicCandidateSetRebuild(
     // The local address each held pair came from, parallel to the pool, so the
     // comparator can reach the flags without the pair carrying a copy of them.
     //
-    const CXPLAT_LOCAL_ADDRESS* HeldLocal[QUIC_MAX_CANDIDATE_PAIRS];
-    CxPlatZeroMemory(HeldLocal, sizeof(HeldLocal));
+    //
+    // Zero-initialized in the declaration rather than memset. Handing an array
+    // of pointers-to-const to CxPlatZeroMemory's void* drops the const, which
+    // MSVC reports as C4090 and treats as an error; gcc says nothing.
+    //
+    const CXPLAT_LOCAL_ADDRESS* HeldLocal[QUIC_MAX_CANDIDATE_PAIRS] = { NULL };
 
     for (uint32_t r = 0; r < RemoteCount; ++r) {
         for (uint32_t l = 0; l < LocalCount; ++l) {
