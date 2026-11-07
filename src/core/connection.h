@@ -604,6 +604,14 @@ typedef struct QUIC_CONNECTION {
     QUIC_CANDIDATE_SET* CandidatePairs;
 
     //
+    // A rebuild is already queued, so another change need not queue a second.
+    // The rebuild reads the current state rather than anything carried on the
+    // operation, so one pending pass covers every change that arrives before
+    // it runs.
+    //
+    BOOLEAN CandidatePairsRebuildQueued;
+
+    //
     // The sequence number to use for sending an punch me now.
     //
     QUIC_VAR_INT PunchMeNowSequenceNumber;
@@ -1870,6 +1878,16 @@ QuicConnProcessAddAddress(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicConnRebuildCandidatePairs(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Asks for a rebuild on the connection's worker. Safe to call from frame
+// processing, which the rebuild itself is not.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnQueueCandidateRebuild(
     _In_ QUIC_CONNECTION* Connection
     );
 

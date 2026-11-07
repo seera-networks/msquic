@@ -431,14 +431,14 @@ QuicConnFree(
     // path that somehow reaches free still returns the reference.
     //
     CXPLAT_DBG_ASSERT(!Connection->AddressMonitorRef);
-    if (Connection->CandidatePairs != NULL) {
-        CXPLAT_FREE(Connection->CandidatePairs, QUIC_POOL_CONN);
-        Connection->CandidatePairs = NULL;
-    }
-
     if (Connection->AddressMonitorRef) {
         Connection->AddressMonitorRef = FALSE;
         QuicLibraryReleaseAddressMonitor();
+    }
+
+    if (Connection->CandidatePairs != NULL) {
+        CXPLAT_FREE(Connection->CandidatePairs, QUIC_POOL_CONN);
+        Connection->CandidatePairs = NULL;
     }
     Connection->State.Freed = TRUE;
 #if DEBUG
@@ -639,11 +639,6 @@ QuicConnHasPathOnLocalAddress(
 }
 
 
-//
-// Ranks one candidate local address against another for AUTO mode, in the
-// order phase 3 of #134 settled on. Returns TRUE when Left is the better of
-// the two.
-//
 // What the OS says it would send from to reach Remote, or FALSE when it cannot
 // say. The answer is the host's own routing decision, which is the one input
 // this feature cannot derive from the address snapshot: with two interfaces up
@@ -777,10 +772,24 @@ QuicConnSelectLocalAddress(
             (Candidate->Flags & CXPLAT_ADDRESS_FLAG_LINK_LOCAL) ||
             QuicCandidateAddressIsLinkLocal(&Candidate->Address);
 
-        if (CandidateIsLoopback && !RemoteIsLoopback) {
+        //
+        // Symmetric, and that is a behaviour change rather than a refactor.
+        //
+        // This filter used to reject only a narrow local address for a wider
+        // remote, which let a global local address through for a loopback or
+        // link-local remote -- nothing sends from 10.0.0.1 to 127.0.0.2, or to
+        // an fe80:: peer. It did not matter much while the ranking derived
+        // narrowness from the platform's flag alone, because a flagless
+        // 169.254.x address then tied with a global one and fell through to the
+        // later keys. The shared ranker derives it from the address too, so
+        // without this the global address would be actively preferred for a
+        // link-local peer and AUTO would migrate onto something that cannot
+        // reach it. Matching QuicCandidatePairIsViable fixes both.
+        //
+        if (CandidateIsLoopback != RemoteIsLoopback) {
             continue;
         }
-        if (CandidateIsLinkLocal && !RemoteIsLinkLocal) {
+        if (CandidateIsLinkLocal != RemoteIsLinkLocal) {
             continue;
         }
 
@@ -1942,6 +1951,15 @@ QuicConnProcessLocalAddressChange(
     Connection->LastAddressGeneration = Generation;
 
     //
+    // Queued here, before the bail-outs below. A route change bumps the
+    // generation without necessarily losing a path or adding an address, so a
+    // connection whose paths already cover every address it has would reach
+    // "nothing to do" and exit -- leaving the table holding pre-change
+    // route preferences, which is its top-ranked key.
+    //
+    QuicConnQueueCandidateRebuild(Connection);
+
+    //
     // Which of this connection's paths have lost the address they are bound
     // to. Compared without the port, since a snapshot entry names an address
     // and the path names an endpoint.
@@ -2083,10 +2101,9 @@ QuicConnProcessLocalAddressChange(
 
     //
     // The host's addresses have changed, so the pairs they take part in have
-    // too. After the migration above rather than before, so the table reflects
-    // the paths as they now are.
+    // too.
     //
-    QuicConnRebuildCandidatePairs(Connection);
+    QuicConnQueueCandidateRebuild(Connection);
 
 Exit:
 
@@ -10119,6 +10136,50 @@ QuicConnAltAddrApplyAdded(
 }
 
 //
+// Asks for a rebuild on the connection's worker.
+//
+// Queued rather than done where the change is noticed, because
+// QuicConnProcessAlternativeAddress runs synchronously inside
+// QuicConnRecvFrames. Rebuilding there would put the address-snapshot copy --
+// and, once stage 3 turns them on, a route lookup per remote, each a socket,
+// connect and getsockname -- inline in packet processing, where a peer can
+// decide how often it happens by putting several ALTERNATIVE_ADDRESS frames in
+// one packet. One coalesced pass per worker visit instead, which is also where
+// #157 says the reconciler has to live.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnQueueCandidateRebuild(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    if (Connection->State.ShutdownComplete ||
+        Connection->State.Freed ||
+        Connection->Worker == NULL ||
+        Connection->CandidatePairsRebuildQueued) {
+        return;
+    }
+
+    QUIC_OPERATION* Oper =
+        QuicConnAllocOperation(Connection, QUIC_OPER_TYPE_REBUILD_CANDIDATES);
+    if (Oper == NULL) {
+        //
+        // Dropped. The table is rebuilt from current state, so the next change
+        // produces an equivalent pass; nothing accumulates.
+        //
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "candidate pair rebuild operation",
+            0);
+        return;
+    }
+
+    Connection->CandidatePairsRebuildQueued = TRUE;
+    QuicConnQueueOper(Connection, Oper);
+}
+
+//
 // Rebuilds the candidate pair table from the two inputs the connection has: the
 // host's local addresses and the remote addresses it knows about.
 //
@@ -10136,6 +10197,8 @@ QuicConnRebuildCandidatePairs(
     _In_ QUIC_CONNECTION* Connection
     )
 {
+    Connection->CandidatePairsRebuildQueued = FALSE;
+
     if (Connection->State.ShutdownComplete || Connection->Paths[0].Binding == NULL) {
         return;
     }
@@ -10215,26 +10278,44 @@ QuicConnRebuildCandidatePairs(
     }
 
     //
-    // One route lookup per remote address, not per pair. This is the only input
-    // that knows which local address actually reaches a given remote, and it is
-    // what the table's first ranking key is.
+    // The route lookup -- one per remote address, not per pair -- is where the
+    // table's first ranking key comes from, and it is deliberately not done
+    // yet.
     //
-    for (uint32_t i = 0; i < RemoteCount; ++i) {
-        QUIC_ADDR RouteLocal;
-        if (QuicConnGetRouteLocalAddress(Connection, &Remotes[i].Address, &RouteLocal)) {
-            Remotes[i].RoutePreferredLocal = RouteLocal;
-            Remotes[i].RoutePreferredLocalValid = TRUE;
-        }
-    }
+    // Each lookup opens a socket, connects it and reads the name back, on the
+    // connection's worker. Nothing reads the table in this stage, so that is a
+    // burst of syscalls on the thread that is also servicing path validation,
+    // bought for a ranking key no one consults. It showed up as a
+    // LocalAddressChangeAutoRoute timeout on a loaded ASAN runner: the test
+    // spends 1.23s of its 2s budget either way on an idle machine, so the cost
+    // is not measurable there, but it is not free on a busy one and there is no
+    // reason to pay it before stage 3 of #157 makes paths follow the table.
+    //
+    // Leaving RoutePreferredLocalValid clear means every pair ranks as
+    // not-route-preferred, so keys 2 through 5 order the table and key 1 is
+    // inert. The unit tests cover key 1 directly, which is where that ordering
+    // is actually verified.
+    //
 
     //
     // Whether the connection is currently on an RFC 8981 temporary address, so
     // that preference carries forward instead of being re-decided. Read from
     // the snapshot rather than the path, because only the snapshot has flags.
     //
+    //
+    // Compared on port-zeroed copies with QuicAddrCompare, not QuicAddrCompareIp:
+    // that one branches on the first argument's family alone, so a v4 snapshot
+    // entry against a v6 path address memcmps sin_addr against sin6_flowinfo and
+    // can match two unrelated addresses -- which would take the privacy-address
+    // preference from the wrong address and reorder the whole table.
+    //
+    QUIC_ADDR ActiveLocal = Connection->Paths[0].Route.LocalAddress;
+    QuicAddrSetPort(&ActiveLocal, 0);
     BOOLEAN WantTemporary = FALSE;
     for (uint32_t i = 0; i < LocalCount; ++i) {
-        if (QuicAddrCompareIp(&Locals[i].Address, &Connection->Paths[0].Route.LocalAddress)) {
+        QUIC_ADDR Candidate = Locals[i].Address;
+        QuicAddrSetPort(&Candidate, 0);
+        if (QuicAddrCompare(&Candidate, &ActiveLocal)) {
             WantTemporary = !!(Locals[i].Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
             break;
         }
@@ -10334,13 +10415,14 @@ QuicConnProcessAlternativeAddress(
     //
     uint8_t Kept = 0;
     for (uint8_t i = 0; i < Connection->AltAddrCount; ++i) {
-        BOOLEAN StillAdvertised = FALSE;
+        uint8_t Match = Frame->AddressCount;
         for (uint8_t j = 0; j < Frame->AddressCount; ++j) {
             if (QuicAddrCompare(&Connection->AltAddrs[i].Address, &Frame->Addresses[j].Address)) {
-                StillAdvertised = TRUE;
+                Match = j;
                 break;
             }
         }
+        const BOOLEAN StillAdvertised = Match != Frame->AddressCount;
 
         if (StillAdvertised) {
             //
@@ -10354,14 +10436,12 @@ QuicConnProcessAlternativeAddress(
             // backup to preferred, without the address itself changing -- and
             // the candidate table ranks on exactly that.
             //
-            for (uint8_t j = 0; j < Frame->AddressCount; ++j) {
-                if (QuicAddrCompare(&Connection->AltAddrs[i].Address, &Frame->Addresses[j].Address)) {
-                    Connection->AltAddrs[Kept].PriorityHint = Frame->Addresses[j].PriorityHint;
-                    Connection->AltAddrs[Kept].PreferredToCurrentPath =
-                        Frame->Addresses[j].PreferredToCurrentPath;
-                    break;
-                }
-            }
+            // Using the index the search above already found rather than
+            // scanning the frame a second time for the same entry.
+            //
+            Connection->AltAddrs[Kept].PriorityHint = Frame->Addresses[Match].PriorityHint;
+            Connection->AltAddrs[Kept].PreferredToCurrentPath =
+                Frame->Addresses[Match].PreferredToCurrentPath;
             Kept++;
             continue;
         }
@@ -10480,8 +10560,9 @@ QuicConnProcessAlternativeAddress(
 
     //
     // The advertised set has changed, so the pairs it takes part in have too.
+    // Queued, because this runs inside frame processing.
     //
-    QuicConnRebuildCandidatePairs(Connection);
+    QuicConnQueueCandidateRebuild(Connection);
 
     return QUIC_STATUS_SUCCESS;
 }
@@ -12919,6 +13000,10 @@ QuicConnDrainOperations(
         case QUIC_OPER_TYPE_WITHDRAW_ALT_ADDRESS:
             QuicConnProcessWithdrawAltAddressOper(
                 Connection, &Oper->WITHDRAW_ALT_ADDRESS.RemoteAddress);
+            break;
+
+        case QUIC_OPER_TYPE_REBUILD_CANDIDATES:
+            QuicConnRebuildCandidatePairs(Connection);
             break;
 
         case QUIC_OPER_TYPE_LOCAL_ADDRESS_CHANGE:

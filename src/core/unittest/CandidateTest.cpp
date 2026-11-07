@@ -352,7 +352,7 @@ TEST_F(CandidateTest, RebuildReplaces)
 //
 TEST_F(CandidateTest, SurvivesDisplacingTheInsertionPoint)
 {
-    CXPLAT_LOCAL_ADDRESS Locals[QUIC_MAX_CANDIDATE_PAIRS + 1];
+    CXPLAT_LOCAL_ADDRESS Locals[QUIC_MAX_CANDIDATE_PAIRS + 2];
     for (uint32_t i = 0; i < QUIC_MAX_CANDIDATE_PAIRS + 1; ++i) {
         char Buf[32];
         snprintf(Buf, sizeof(Buf), "10.0.0.%u", i + 1);
@@ -361,13 +361,26 @@ TEST_F(CandidateTest, SurvivesDisplacingTheInsertionPoint)
 
     const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1") };
 
+    //
+    // Offered 1..15, then 17, then 16. When 16 arrives the table is full and
+    // its worst entry is 17 -- which is also exactly where 16 belongs. So the
+    // entry being evicted is the insertion point, which is the case that
+    // corrupts the list if the removal and the position lookup are done in the
+    // wrong order.
+    //
+    // Offering 1..17 in order, as this test first did, never reaches it: 17 is
+    // worse than everything held and is dropped without any eviction at all.
+    //
+    CXPLAT_LOCAL_ADDRESS Offered[QUIC_MAX_CANDIDATE_PAIRS + 2];
+    for (uint32_t i = 0; i < QUIC_MAX_CANDIDATE_PAIRS - 1; ++i) {
+        Offered[i] = Locals[i];                          // 1..15
+    }
+    Offered[QUIC_MAX_CANDIDATE_PAIRS - 1] = Locals[QUIC_MAX_CANDIDATE_PAIRS];     // 17
+    Offered[QUIC_MAX_CANDIDATE_PAIRS] = Locals[QUIC_MAX_CANDIDATE_PAIRS - 1];     // 16
+
     QUIC_CANDIDATE_SET Set;
     QuicCandidateSetInitialize(&Set);
-    //
-    // Offered best-first, so every pair after the sixteenth lands exactly at
-    // the tail it displaces.
-    //
-    QuicCandidateSetRebuild(&Set, Locals, QUIC_MAX_CANDIDATE_PAIRS + 1, Remotes, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Offered, QUIC_MAX_CANDIDATE_PAIRS + 1, Remotes, 1, FALSE);
 
     ASSERT_EQ((uint32_t)QUIC_MAX_CANDIDATE_PAIRS, ListLength(Set));
 
@@ -381,4 +394,12 @@ TEST_F(CandidateTest, SurvivesDisplacingTheInsertionPoint)
     }
     ASSERT_EQ((uint32_t)QUIC_MAX_CANDIDATE_PAIRS, Backwards);
     ASSERT_EQ("10.0.0.1>192.0.2.1:4433", Order(Set)[0]);
+
+    //
+    // 16 displaced 17 and took its place at the tail, which is the eviction
+    // this test exists for.
+    //
+    ASSERT_EQ(
+        "10.0.0.16>192.0.2.1:4433",
+        Order(Set)[QUIC_MAX_CANDIDATE_PAIRS - 1]);
 }

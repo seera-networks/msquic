@@ -81,8 +81,17 @@ QuicCandidateIsLinkLocal(
         QuicCandidateAddressIsLinkLocal(&Local->Address);
 }
 
-BOOLEAN
-QuicCandidateLocalAddressIsBetter(
+//
+// Three-way rather than boolean, so a caller that needs to know two addresses
+// rank *equally* can see it directly instead of asking twice with the arguments
+// reversed -- which reads as a bug and which clang-tidy flags as one.
+//
+// Negative when Left is better, positive when Right is, zero when the criteria
+// cannot separate them.
+//
+static
+int
+QuicCandidateLocalAddressCompare(
     _In_ const CXPLAT_LOCAL_ADDRESS* Left,
     _In_ const CXPLAT_LOCAL_ADDRESS* Right,
     _In_ BOOLEAN WantTemporary,
@@ -96,7 +105,7 @@ QuicCandidateLocalAddressIsBetter(
     const BOOLEAN LeftDeprecated = !!(Left->Flags & CXPLAT_ADDRESS_FLAG_DEPRECATED);
     const BOOLEAN RightDeprecated = !!(Right->Flags & CXPLAT_ADDRESS_FLAG_DEPRECATED);
     if (LeftDeprecated != RightDeprecated) {
-        return RightDeprecated;
+        return RightDeprecated ? -1 : 1;
     }
 
     //
@@ -107,7 +116,7 @@ QuicCandidateLocalAddressIsBetter(
     const BOOLEAN LeftNarrow = QuicCandidateIsLoopback(Left) || QuicCandidateIsLinkLocal(Left);
     const BOOLEAN RightNarrow = QuicCandidateIsLoopback(Right) || QuicCandidateIsLinkLocal(Right);
     if (LeftNarrow != RightNarrow) {
-        return RightNarrow;
+        return RightNarrow ? -1 : 1;
     }
 
     //
@@ -119,7 +128,7 @@ QuicCandidateLocalAddressIsBetter(
         const BOOLEAN LeftTemporary = !!(Left->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
         const BOOLEAN RightTemporary = !!(Right->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
         if (LeftTemporary != RightTemporary) {
-            return LeftTemporary == !!WantTemporary;
+            return LeftTemporary == !!WantTemporary ? -1 : 1;
         }
     }
 
@@ -129,7 +138,7 @@ QuicCandidateLocalAddressIsBetter(
     // could move back and forth between equals.
     //
     if (Left->InterfaceIndex != Right->InterfaceIndex) {
-        return Left->InterfaceIndex < Right->InterfaceIndex;
+        return Left->InterfaceIndex < Right->InterfaceIndex ? -1 : 1;
     }
 
     //
@@ -141,20 +150,33 @@ QuicCandidateLocalAddressIsBetter(
     const QUIC_ADDRESS_FAMILY LeftFamily = QuicAddrGetFamily(&Left->Address);
     const QUIC_ADDRESS_FAMILY RightFamily = QuicAddrGetFamily(&Right->Address);
     if (LeftFamily != RightFamily) {
-        return LeftFamily < RightFamily;
+        return LeftFamily < RightFamily ? -1 : 1;
     }
     if (LeftFamily == QUIC_ADDRESS_FAMILY_INET) {
         return
             memcmp(
                 &Left->Address.Ipv4.sin_addr,
                 &Right->Address.Ipv4.sin_addr,
-                sizeof(Left->Address.Ipv4.sin_addr)) < 0;
+                sizeof(Left->Address.Ipv4.sin_addr));
     }
     return
         memcmp(
             &Left->Address.Ipv6.sin6_addr,
             &Right->Address.Ipv6.sin6_addr,
-            sizeof(Left->Address.Ipv6.sin6_addr)) < 0;
+            sizeof(Left->Address.Ipv6.sin6_addr));
+}
+
+BOOLEAN
+QuicCandidateLocalAddressIsBetter(
+    _In_ const CXPLAT_LOCAL_ADDRESS* Left,
+    _In_ const CXPLAT_LOCAL_ADDRESS* Right,
+    _In_ BOOLEAN WantTemporary,
+    _In_ BOOLEAN WantTemporaryValid
+    )
+{
+    return
+        QuicCandidateLocalAddressCompare(
+            Left, Right, WantTemporary, WantTemporaryValid) < 0;
 }
 
 //
@@ -243,13 +265,59 @@ QuicCandidatePairIsBetter(
     }
 
     //
-    // 4 and 5. The local-address preferences, which are what is left to tell
-    //    two pairs apart once the peer has said all it has to say -- and which
-    //    end in a deterministic tiebreak.
+    // 4. The local-address preferences, which are what is left to tell two
+    //    pairs apart once the peer has said all it has to say.
     //
+    const int LocalOrder =
+        QuicCandidateLocalAddressCompare(LeftLocal, RightLocal, WantTemporary, TRUE);
+    if (LocalOrder != 0) {
+        return LocalOrder < 0;
+    }
+
+    //
+    // 5. The remote address, on its bytes, which is the only thing left when
+    //    two pairs share a local address and differ only in which remote they
+    //    reach.
+    //
+    // Without this the order of such pairs came from the order the remotes
+    // happened to be enumerated in, which is the compaction order of the
+    // advertised set -- so a server withdrawing an address and re-advertising
+    // it moved that address to the end of the stored set and reordered the
+    // table, with nothing about the host having changed. That is exactly the
+    // rebuild-to-rebuild flap the tiebreak exists to prevent.
+    //
+    // By family first, then bytes, and never on the QUIC_ADDR union as a whole:
+    // that has padding whose contents are not defined.
+    //
+    const QUIC_ADDRESS_FAMILY LeftFamily = QuicAddrGetFamily(&Left->RemoteAddress);
+    const QUIC_ADDRESS_FAMILY RightFamily = QuicAddrGetFamily(&Right->RemoteAddress);
+    if (LeftFamily != RightFamily) {
+        return LeftFamily < RightFamily;
+    }
+    if (LeftFamily == QUIC_ADDRESS_FAMILY_INET) {
+        const int Cmp =
+            memcmp(
+                &Left->RemoteAddress.Ipv4.sin_addr,
+                &Right->RemoteAddress.Ipv4.sin_addr,
+                sizeof(Left->RemoteAddress.Ipv4.sin_addr));
+        if (Cmp != 0) {
+            return Cmp < 0;
+        }
+        return
+            QuicAddrGetPort(&Left->RemoteAddress) <
+                QuicAddrGetPort(&Right->RemoteAddress);
+    }
+    const int Cmp =
+        memcmp(
+            &Left->RemoteAddress.Ipv6.sin6_addr,
+            &Right->RemoteAddress.Ipv6.sin6_addr,
+            sizeof(Left->RemoteAddress.Ipv6.sin6_addr));
+    if (Cmp != 0) {
+        return Cmp < 0;
+    }
     return
-        QuicCandidateLocalAddressIsBetter(
-            LeftLocal, RightLocal, WantTemporary, TRUE);
+        QuicAddrGetPort(&Left->RemoteAddress) <
+            QuicAddrGetPort(&Right->RemoteAddress);
 }
 
 void
