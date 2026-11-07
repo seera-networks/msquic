@@ -363,6 +363,18 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "AutoFollowedTable": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO migrated onto the candidate pair table's preferred pair",
+      "UniqueId": "AutoFollowedTable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "AutoFollowRouteAddedPath": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] AUTO opened a path to follow a route change",
@@ -11424,6 +11436,46 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "ReconcileMigrateHeldDown": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler held down migrating for %llu us",
+      "UniqueId": "ReconcileMigrateHeldDown",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ReconcileMigrateNoPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler has no path yet for the pair it wants to migrate to",
+      "UniqueId": "ReconcileMigrateNoPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ReconcileMigrateStarted": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler started a migration onto the table's preferred pair",
+      "UniqueId": "ReconcileMigrateStarted",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "ReconcileRemovedPath": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Reconciler removed a path whose pair left the table",
@@ -15795,6 +15847,11 @@
         "EncodingString": "[conn][%p] AUTO followed a route change onto a validated path"
       },
       {
+        "UniquenessHash": "d1eb2091-d686-d4c6-3d3a-75f8e62928da",
+        "TraceID": "AutoFollowedTable",
+        "EncodingString": "[conn][%p] AUTO migrated onto the candidate pair table's preferred pair"
+      },
+      {
         "UniquenessHash": "a6f11b77-6f51-999c-ccbb-c10ead34f3ba",
         "TraceID": "AutoFollowRouteAddedPath",
         "EncodingString": "[conn][%p] AUTO opened a path to follow a route change"
@@ -18998,6 +19055,21 @@
         "UniquenessHash": "6c84760e-697e-511a-7eeb-14ea7d78d4c2",
         "TraceID": "ReconcileCreateHeldDownFor",
         "EncodingString": "[conn][%p] Reconciler held down opening paths for %llu us"
+      },
+      {
+        "UniquenessHash": "ae69a99a-c459-c37a-8ef6-42771f06a25c",
+        "TraceID": "ReconcileMigrateHeldDown",
+        "EncodingString": "[conn][%p] Reconciler held down migrating for %llu us"
+      },
+      {
+        "UniquenessHash": "6a12bf2e-3536-4a83-e7b8-b1815ee256fa",
+        "TraceID": "ReconcileMigrateNoPath",
+        "EncodingString": "[conn][%p] Reconciler has no path yet for the pair it wants to migrate to"
+      },
+      {
+        "UniquenessHash": "bc000d4b-c7a8-7598-0a60-2f10ff33c63d",
+        "TraceID": "ReconcileMigrateStarted",
+        "EncodingString": "[conn][%p] Reconciler started a migration onto the table's preferred pair"
       },
       {
         "UniquenessHash": "3255a2b2-6aef-4629-0ad0-7b66a950e3f1",

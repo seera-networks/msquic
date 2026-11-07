@@ -3580,4 +3580,472 @@ QuicTestPathReconcilerKeepsApplicationPath(
 #endif
 }
 
+#if DEBUG
+//
+// Brings up a client in AUTO on a loopback connection, with the hold-down set
+// explicitly so the stage 4 tests do not depend on the default, and hands back
+// a real host address for the server to advertise.
+//
+// Returns false when the host has no routable address, which is the same
+// condition AltServerAddressHostAddress reports: the frame writer skips
+// loopback observed addresses, so there would be nothing to advertise.
+//
+struct TableMigrationTest {
+    AltServerAddressTestContext ServerContext;
+    AltServerAddressTestContext ClientContext;
+    MsQuicRegistration Registration {true};
+    QuicAddr Host;
+
+    bool
+    Start(
+        MsQuicConnection*& Connection,
+        uint32_t HoldDownMs,
+        QUIC_LOCAL_ADDRESS_CHANGE_MODE LocalMode = QUIC_LOCAL_ADDRESS_CHANGE_DISABLED
+        )
+    {
+        if (!Registration.IsValid()) {
+            return false;
+        }
+        if (!AltServerAddressHostAddress(Host)) {
+            return false;
+        }
+
+        ServerConfiguration =
+            new(std::nothrow) MsQuicConfiguration(
+                Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
+        if (ServerConfiguration == nullptr || !ServerConfiguration->IsValid()) {
+            return false;
+        }
+
+        MsQuicSettings ClientSettings;
+        ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
+        ClientSettings.IsSet.AddAddressMode = TRUE;
+        ClientSettings.AutoMigrationHoldDownMs = HoldDownMs;
+        ClientSettings.IsSet.AutoMigrationHoldDownMs = TRUE;
+        ClientSettings.SetLocalAddressChangeMode(LocalMode);
+        ClientConfiguration =
+            new(std::nothrow) MsQuicConfiguration(
+                Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
+        if (ClientConfiguration == nullptr || !ClientConfiguration->IsValid()) {
+            return false;
+        }
+
+        Listener =
+            new(std::nothrow) MsQuicAutoAcceptListener(
+                Registration, *ServerConfiguration,
+                AltServerAddressTestContext::ConnCallback, &ServerContext);
+        if (Listener == nullptr || QUIC_FAILED(Listener->GetInitStatus())) {
+            return false;
+        }
+
+        QuicAddrSetFamily(&ServerLocalAddr.SockAddr, QUIC_ADDRESS_FAMILY_INET);
+        if (QUIC_FAILED(Listener->Start("MsQuicTest", &ServerLocalAddr.SockAddr)) ||
+            QUIC_FAILED(Listener->GetLocalAddr(ServerLocalAddr))) {
+            return false;
+        }
+
+        Client =
+            new(std::nothrow) MsQuicConnection(
+                Registration, CleanUpManual,
+                AltServerAddressTestContext::ConnCallback, &ClientContext);
+        if (Client == nullptr || QUIC_FAILED(Client->GetInitStatus())) {
+            return false;
+        }
+        if (QUIC_FAILED(
+                Client->Start(
+                    *ClientConfiguration,
+                    QUIC_ADDRESS_FAMILY_INET,
+                    QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+                    ServerLocalAddr.GetPort()))) {
+            return false;
+        }
+        if (!ClientContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout) ||
+            !ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout) ||
+            ServerContext.Connection == nullptr) {
+            return false;
+        }
+
+        //
+        // Handshake confirmation, as the other add-path tests wait for.
+        //
+        CxPlatSleep(100);
+        Connection = Client;
+        return true;
+    }
+
+    ~TableMigrationTest() {
+        delete Client;
+        delete Listener;
+        delete ClientConfiguration;
+        delete ServerConfiguration;
+    }
+
+    QuicAddr ServerLocalAddr;
+    MsQuicConfiguration* ServerConfiguration {nullptr};
+    MsQuicConfiguration* ClientConfiguration {nullptr};
+    MsQuicAutoAcceptListener* Listener {nullptr};
+    MsQuicConnection* Client {nullptr};
+};
+
+//
+// The remote address of the client's active path, which is Paths[0].
+//
+static bool
+TableMigrationActiveRemote(
+    MsQuicConnection& Conn,
+    QUIC_ADDR* Remote
+    )
+{
+    QUIC_TEST_PATH_ADDRESSES Addresses[QUIC_MAX_PATH_COUNT];
+    if (ReconcilerPathAddresses(Conn, Addresses, QUIC_MAX_PATH_COUNT) == 0) {
+        return false;
+    }
+    *Remote = Addresses[0].RemoteAddress;
+    return true;
+}
+
+static bool
+TableMigrationWaitForActiveRemote(
+    MsQuicConnection& Conn,
+    const QUIC_ADDR* Expected,
+    uint32_t TimeoutMs
+    )
+{
+    for (uint32_t Waited = 0; Waited < TimeoutMs; Waited += 50) {
+        QUIC_ADDR Active;
+        if (TableMigrationActiveRemote(Conn, &Active) &&
+            QuicAddrCompare(&Active, Expected)) {
+            return true;
+        }
+        CxPlatSleep(50);
+    }
+    return false;
+}
+#endif // DEBUG
+
+//
+// Stage 4 of #157: the client migrates onto the pair the table puts at its
+// head, when the server has said it would rather be reached there.
+//
+void
+QuicTestTableMigration(
+    )
+{
+#if !DEBUG
+    //
+    // Reads the paths' endpoints through a debug-only parameter, and needs the
+    // debug-only way for a server to mark an address preferred.
+    //
+#else
+    TableMigrationTest Test;
+    MsQuicConnection* Conn = nullptr;
+    if (!Test.Start(Conn, 1000)) {
+        return;
+    }
+
+    QUIC_ADDR OriginalRemote;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &OriginalRemote));
+    TEST_EQUAL(1u, AltServerAddressPathCount(*Conn));
+
+    //
+    // A second address the server really is listening on, advertised as
+    // preferred to the path the frame goes out on.
+    //
+    QuicAddr Advertised;
+    if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Advertised)) {
+        return;
+    }
+
+    //
+    // Backup first, so the test shows the preference is what causes the move
+    // and not merely the address appearing. The reconciler opens a path to it
+    // either way -- that is stage 3 -- but must not make it active.
+    //
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &Advertised.SockAddr, true));
+    CxPlatSleep(250);
+    QUIC_ADDR StillOriginal;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &StillOriginal));
+    TEST_TRUE(QuicAddrCompare(&StillOriginal, &OriginalRemote));
+
+    //
+    // Now the preference.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(Advertised.SockAddr),
+            &Advertised.SockAddr));
+
+    //
+    // Make-before-break, so the move waits for the peer to answer the
+    // challenge on the new path. Generous, because that is a round trip plus a
+    // hold-down window plus the reconciliation pass that completes it.
+    //
+    TEST_TRUE(TableMigrationWaitForActiveRemote(*Conn, &Advertised.SockAddr, 5000));
+
+    //
+    // And the break: the old path is gone rather than left as a spare, so the
+    // connection is back to one path.
+    //
+    TEST_TRUE(AltServerAddressWaitForPathCount(*Conn, 1));
+
+    //
+    // The server sees it too. Its local address for this connection is now the
+    // advertised one, which is what "the server observes traffic from the new
+    // address" means from inside the test -- and it is the half that would
+    // still fail if the client had activated a path the server never saw
+    // traffic on.
+    //
+    QuicAddr ServerLocal;
+    for (uint32_t Waited = 0; Waited < 3000; Waited += 50) {
+        if (QUIC_SUCCEEDED(Test.ServerContext.Connection->GetLocalAddr(ServerLocal)) &&
+            QuicAddrCompare(&ServerLocal.SockAddr, &Advertised.SockAddr)) {
+            break;
+        }
+        CxPlatSleep(50);
+    }
+    TEST_TRUE(QuicAddrCompare(&ServerLocal.SockAddr, &Advertised.SockAddr));
+
+    TEST_FALSE(Test.ServerContext.ShutdownEvent.WaitTimeout(100));
+    TEST_FALSE(Test.ClientContext.ShutdownEvent.WaitTimeout(100));
+#endif
+}
+
+//
+// Stage 4 of #157: a backup-only advertisement moves nothing.
+//
+// The complement of the test above: that one checks the move happens, this one
+// checks it does not happen without being asked for. It covers the third of
+// #162's "done when" items directly.
+//
+// What it does *not* do, despite looking as though it should, is isolate the
+// sentinel check -- deleting that check leaves this test passing. Verified by
+// control rather than assumed. The reason is the ranking: the route-derived
+// key outranks the sentinel, and on a single-interface host the pair the
+// connection is already on is route-preferred, so it heads the table and the
+// "already there" test returns before the sentinel is ever consulted. For a
+// backup to head the table the current pair would have to lose the route key,
+// which needs the host's route to this peer to actually move. The sentinel
+// ordering itself is covered by the unit tests in CandidateTest, and that the
+// preference is what triggers a move is covered by the test above, which does
+// fail if the server's mark is ignored.
+//
+void
+QuicTestTableMigrationBackupOnly(
+    )
+{
+#if !DEBUG
+#else
+    TableMigrationTest Test;
+    MsQuicConnection* Conn = nullptr;
+    if (!Test.Start(Conn, 0)) {
+        return;
+    }
+
+    QUIC_ADDR OriginalRemote;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &OriginalRemote));
+
+    //
+    // Two advertised addresses, both backups, which is what the writer emits
+    // unless told otherwise. The table ranks them and puts one at its head;
+    // neither is a reason to move.
+    //
+    QuicAddr First;
+    QuicAddr Second;
+    if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, First) ||
+        !ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Second)) {
+        return;
+    }
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &First.SockAddr, true));
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &Second.SockAddr, true));
+
+    //
+    // Hold-down is zero for this one, so a non-migration cannot be blamed on
+    // rate limiting.
+    //
+    CxPlatSleep(500);
+
+    QUIC_ADDR Active;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &Active));
+    TEST_TRUE(QuicAddrCompare(&Active, &OriginalRemote));
+
+    //
+    // Still three paths, so the reconciler did its own job -- a test that
+    // passed because nothing happened at all would be worthless here.
+    //
+    TEST_EQUAL(3u, AltServerAddressPathCount(*Conn));
+#endif
+}
+
+//
+// Stage 4 of #157: the hold-down rate-limits repeated preference changes.
+//
+void
+QuicTestTableMigrationHoldDown(
+    )
+{
+#if !DEBUG
+#else
+    //
+    // Long enough that the delay is unambiguous against scheduling noise, and
+    // short enough to wait out twice.
+    //
+    const uint32_t HoldDownMs = 3000;
+
+    TableMigrationTest Test;
+    MsQuicConnection* Conn = nullptr;
+    if (!Test.Start(Conn, HoldDownMs)) {
+        return;
+    }
+
+    QuicAddr First;
+    QuicAddr Second;
+    if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, First) ||
+        !ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Second)) {
+        return;
+    }
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &First.SockAddr, true));
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &Second.SockAddr, true));
+
+    //
+    // The first preference. Opening those two paths charged the hold-down, so
+    // even this one waits -- which is the behaviour under test, just from the
+    // other end.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(First.SockAddr),
+            &First.SockAddr));
+    TEST_TRUE(TableMigrationWaitForActiveRemote(*Conn, &First.SockAddr, 3 * HoldDownMs));
+
+    //
+    // The second, immediately after. The hold-down was charged by the
+    // migration that just completed, so this must not take effect yet.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(Second.SockAddr),
+            &Second.SockAddr));
+
+    CxPlatSleep(HoldDownMs / 3);
+    QUIC_ADDR Active;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &Active));
+    TEST_TRUE(QuicAddrCompare(&Active, &First.SockAddr));
+
+    //
+    // And then it does, without anything further happening on the connection.
+    // That is the half that matters: a held-down attempt has to come back by
+    // itself, not wait for the next unrelated change.
+    //
+    TEST_TRUE(TableMigrationWaitForActiveRemote(*Conn, &Second.SockAddr, 3 * HoldDownMs));
+#endif
+}
+
+//
+// Stage 4 of #157: one advertisement is worth at most one migration.
+//
+// This is the failure the hold-down test turned up, and it is worth its own
+// test because it is not a wrong move -- every individual move is to a pair
+// the table ranks above the one in use -- it is an endless series of right
+// moves. The server marks two addresses preferred to the current path; the
+// client moves to one; the other is still marked preferred and still ranks
+// above the path now in use, so the next pass moves there, where the first
+// ranks above it again.
+//
+// It is not self-sustaining: a reconciliation pass needs a trigger, and
+// nothing in the loop provides one. What makes it matter is that almost
+// anything else does -- a local address change, a route change, a later frame
+// -- so on a connection that sees any churn at all the server's one statement
+// keeps moving it, with no new information from the server.
+//
+// So the test supplies those triggers, with injected route changes, and
+// asserts the connection does not move. Without them it asserts nothing: a
+// version of this that merely waited and sampled passed with the guard
+// deleted, because no pass ran in the quiet.
+//
+void
+QuicTestTableMigrationNoFlap(
+    )
+{
+#if !DEBUG
+#else
+    const uint32_t HoldDownMs = 200;
+
+    TableMigrationTest Test;
+    MsQuicConnection* Conn = nullptr;
+    //
+    // LocalAddressChangeMode AUTO as well, which is what makes an injected
+    // route change reach the reconciler: QuicConnProcessLocalAddressChange
+    // returns before queueing anything when the local half is disabled.
+    //
+    if (!Test.Start(Conn, HoldDownMs, QUIC_LOCAL_ADDRESS_CHANGE_AUTO)) {
+        return;
+    }
+
+    QuicAddr First;
+    QuicAddr Second;
+    if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, First) ||
+        !ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Second)) {
+        return;
+    }
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &First.SockAddr, true));
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &Second.SockAddr, true));
+
+    //
+    // Both preferred.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(First.SockAddr),
+            &First.SockAddr));
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(Second.SockAddr),
+            &Second.SockAddr));
+
+    //
+    // Let it act on what those authorise. Several windows, so that however the
+    // two changes were framed, every migration they allow has happened by the
+    // end of it.
+    //
+    CxPlatSleep(HoldDownMs * 8);
+
+    QUIC_ADDR Settled;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &Settled));
+
+    //
+    // It did move somewhere the server asked for, so what follows is not
+    // passing because nothing ever happened.
+    //
+    TEST_TRUE(
+        QuicAddrCompare(&Settled, &First.SockAddr) ||
+        QuicAddrCompare(&Settled, &Second.SockAddr));
+
+    //
+    // Now the triggers. Each injected route change runs a reconciliation, and
+    // each one is a chance to act on the server's spent statement again. The
+    // route itself has not moved -- one interface, so the route-derived local
+    // address is the one already in use -- so a route migration has nothing to
+    // do and anything that moves is this.
+    //
+    for (uint32_t i = 0; i < 8; ++i) {
+        TEST_QUIC_SUCCEEDED(
+            MsQuic->SetParam(
+                nullptr, QUIC_PARAM_GLOBAL_TEST_INJECT_ROUTE_CHANGE, 0, nullptr));
+        CxPlatSleep(HoldDownMs + 100);
+
+        QUIC_ADDR Active;
+        TEST_TRUE(TableMigrationActiveRemote(*Conn, &Active));
+        TEST_TRUE(QuicAddrCompare(&Active, &Settled));
+    }
+
+    TEST_FALSE(Test.ServerContext.ShutdownEvent.WaitTimeout(100));
+    TEST_FALSE(Test.ClientContext.ShutdownEvent.WaitTimeout(100));
+#endif
+}
+
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES

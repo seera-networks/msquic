@@ -688,12 +688,31 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrateMultipathActivate,
 // Decoder Ring for AutoFollowedRoute
 // [conn][%p] AUTO followed a route change onto a validated path
 // QuicTraceLogConnInfo(
-        AutoFollowedRoute,
-        Connection,
-        "AUTO followed a route change onto a validated path");
+            AutoFollowedRoute,
+            Connection,
+            "AUTO followed a route change onto a validated path");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoFollowedRoute,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowedTable
+// [conn][%p] AUTO migrated onto the candidate pair table's preferred pair
+// QuicTraceLogConnInfo(
+            AutoFollowedTable,
+            Connection,
+            "AUTO migrated onto the candidate pair table's preferred pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoFollowedTable,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -1280,6 +1299,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileAddPathFailed,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileAddedPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateStarted
+// [conn][%p] Reconciler started a migration onto the table's preferred pair
+// QuicTraceLogConnInfo(
+        ReconcileMigrateStarted,
+        Connection,
+        "Reconciler started a migration onto the table's preferred pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileMigrateStarted,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -2287,6 +2325,48 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor,
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
         ctf_integer(uint64_t, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateHeldDown
+// [conn][%p] Reconciler held down migrating for %llu us
+// QuicTraceLogConnVerbose(
+            ReconcileMigrateHeldDown,
+            Connection,
+            "Reconciler held down migrating for %llu us",
+            RemainingUs);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemainingUs = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileMigrateHeldDown,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateNoPath
+// [conn][%p] Reconciler has no path yet for the pair it wants to migrate to
+// QuicTraceLogConnVerbose(
+            ReconcileMigrateNoPath,
+            Connection,
+            "Reconciler has no path yet for the pair it wants to migrate to");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileMigrateNoPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
     )
 )
 
