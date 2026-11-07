@@ -1999,6 +1999,30 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for CandidatePairsRebuilt
+// [conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs
+// QuicTraceLogConnVerbose(
+        CandidatePairsRebuilt,
+        Connection,
+        "Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs",
+        LocalCount,
+        RemoteCount,
+        Connection->CandidatePairs->Count);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = LocalCount = arg3
+// arg4 = arg4 = RemoteCount = arg4
+// arg5 = arg5 = Connection->CandidatePairs->Count = arg5
+----------------------------------------------------------*/
+#ifndef _clog_6_ARGS_TRACE_CandidatePairsRebuilt
+#define _clog_6_ARGS_TRACE_CandidatePairsRebuilt(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_CONNECTION_C, CandidatePairsRebuilt , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for AlternativeAddressStale
 // [conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)
 // QuicTraceLogConnVerbose(

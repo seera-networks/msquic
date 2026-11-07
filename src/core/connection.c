@@ -431,6 +431,11 @@ QuicConnFree(
     // path that somehow reaches free still returns the reference.
     //
     CXPLAT_DBG_ASSERT(!Connection->AddressMonitorRef);
+    if (Connection->CandidatePairs != NULL) {
+        CXPLAT_FREE(Connection->CandidatePairs, QUIC_POOL_CONN);
+        Connection->CandidatePairs = NULL;
+    }
+
     if (Connection->AddressMonitorRef) {
         Connection->AddressMonitorRef = FALSE;
         QuicLibraryReleaseAddressMonitor();
@@ -609,53 +614,6 @@ QuicConnRemovePath(
 
 
 //
-// Whether an address is on this host. The whole of 127/8 answers locally, not
-// just 127.0.0.1, and a test or a service can legitimately sit on any of it --
-// this file's own tests use 127.0.0.2.
-//
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-BOOLEAN
-QuicConnAddressIsLoopback(
-    _In_ const QUIC_ADDR* Address
-    )
-{
-    if (QuicAddrGetFamily(Address) == QUIC_ADDRESS_FAMILY_INET) {
-        uint8_t Bytes[4];
-        CxPlatCopyMemory(Bytes, &Address->Ipv4.sin_addr, sizeof(Bytes));
-        return Bytes[0] == 127;
-    }
-
-    QUIC_ADDR Loopback;
-    CxPlatZeroMemory(&Loopback, sizeof(Loopback));
-    QuicAddrSetFamily(&Loopback, QUIC_ADDRESS_FAMILY_INET6);
-    QuicAddrSetToLoopback(&Loopback);
-    return QuicAddrCompareIp(&Loopback, Address);
-}
-
-//
-// Whether an address is only reachable on-link: fe80::/10 for IPv6, and
-// 169.254/16 for IPv4.
-//
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-BOOLEAN
-QuicConnAddressIsLinkLocal(
-    _In_ const QUIC_ADDR* Address
-    )
-{
-    if (QuicAddrGetFamily(Address) == QUIC_ADDRESS_FAMILY_INET) {
-        uint8_t Bytes[4];
-        CxPlatCopyMemory(Bytes, &Address->Ipv4.sin_addr, sizeof(Bytes));
-        return Bytes[0] == 169 && Bytes[1] == 254;
-    }
-
-    uint8_t Bytes[16];
-    CxPlatCopyMemory(Bytes, &Address->Ipv6.sin6_addr, sizeof(Bytes));
-    return Bytes[0] == 0xfe && (Bytes[1] & 0xc0) == 0x80;
-}
-
-//
 // Whether the connection already sends from this address on some path. The
 // comparison ignores the port, since a snapshot entry names an address and a
 // path names an endpoint.
@@ -685,91 +643,6 @@ QuicConnHasPathOnLocalAddress(
 // Ranks one candidate local address against another for AUTO mode, in the
 // order phase 3 of #134 settled on. Returns TRUE when Left is the better of
 // the two.
-//
-// Replacing is the address being migrated away from, when there is one. Its
-// temporary flag is carried forward rather than re-decided, so that a
-// connection that started on a privacy address stays on one and a connection
-// that started on a stable address does not silently acquire one.
-//
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-BOOLEAN
-QuicConnLocalAddressIsBetter(
-    _In_ const CXPLAT_LOCAL_ADDRESS* Left,
-    _In_ const CXPLAT_LOCAL_ADDRESS* Right,
-    _In_opt_ const CXPLAT_LOCAL_ADDRESS* Replacing
-    )
-{
-    //
-    // A deprecated address still works, but its lifetime has expired and it
-    // will go away; anything else is preferable.
-    //
-    const BOOLEAN LeftDeprecated = !!(Left->Flags & CXPLAT_ADDRESS_FLAG_DEPRECATED);
-    const BOOLEAN RightDeprecated = !!(Right->Flags & CXPLAT_ADDRESS_FLAG_DEPRECATED);
-    if (LeftDeprecated != RightDeprecated) {
-        return RightDeprecated;
-    }
-
-    //
-    // A global address is preferable to one with narrower scope even when both
-    // can reach the peer. Which of them *can* is settled by the caller's
-    // filter, not here.
-    //
-    const BOOLEAN LeftNarrow =
-        !!(Left->Flags & (CXPLAT_ADDRESS_FLAG_LINK_LOCAL | CXPLAT_ADDRESS_FLAG_LOOPBACK));
-    const BOOLEAN RightNarrow =
-        !!(Right->Flags & (CXPLAT_ADDRESS_FLAG_LINK_LOCAL | CXPLAT_ADDRESS_FLAG_LOOPBACK));
-    if (LeftNarrow != RightNarrow) {
-        return RightNarrow;
-    }
-
-    //
-    // Keep whichever kind of address the connection was already using.
-    //
-    if (Replacing != NULL) {
-        const BOOLEAN WantTemporary = !!(Replacing->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
-        const BOOLEAN LeftTemporary = !!(Left->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
-        const BOOLEAN RightTemporary = !!(Right->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
-        if (LeftTemporary != RightTemporary) {
-            return LeftTemporary == WantTemporary;
-        }
-    }
-
-    //
-    // Nothing left to tell them apart, so pick deterministically: the same
-    // input has to produce the same choice on every reconciliation, or a
-    // connection could migrate back and forth between equals.
-    //
-    if (Left->InterfaceIndex != Right->InterfaceIndex) {
-        return Left->InterfaceIndex < Right->InterfaceIndex;
-    }
-
-    //
-    // Ordered on the address bytes, by family. Not on the QUIC_ADDR union as a
-    // whole: that has padding, whose contents are not defined, so comparing it
-    // would make this ordering depend on bytes nobody set -- the opposite of
-    // the stability the tiebreak exists to provide.
-    //
-    const QUIC_ADDRESS_FAMILY LeftFamily = QuicAddrGetFamily(&Left->Address);
-    const QUIC_ADDRESS_FAMILY RightFamily = QuicAddrGetFamily(&Right->Address);
-    if (LeftFamily != RightFamily) {
-        return LeftFamily < RightFamily;
-    }
-    if (LeftFamily == QUIC_ADDRESS_FAMILY_INET) {
-        return
-            memcmp(
-                &Left->Address.Ipv4.sin_addr,
-                &Right->Address.Ipv4.sin_addr,
-                sizeof(Left->Address.Ipv4.sin_addr)) < 0;
-    }
-    return
-        memcmp(
-            &Left->Address.Ipv6.sin6_addr,
-            &Right->Address.Ipv6.sin6_addr,
-            sizeof(Left->Address.Ipv6.sin6_addr)) < 0;
-}
-
-
 //
 // What the OS says it would send from to reach Remote, or FALSE when it cannot
 // say. The answer is the host's own routing decision, which is the one input
@@ -861,8 +734,8 @@ QuicConnSelectLocalAddress(
     // on-link. These decide which classes of local address can carry the
     // connection at all, below.
     //
-    const BOOLEAN RemoteIsLoopback = QuicConnAddressIsLoopback(Remote);
-    const BOOLEAN RemoteIsLinkLocal = QuicConnAddressIsLinkLocal(Remote);
+    const BOOLEAN RemoteIsLoopback = QuicCandidateAddressIsLoopback(Remote);
+    const BOOLEAN RemoteIsLinkLocal = QuicCandidateAddressIsLinkLocal(Remote);
 
     for (uint32_t i = 0; i < AddressCount; ++i) {
         const CXPLAT_LOCAL_ADDRESS* Candidate = &Addresses[i];
@@ -899,10 +772,10 @@ QuicConnSelectLocalAddress(
         //
         const BOOLEAN CandidateIsLoopback =
             (Candidate->Flags & CXPLAT_ADDRESS_FLAG_LOOPBACK) ||
-            QuicConnAddressIsLoopback(&Candidate->Address);
+            QuicCandidateAddressIsLoopback(&Candidate->Address);
         const BOOLEAN CandidateIsLinkLocal =
             (Candidate->Flags & CXPLAT_ADDRESS_FLAG_LINK_LOCAL) ||
-            QuicConnAddressIsLinkLocal(&Candidate->Address);
+            QuicCandidateAddressIsLinkLocal(&Candidate->Address);
 
         if (CandidateIsLoopback && !RemoteIsLoopback) {
             continue;
@@ -928,7 +801,11 @@ QuicConnSelectLocalAddress(
         }
 
         if (Best == NULL ||
-            QuicConnLocalAddressIsBetter(Candidate, Best, Replacing)) {
+            QuicCandidateLocalAddressIsBetter(
+                Candidate,
+                Best,
+                Replacing != NULL && !!(Replacing->Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY),
+                Replacing != NULL)) {
             Best = Candidate;
         }
     }
@@ -2203,6 +2080,13 @@ QuicConnProcessLocalAddressChange(
             Connection, Addresses, AddressCount, LostPaths, LostCount,
             Removed, RemovedCount, RouteChanged);
     }
+
+    //
+    // The host's addresses have changed, so the pairs they take part in have
+    // too. After the migration above rather than before, so the table reflects
+    // the paths as they now are.
+    //
+    QuicConnRebuildCandidatePairs(Connection);
 
 Exit:
 
@@ -10234,6 +10118,162 @@ QuicConnAltAddrApplyAdded(
     return QuicConnProcessAddAddress(Connection, &Added);
 }
 
+//
+// Rebuilds the candidate pair table from the two inputs the connection has: the
+// host's local addresses and the remote addresses it knows about.
+//
+// Nothing reads the table yet. It is built here so that the enumeration and the
+// ordering are exercised by the existing tests before stage 3 of #157 makes
+// paths follow it, rather than landing both at once.
+//
+// Runs on the connection's worker. It has to: the route lookup per remote
+// address opens a socket and connects it, which is not something to do on a
+// thread the platform is waiting on.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnRebuildCandidatePairs(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    if (Connection->State.ShutdownComplete || Connection->Paths[0].Binding == NULL) {
+        return;
+    }
+
+    CXPLAT_LOCAL_ADDRESS* Locals = NULL;
+    uint32_t LocalCount = 0;
+    CXPLAT_LOCAL_ADDRESS* Removed = NULL;
+    uint32_t RemovedCount = 0;
+    uint64_t Generation = 0;
+    uint64_t RouteGeneration = 0;
+    if (QUIC_FAILED(
+            QuicLibraryGetLocalAddresses(
+                &Locals, &LocalCount, &Removed, &RemovedCount, &Generation,
+                &RouteGeneration))) {
+        return;
+    }
+    if (Removed != NULL) {
+        CXPLAT_FREE(Removed, QUIC_POOL_DATAPATH_ADDRESSES);
+    }
+    if (Locals == NULL || LocalCount == 0) {
+        //
+        // No usable local address at all, so there is nothing to pair. The
+        // table is emptied rather than left as it was: a stale entry here
+        // becomes a path once stage 3 lands.
+        //
+        // Reached routinely today, and stage 3 of #157 has to deal with it: the
+        // snapshot only exists while some connection holds a reference on the
+        // library's address monitor, and that reference is taken on
+        // LocalAddressChangeMode. A connection that only has the remote half
+        // turned on -- AddAddressMode set, LocalAddressChangeMode left at
+        // DISABLED, which is the default pairing -- therefore sees an empty
+        // snapshot and gets an empty table. Harmless while nothing reads it.
+        // Once stage 5 unifies the modes onto AddAddressMode, the monitor
+        // reference has to follow that setting instead, or the table will be
+        // empty for exactly the connections that need it most.
+        //
+        if (Connection->CandidatePairs != NULL) {
+            QuicCandidateSetInitialize(Connection->CandidatePairs);
+        }
+        if (Locals != NULL) {
+            CXPLAT_FREE(Locals, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+        return;
+    }
+
+    //
+    // The remotes: the one the connection is on, plus everything the peer
+    // advertised. The current path's remote is not in the advertised set --
+    // the draft's CURRENT_PATH sentinel stands for it -- but it has to be a
+    // candidate, or stage 3 would read the table as "remove the active path".
+    //
+    QUIC_CANDIDATE_REMOTE Remotes[QUIC_MAX_ALTERNATIVE_ADDRESSES + 1];
+    CxPlatZeroMemory(Remotes, sizeof(Remotes));
+    uint32_t RemoteCount = 0;
+
+    Remotes[RemoteCount].Address = Connection->Paths[0].Route.RemoteAddress;
+    Remotes[RemoteCount].SentinelRank = QUIC_CANDIDATE_CURRENT;
+    Remotes[RemoteCount].PriorityHint = 0;
+    RemoteCount++;
+
+    CXPLAT_DBG_ASSERT(Connection->AltAddrCount <= QUIC_MAX_ALTERNATIVE_ADDRESSES);
+    for (uint8_t i = 0; i < Connection->AltAddrCount; ++i) {
+        //
+        // Skipped if it is the current remote, which the peer can legitimately
+        // advertise alongside the sentinel -- two entries for one address would
+        // give it two sets of pairs.
+        //
+        if (QuicAddrCompare(&Connection->AltAddrs[i].Address, &Remotes[0].Address)) {
+            continue;
+        }
+        Remotes[RemoteCount].Address = Connection->AltAddrs[i].Address;
+        Remotes[RemoteCount].SentinelRank =
+            Connection->AltAddrs[i].PreferredToCurrentPath ?
+                QUIC_CANDIDATE_PREFERRED_TO_CURRENT : QUIC_CANDIDATE_BACKUP;
+        Remotes[RemoteCount].PriorityHint = Connection->AltAddrs[i].PriorityHint;
+        RemoteCount++;
+    }
+
+    //
+    // One route lookup per remote address, not per pair. This is the only input
+    // that knows which local address actually reaches a given remote, and it is
+    // what the table's first ranking key is.
+    //
+    for (uint32_t i = 0; i < RemoteCount; ++i) {
+        QUIC_ADDR RouteLocal;
+        if (QuicConnGetRouteLocalAddress(Connection, &Remotes[i].Address, &RouteLocal)) {
+            Remotes[i].RoutePreferredLocal = RouteLocal;
+            Remotes[i].RoutePreferredLocalValid = TRUE;
+        }
+    }
+
+    //
+    // Whether the connection is currently on an RFC 8981 temporary address, so
+    // that preference carries forward instead of being re-decided. Read from
+    // the snapshot rather than the path, because only the snapshot has flags.
+    //
+    BOOLEAN WantTemporary = FALSE;
+    for (uint32_t i = 0; i < LocalCount; ++i) {
+        if (QuicAddrCompareIp(&Locals[i].Address, &Connection->Paths[0].Route.LocalAddress)) {
+            WantTemporary = !!(Locals[i].Flags & CXPLAT_ADDRESS_FLAG_TEMPORARY);
+            break;
+        }
+    }
+
+    if (Connection->CandidatePairs == NULL) {
+        Connection->CandidatePairs =
+            CXPLAT_ALLOC_NONPAGED(sizeof(QUIC_CANDIDATE_SET), QUIC_POOL_CONN);
+        if (Connection->CandidatePairs == NULL) {
+            QuicTraceEvent(
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "candidate pair table",
+                (uint64_t)sizeof(QUIC_CANDIDATE_SET));
+            CXPLAT_FREE(Locals, QUIC_POOL_DATAPATH_ADDRESSES);
+            return;
+        }
+        QuicCandidateSetInitialize(Connection->CandidatePairs);
+    }
+
+    QuicCandidateSetRebuild(
+        Connection->CandidatePairs,
+        Locals,
+        LocalCount,
+        Remotes,
+        RemoteCount,
+        WantTemporary);
+
+    QuicTraceLogConnVerbose(
+        CandidatePairsRebuilt,
+        Connection,
+        "Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs",
+        LocalCount,
+        RemoteCount,
+        Connection->CandidatePairs->Count);
+
+    CXPLAT_FREE(Locals, QUIC_POOL_DATAPATH_ADDRESSES);
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 QuicConnProcessAlternativeAddress(
@@ -10307,7 +10347,22 @@ QuicConnProcessAlternativeAddress(
             // Compacted in place, keeping the sequence number it was given, so
             // an address that stays advertised keeps naming the same path.
             //
-            Connection->AltAddrs[Kept++] = Connection->AltAddrs[i];
+            Connection->AltAddrs[Kept] = Connection->AltAddrs[i];
+            //
+            // The hint and the sentinel side are taken from the newest frame
+            // though: the server can reorder its set, or move an address from
+            // backup to preferred, without the address itself changing -- and
+            // the candidate table ranks on exactly that.
+            //
+            for (uint8_t j = 0; j < Frame->AddressCount; ++j) {
+                if (QuicAddrCompare(&Connection->AltAddrs[i].Address, &Frame->Addresses[j].Address)) {
+                    Connection->AltAddrs[Kept].PriorityHint = Frame->Addresses[j].PriorityHint;
+                    Connection->AltAddrs[Kept].PreferredToCurrentPath =
+                        Frame->Addresses[j].PreferredToCurrentPath;
+                    break;
+                }
+            }
+            Kept++;
             continue;
         }
 
@@ -10416,8 +10471,17 @@ QuicConnProcessAlternativeAddress(
 
         Connection->AltAddrs[Connection->AltAddrCount].Address = Frame->Addresses[j].Address;
         Connection->AltAddrs[Connection->AltAddrCount].SequenceNumber = SequenceNumber;
+        Connection->AltAddrs[Connection->AltAddrCount].PriorityHint =
+            Frame->Addresses[j].PriorityHint;
+        Connection->AltAddrs[Connection->AltAddrCount].PreferredToCurrentPath =
+            Frame->Addresses[j].PreferredToCurrentPath;
         Connection->AltAddrCount++;
     }
+
+    //
+    // The advertised set has changed, so the pairs it takes part in have too.
+    //
+    QuicConnRebuildCandidatePairs(Connection);
 
     return QUIC_STATUS_SUCCESS;
 }
