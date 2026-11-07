@@ -520,6 +520,22 @@ QuicCryptoHandshakeConfirmed(
         //
         QuicConnProcessLocalAddressChange(Connection);
     }
+
+    //
+    // And a reconciliation, because one may have been dropped. The reconciler
+    // bails out before confirmation -- RFC 9000 section 9 does not allow
+    // migration there -- and nothing else would bring it back: an
+    // ALTERNATIVE_ADDRESS frame that arrived first is recorded in AltAddrs and
+    // never revisited, since a resend with the same sequence number is ignored
+    // as stale. The frame carrying HANDSHAKE_DONE only has to be lost or
+    // reordered behind the one carrying ALTERNATIVE_ADDRESS for the advertised
+    // address to go without a path for the life of the connection.
+    //
+    // Unconditional rather than driven by a dirty flag: it is one coalesced
+    // pass, it is where "the answer is ready for confirmation" has to actually
+    // happen, and a pass with nothing to do costs a table rebuild.
+    //
+    QuicConnQueueReconcile(Connection);
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)

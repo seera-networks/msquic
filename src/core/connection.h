@@ -612,6 +612,13 @@ typedef struct QUIC_CONNECTION {
     BOOLEAN CandidatePairsRebuildQueued;
 
     //
+    // The candidate pair table was built without enough information to say
+    // that a pair is absent rather than unknown -- no address snapshot and no
+    // route lookup. Paths may be created from it but not removed against it.
+    //
+    BOOLEAN CandidatePairsApproximate;
+
+    //
     // The sequence number to use for sending an punch me now.
     //
     QUIC_VAR_INT PunchMeNowSequenceNumber;

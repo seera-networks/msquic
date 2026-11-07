@@ -558,10 +558,10 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, UnreachableInvalid,
 // Decoder Ring for ReconcileRemovePathFailed
 // [conn][%p] Reconciler failed to remove a path, status=0x%x
 // QuicTraceLogConnWarning(
-                    ReconcileRemovePathFailed,
-                    Connection,
-                    "Reconciler failed to remove a path, status=0x%x",
-                    Status);
+                ReconcileRemovePathFailed,
+                Connection,
+                "Reconciler failed to remove a path, status=0x%x",
+                Status);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Status = arg3
 ----------------------------------------------------------*/
@@ -1232,9 +1232,9 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, BoundAddressWildcardForQtip,
 // Decoder Ring for ReconcileRemovedPath
 // [conn][%p] Reconciler removed a path whose pair left the table
 // QuicTraceLogConnInfo(
-                ReconcileRemovedPath,
-                Connection,
-                "Reconciler removed a path whose pair left the table");
+            ReconcileRemovedPath,
+            Connection,
+            "Reconciler removed a path whose pair left the table");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileRemovedPath,
@@ -2264,6 +2264,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, CandidatePairsRebuilt,
         ctf_integer(unsigned int, arg3, arg3)
         ctf_integer(unsigned int, arg4, arg4)
         ctf_integer(unsigned char, arg5, arg5)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileCreateHeldDownFor
+// [conn][%p] Reconciler held down opening paths for %llu us
+// QuicTraceLogConnVerbose(
+            ReconcileCreateHeldDownFor,
+            Connection,
+            "Reconciler held down opening paths for %llu us",
+            RemainingUs);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemainingUs = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 

@@ -963,6 +963,28 @@ QuicConnAutoHoldDownElapsed(
 }
 
 //
+// How much of the hold-down window is left, in microseconds, or zero if it has
+// elapsed. The reconciler needs the remainder rather than the yes/no answer,
+// because it has to come back when the window closes.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint64_t
+QuicConnAutoHoldDownRemainingUs(
+    _In_ const QUIC_CONNECTION* Connection
+    )
+{
+    const uint32_t HoldDownMs = Connection->Settings.AutoMigrationHoldDownMs;
+    if (HoldDownMs == 0 || Connection->LastAutoMigrationTimeUs == 0) {
+        return 0;
+    }
+    const uint64_t WindowUs = MS_TO_US((uint64_t)HoldDownMs);
+    const uint64_t ElapsedUs =
+        CxPlatTimeDiff64(Connection->LastAutoMigrationTimeUs, CxPlatTimeUs64());
+    return ElapsedUs >= WindowUs ? 0 : WindowUs - ElapsedUs;
+}
+
+//
 // Drops the paths whose local address the host no longer has, skipping the one
 // that is now active. Never removes the last path: with a single path left
 // QuicConnRemovePath aborts the connection, and offline is not a failure.
@@ -10070,10 +10092,20 @@ QuicConnProcessAddAddress(
         CxPlatCopyMemory(&LocalAddress, &Candidate->Address, sizeof(QUIC_ADDR));
     }
 
+    //
+    // PEER, not RECONCILER. This is reached from the legacy ADD_ADDRESS frames
+    // and from NAT-traversal mode, and neither produces a pair the candidate
+    // table can hold: nothing records these remotes in AltAddrs, and NAT
+    // traversal takes its local address from CandidateAddresses rather than
+    // from the address snapshot. Labelling them RECONCILER -- which stage 2
+    // did -- made them the one origin reconciliation is allowed to delete, so
+    // the next pass would tear down a punched path and the PUNCH_ME_NOW state
+    // with it.
+    //
     QUIC_PATH_PARAM PathParam = { &LocalAddress, &Frame->Address };
     QUIC_PATH* Path = NULL;
     QUIC_STATUS Status =
-        QuicConnAddPath(Connection, &PathParam, QUIC_PATH_ORIGIN_RECONCILER, &Path);
+        QuicConnAddPath(Connection, &PathParam, QUIC_PATH_ORIGIN_PEER, &Path);
     if (QUIC_FAILED(Status)) {
         return Status;
     }
@@ -10187,6 +10219,7 @@ QuicConnRebuildCandidatePairs(
     )
 {
     Connection->CandidatePairsRebuildQueued = FALSE;
+    Connection->CandidatePairsApproximate = FALSE;
 
     if (Connection->State.ShutdownComplete || Connection->Paths[0].Binding == NULL) {
         return;
@@ -10229,8 +10262,17 @@ QuicConnRebuildCandidatePairs(
     Remotes[RemoteCount].PriorityHint = 0;
     RemoteCount++;
 
-    CXPLAT_DBG_ASSERT(Connection->AltAddrCount <= QUIC_MAX_ALTERNATIVE_ADDRESSES);
-    for (uint8_t i = 0; i < Connection->AltAddrCount; ++i) {
+    //
+    // The advertised set joins the table only when AddAddressMode is AUTO.
+    // MANUAL and NAT_TRAVERSAL still record it -- MANUAL to report it, NAT
+    // traversal to drive PUNCH_ME_NOW -- but a pair in the table is a pair the
+    // reconciler may open a path for, and in those modes it may not.
+    //
+    const uint8_t AltAddrCount =
+        Connection->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO ?
+            Connection->AltAddrCount : 0;
+    CXPLAT_DBG_ASSERT(AltAddrCount <= QUIC_MAX_ALTERNATIVE_ADDRESSES);
+    for (uint8_t i = 0; i < AltAddrCount; ++i) {
         //
         // Skipped if it is the current remote, which the peer can legitimately
         // advertise alongside the sentinel -- two entries for one address would
@@ -10352,6 +10394,29 @@ QuicConnRebuildCandidatePairs(
             }
             return;
         }
+
+        //
+        // Whether the fallback is only the active path's own address because no
+        // route lookup answered. CxPlatDataPathGetLocalAddressForRemote is
+        // unimplemented on winkernel, so in kernel mode with no snapshot that
+        // is every pass, and the set collapses to one address whose scope
+        // class need not match the advertised remotes -- the viability filter
+        // would then reject them, the table would say "no pairs", and the
+        // removal step would read that as "remove the paths".
+        //
+        // So the table is marked as not knowing enough to justify a removal.
+        // It is still good enough to create from: a pair it does hold is one
+        // the filter accepted. Removing anyway would turn a missing platform
+        // call into torn-down paths.
+        //
+        BOOLEAN AnyRoute = FALSE;
+        for (uint32_t i = 0; i < RemoteCount; ++i) {
+            if (Remotes[i].RoutePreferredLocalValid) {
+                AnyRoute = TRUE;
+                break;
+            }
+        }
+        Connection->CandidatePairsApproximate = !AnyRoute;
 
         //
         // No flags on any of these, which is honest: without the monitor there
@@ -10530,68 +10595,107 @@ QuicConnHasPathForRemote(
 //    API, so an application can manage paths the table knows nothing about,
 //    and reconciling them away would break it the moment AUTO were on. This is
 //    what stage 2 recorded the origin for.
-//  - the active path. Removing it means promoting a replacement, which is a
-//    migration -- stage 4's decision to make, from the table's head, not a
-//    side effect of an address disappearing here.
+//  - Paths[0]. Replacing it is a migration -- stage 4's decision to make, from
+//    the table's head, not a side effect of an address disappearing here.
 //  - the last path. QuicConnRemovePath on a single path aborts the connection,
 //    and a host that is briefly offline is not a failure.
 //
-// Addresses are copied out before removing, because QuicConnRemovePath
-// memmoves the path array: a QUIC_PATH* or an index taken before the call does
-// not survive it. The scan restarts for the same reason rather than continuing
-// over a shifted array.
+// The work is collected first and removed afterwards, rather than rescanning
+// after each removal. That is not a tidiness choice. Under multipath
+// QuicConnRemovePath returns success *without* removing anything: it marks the
+// path LocalClose, flags PATH_ABANDON, and the path leaves Connection->Paths
+// only when the abandon completes. A rescan therefore finds the identical path
+// still present, still absent from the table, removes it again, and spins
+// forever on the connection's worker -- taking every connection on that worker
+// with it. Collecting up front makes the pass finite whichever branch
+// QuicConnRemovePath takes.
+//
+// Addresses are copied out for a related reason: QuicConnRemovePath can
+// memmove the path array, so a QUIC_PATH* or an index taken before the call
+// does not survive it.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
-void
+BOOLEAN
 QuicConnReconcileRemovePaths(
     _In_ QUIC_CONNECTION* Connection
     )
 {
+    if (Connection->CandidatePairsApproximate) {
+        //
+        // The table was built without enough information to say that a pair is
+        // absent rather than merely unknown. See the rebuild.
+        //
+        return FALSE;
+    }
+
     const QUIC_CANDIDATE_SET* Set = Connection->CandidatePairs;
 
-    BOOLEAN Removed;
-    do {
-        Removed = FALSE;
+    QUIC_ADDR Locals[QUIC_MAX_PATH_COUNT];
+    QUIC_ADDR Remotes[QUIC_MAX_PATH_COUNT];
+    uint32_t Count = 0;
 
-        if (Connection->PathsCount <= 1) {
-            return;
+    //
+    // From index 1, and deliberately without testing IsActive. Under multipath
+    // several paths carry IsActive at once, so testing it would make every
+    // working path unremovable -- which would quietly cost the pass its
+    // removal step, and with it the ordering guarantee the whole operation
+    // exists for. Without multipath only Paths[0] is ever active, so starting
+    // at index 1 says the same thing. QuicConnAutoRemoveLostPaths, which
+    // abandons paths for the same reason on the forced-migration side, draws
+    // the line in exactly this place.
+    //
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path->Binding == NULL ||
+            Path->LocalClose ||
+            Path->Origin != QUIC_PATH_ORIGIN_RECONCILER) {
+            //
+            // LocalClose means an abandon is already in flight, so asking
+            // again would only send a second PATH_ABANDON.
+            //
+            continue;
+        }
+        if (QuicConnCandidateSetHasPair(
+                Set, &Path->Route.LocalAddress, &Path->Route.RemoteAddress)) {
+            continue;
         }
 
-        CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
-        for (uint8_t i = 1; i < Connection->PathsCount; ++i) {
-            const QUIC_PATH* Path = &Connection->Paths[i];
-            if (Path->Binding == NULL ||
-                Path->IsActive ||
-                Path->Origin != QUIC_PATH_ORIGIN_RECONCILER) {
-                continue;
-            }
-            if (QuicConnCandidateSetHasPair(
-                    Set, &Path->Route.LocalAddress, &Path->Route.RemoteAddress)) {
-                continue;
-            }
+        CXPLAT_DBG_ASSERT(Count < QUIC_MAX_PATH_COUNT);
+        Locals[Count] = Path->Route.LocalAddress;
+        Remotes[Count] = Path->Route.RemoteAddress;
+        Count++;
+    }
 
-            QUIC_ADDR Local = Path->Route.LocalAddress;
-            QUIC_ADDR Remote = Path->Route.RemoteAddress;
-            QUIC_PATH_PARAM Param = { &Local, &Remote };
-
-            const QUIC_STATUS Status = QuicConnRemovePath(Connection, &Param);
-            if (QUIC_FAILED(Status)) {
-                QuicTraceLogConnWarning(
-                    ReconcileRemovePathFailed,
-                    Connection,
-                    "Reconciler failed to remove a path, status=0x%x",
-                    Status);
-                continue;
-            }
-            QuicTraceLogConnInfo(
-                ReconcileRemovedPath,
-                Connection,
-                "Reconciler removed a path whose pair left the table");
-            Removed = TRUE;
+    BOOLEAN RemovedAny = FALSE;
+    for (uint32_t i = 0; i < Count; ++i) {
+        //
+        // Re-checked each time rather than once: removing the previous one may
+        // have been what took the count down to one.
+        //
+        if (Connection->PathsCount <= 1) {
             break;
         }
-    } while (Removed);
+
+        QUIC_PATH_PARAM Param = { &Locals[i], &Remotes[i] };
+        const QUIC_STATUS Status = QuicConnRemovePath(Connection, &Param);
+        if (QUIC_FAILED(Status)) {
+            QuicTraceLogConnWarning(
+                ReconcileRemovePathFailed,
+                Connection,
+                "Reconciler failed to remove a path, status=0x%x",
+                Status);
+            continue;
+        }
+        RemovedAny = TRUE;
+        QuicTraceLogConnInfo(
+            ReconcileRemovedPath,
+            Connection,
+            "Reconciler removed a path whose pair left the table");
+    }
+
+    return RemovedAny;
 }
 
 //
@@ -10640,7 +10744,37 @@ QuicConnReconcileCreatePaths(
     // migration either.
     //
 
+    //
+    // Rate-limited by AutoMigrationHoldDownMs, and the timer is what makes
+    // that safe. A held-down pass otherwise has nowhere to put the work: it
+    // returns, and the pair gets a path only when some unrelated change
+    // happens to trigger another pass. That was the first version of this and
+    // it showed immediately -- a server advertising three addresses in three
+    // frames had the second wait not for the one-second window but for the
+    // third frame to arrive, and against a server that advertised nothing
+    // further it would have waited forever. So the window is a delay, not a
+    // cancellation: the timer brings the pass back when it closes.
+    //
+    // Worth rate-limiting because each path costs a UDP binding and a
+    // destination CID, and removing it retires that CID. A server that
+    // alternates its advertised set, or an interface that flaps, would
+    // otherwise drive binding churn and CID retirement as fast as it liked --
+    // and retirement can outrun the peer's NEW_CONNECTION_ID issuance, which
+    // leaves the connection unable to open any path at all.
+    //
+    const uint64_t RemainingUs = QuicConnAutoHoldDownRemainingUs(Connection);
+    if (RemainingUs != 0) {
+        QuicTraceLogConnVerbose(
+            ReconcileCreateHeldDownFor,
+            Connection,
+            "Reconciler held down opening paths for %llu us",
+            RemainingUs);
+        QuicConnTimerSet(Connection, QUIC_CONN_TIMER_RECONCILE, RemainingUs);
+        return;
+    }
+
     const QUIC_CANDIDATE_SET* Set = Connection->CandidatePairs;
+    BOOLEAN Created = FALSE;
 
     //
     // Walked in table order, so the slots go to the best pairs. The list is
@@ -10652,7 +10786,7 @@ QuicConnReconcileCreatePaths(
             Link != &Set->Pairs;
             Link = Link->Flink) {
         if (Connection->PathsCount >= QUIC_MAX_PATH_COUNT) {
-            return;
+            break;
         }
 
         const QUIC_CANDIDATE_PAIR* Pair =
@@ -10685,16 +10819,18 @@ QuicConnReconcileCreatePaths(
         if (QUIC_FAILED(Status)) {
             //
             // Out of path IDs, out of CIDs, or the address would not bind.
-            // Stop rather than spin down the rest of the table: the next
+            // Stop rather than work down the rest of the table: the next
             // reconciliation tries again, and the reasons this fails are not
-            // specific to this pair.
+            // specific to this pair. Broken out of rather than returned from,
+            // so that paths opened earlier in this pass still charge the
+            // hold-down below.
             //
             QuicTraceLogConnInfo(
                 ReconcileAddPathFailed,
                 Connection,
                 "Reconciler could not open a path, status=0x%x",
                 Status);
-            return;
+            break;
         }
         //
         // Arm the send loop, the same way QUIC_PARAM_CONN_ADD_PATH does.
@@ -10706,10 +10842,21 @@ QuicConnReconcileCreatePaths(
             QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
         }
 
+        Created = TRUE;
         QuicTraceLogConnInfo(
             ReconcileAddedPath,
             Connection,
             "Reconciler opened a path for a table pair");
+    }
+
+    //
+    // Charged once for the pass, not once per path. Filling the table's top
+    // entries is one decision; charging each one would make four paths take
+    // four windows to appear, which is the behaviour the timer above exists to
+    // avoid rather than something to reintroduce here.
+    //
+    if (Created) {
+        Connection->LastAutoMigrationTimeUs = CxPlatTimeUs64();
     }
 }
 
@@ -10748,9 +10895,11 @@ QuicConnReconcilePaths(
 
     //
     // Before the handshake is confirmed there is nothing to reconcile: RFC 9000
-    // section 9 does not allow migration, and QuicConnAddPath defers opening
-    // until 1-RTT keys exist anyway. The table is still rebuilt above, so the
-    // answer is ready for the pass that runs at confirmation.
+    // section 9 does not allow migration. The table is still rebuilt above,
+    // and QuicCryptoHandshakeConfirmed queues a pass of its own so that
+    // whatever arrived early is acted on -- a claim that was wrong when first
+    // written here, because no such pass existed and an ALTERNATIVE_ADDRESS
+    // that beat HANDSHAKE_DONE was therefore dropped for good.
     //
     if (!Connection->State.HandshakeConfirmed) {
         return;
@@ -10765,6 +10914,26 @@ QuicConnReconcilePaths(
     if ((QuicConnIsClient(Connection) && Connection->Settings.ServerMigrationEnabled) ||
         (QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||
         (QuicConnIsServer(Connection) && !Connection->State.ServerMigrationNegotiated)) {
+        return;
+    }
+
+    //
+    // Only AUTO asked for paths to be managed. With neither mode AUTO the
+    // table is still built -- it is also the answer to "what could we do", and
+    // cheap -- and nothing is done with it.
+    //
+    // This gate is not optional. Both callers queue a reconciliation
+    // unconditionally, which was harmless while nothing read the table and is
+    // not harmless now that a pass mutates paths. Without it a client in
+    // MANUAL, which still records advertised addresses so that it can report
+    // them, would have paths opened to those addresses behind the
+    // application's back -- the exact opposite of MANUAL, where the event is
+    // the whole interface and the application is the one that opens paths. The
+    // same for LocalAddressChangeMode NOTIFY, where the application asked only
+    // to be told.
+    //
+    if (Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_AUTO &&
+        Connection->Settings.LocalAddressChangeMode != QUIC_LOCAL_ADDRESS_CHANGE_AUTO) {
         return;
     }
 
@@ -10817,14 +10986,13 @@ QuicConnProcessAlternativeAddress(
     Connection->AltAddrPeerSequenceNumberValid = TRUE;
 
     //
-    // Which stored addresses the new set no longer contains. Removals are
-    // worked out first, but they do not take effect first: each is queued as an
-    // operation while the additions below call QuicConnAddPath inline. So a
-    // frame that swaps one address for another while the connection is already
-    // at QUIC_MAX_PATH_COUNT fails to add the new one -- the slot is not freed
-    // until the queued withdrawal runs. The next frame the server sends picks
-    // it up, and the alternative, tearing paths down from inside frame
-    // processing, is the one thing the receive path cannot survive.
+    // Which stored addresses the new set no longer contains. This loop now only
+    // updates the stored set -- it opens and tears down nothing, and the
+    // reconciliation queued at the end of this function is what acts on the
+    // difference. That is what fixes the swap-at-the-limit case this comment
+    // used to have to apologise for: removals were queued as operations while
+    // the additions below ran QuicConnAddPath inline, so a frame swapping one
+    // address for another at QUIC_MAX_PATH_COUNT failed to add the new one.
     //
     // Compared on the full endpoint, address and port both: the draft
     // advertises endpoints, two ports on one host are two different places to
@@ -13267,6 +13435,13 @@ QuicConnProcessExpiredTimer(
         break;
     case QUIC_CONN_TIMER_PATH_KEEP_ALIVE:
         QuicConnPathKeepAliveTimerUpdate(Connection);
+        break;
+    case QUIC_CONN_TIMER_RECONCILE:
+        //
+        // A reconciliation that was held down. This is what makes the
+        // hold-down a delay rather than a cancellation.
+        //
+        QuicConnQueueReconcile(Connection);
         break;
     case QUIC_CONN_TIMER_PATH_VALIDATION:
         QuicConnProcessPathValidationTimerOperation(Connection);

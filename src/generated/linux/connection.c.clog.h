@@ -534,10 +534,10 @@ tracepoint(CLOG_CONNECTION_C, UnreachableInvalid , arg1);\
 // Decoder Ring for ReconcileRemovePathFailed
 // [conn][%p] Reconciler failed to remove a path, status=0x%x
 // QuicTraceLogConnWarning(
-                    ReconcileRemovePathFailed,
-                    Connection,
-                    "Reconciler failed to remove a path, status=0x%x",
-                    Status);
+                ReconcileRemovePathFailed,
+                Connection,
+                "Reconciler failed to remove a path, status=0x%x",
+                Status);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Status = arg3
 ----------------------------------------------------------*/
@@ -1142,9 +1142,9 @@ tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
 // Decoder Ring for ReconcileRemovedPath
 // [conn][%p] Reconciler removed a path whose pair left the table
 // QuicTraceLogConnInfo(
-                ReconcileRemovedPath,
-                Connection,
-                "Reconciler removed a path whose pair left the table");
+            ReconcileRemovedPath,
+            Connection,
+            "Reconciler removed a path whose pair left the table");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 #ifndef _clog_3_ARGS_TRACE_ReconcileRemovedPath
@@ -2036,6 +2036,26 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
 #ifndef _clog_6_ARGS_TRACE_CandidatePairsRebuilt
 #define _clog_6_ARGS_TRACE_CandidatePairsRebuilt(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
 tracepoint(CLOG_CONNECTION_C, CandidatePairsRebuilt , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileCreateHeldDownFor
+// [conn][%p] Reconciler held down opening paths for %llu us
+// QuicTraceLogConnVerbose(
+            ReconcileCreateHeldDownFor,
+            Connection,
+            "Reconciler held down opening paths for %llu us",
+            RemainingUs);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemainingUs = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileCreateHeldDownFor
+#define _clog_4_ARGS_TRACE_ReconcileCreateHeldDownFor(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor , arg1, arg3);\
 
 #endif
 

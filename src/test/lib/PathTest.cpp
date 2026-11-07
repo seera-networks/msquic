@@ -2785,6 +2785,21 @@ QuicTestAlternativeServerAddress(
     TEST_TRUE(QuicAddrCompare(&ObservedAddr.SockAddr, &ClientContext.AddedAddress.SockAddr));
 
     //
+    // And the event is all that happened: MANUAL means the application opens
+    // paths, so the library must not have opened one itself.
+    //
+    // Asserted since stage 3 of #157, which is where it became possible to get
+    // wrong. The reconciler is queued unconditionally by the frame handler, so
+    // without a mode check it would build a table containing this advertised
+    // address -- MANUAL still records it, in order to report it -- and open a
+    // path to it behind the application's back. Waited out rather than read
+    // once, because a pass that did that would run asynchronously and a single
+    // read here could happen before it.
+    //
+    CxPlatSleep(250);
+    TEST_EQUAL(1u, AltServerAddressPathCount(Connection));
+
+    //
     // Now withdraw it. There is no withdrawal frame in this draft: the server
     // sends its set again without the address, and the diff on the far side is
     // what turns that absence into a removal.
