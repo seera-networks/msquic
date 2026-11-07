@@ -236,6 +236,23 @@ QuicPathRemove(
     // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): False positive: new index is valid.
     Connection->Paths[Connection->PathsCount].InUse = FALSE;
 
+    //
+    // Without multipath every path shares one path ID, so PathID->Path is a
+    // single pointer that can only name one of them -- and whichever path was
+    // created last won it, because QuicConnGetPathForPacket sets it
+    // unconditionally. Removing that path left the pointer at a slot that is no
+    // longer in use, which congestion control goes on reading an MTU and an RTT
+    // from and writing route state into (cubic.c, bbr.c). Repointed at the
+    // active path, which is the one actually sending.
+    //
+    // The multipath case is covered by the shift fix-up above, where each path
+    // has a path ID of its own and the pointer means something per path.
+    //
+    if (!Connection->State.MultipathNegotiated &&
+        Connection->Paths[0].PathID != NULL) {
+        Connection->Paths[0].PathID->Path = &Connection->Paths[0];
+    }
+
     if (CloseWithNowhereToGo && !Connection->State.ClosedLocally) {
         QuicConnCloseLocally(
             Connection,
