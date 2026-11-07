@@ -2999,11 +2999,20 @@ QuicTestPathOrigins(
     TEST_EQUAL((uint8_t)QUIC_PATH_ORIGIN_INITIAL, Origins[0]);
 
     //
-    // One the application opened itself. Any second loopback address will do;
-    // what matters is who asked for the path, not where it goes.
+    // Wait for handshake confirmation, as the other add-path tests do:
+    // QuicConnAddPath opens the path as soon as 1-RTT keys exist.
     //
-    QuicAddr SecondLocal(QUIC_ADDRESS_FAMILY_INET);
-    TEST_TRUE(QuicAddrFromString("127.0.0.1", 0, &SecondLocal.SockAddr));
+    CxPlatSleep(100);
+
+    //
+    // One the application opened itself. The local address is the connection's
+    // own with a fresh port, not a hardcoded loopback: the raw/XDP datapath
+    // will not bind a client to a specific loopback address, and the address
+    // the datapath already chose is by construction one it can bind. What
+    // matters here is who asked for the path, not where it goes.
+    //
+    QuicAddr SecondLocal;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocal));
     QuicAddr Remote;
     TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(Remote));
 
