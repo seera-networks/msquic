@@ -10281,6 +10281,9 @@ QuicConnRebuildCandidatePairs(
         if (QuicAddrCompare(&Connection->AltAddrs[i].Address, &Remotes[0].Address)) {
             continue;
         }
+        if (RemoteCount >= ARRAYSIZE(Remotes)) {
+            break;
+        }
         Remotes[RemoteCount].Address = Connection->AltAddrs[i].Address;
         Remotes[RemoteCount].SentinelRank =
             Connection->AltAddrs[i].PreferredToCurrentPath ?
@@ -10301,7 +10304,14 @@ QuicConnRebuildCandidatePairs(
     // count is at most QUIC_MAX_ALTERNATIVE_ADDRESSES + 1, and the peer cannot
     // make this run more often than one coalesced pass per worker visit.
     //
-    for (uint32_t i = 0; i < RemoteCount; ++i) {
+    //
+    // Bounded against the array as well as the count. RemoteCount cannot
+    // exceed it -- it is one plus AltAddrCount, which the assert above pins --
+    // but -O3 cannot see that through the two loops that built it, and gcc
+    // turns the doubt into -Werror=stringop-overflow. Cheap, and true whatever
+    // a future caller does to RemoteCount.
+    //
+    for (uint32_t i = 0; i < RemoteCount && i < ARRAYSIZE(Remotes); ++i) {
         Remotes[i].RoutePreferredLocalValid =
             QuicConnGetRouteLocalAddress(
                 Connection, &Remotes[i].Address, &Remotes[i].RoutePreferredLocal);
@@ -10342,7 +10352,7 @@ QuicConnRebuildCandidatePairs(
         uint32_t FallbackCount = 0;
         CxPlatZeroMemory(Fallback, sizeof(Fallback));
 
-        for (uint32_t i = 0; i < RemoteCount; ++i) {
+        for (uint32_t i = 0; i < RemoteCount && i < ARRAYSIZE(Remotes); ++i) {
             if (!Remotes[i].RoutePreferredLocalValid) {
                 continue;
             }
@@ -10356,8 +10366,7 @@ QuicConnRebuildCandidatePairs(
                     break;
                 }
             }
-            if (!Seen) {
-                CXPLAT_DBG_ASSERT(FallbackCount < ARRAYSIZE(Fallback));
+            if (!Seen && FallbackCount < ARRAYSIZE(Fallback)) {
                 Fallback[FallbackCount++].Address = Address;
             }
         }
@@ -10378,8 +10387,7 @@ QuicConnRebuildCandidatePairs(
                     break;
                 }
             }
-            if (!Seen) {
-                CXPLAT_DBG_ASSERT(FallbackCount < ARRAYSIZE(Fallback));
+            if (!Seen && FallbackCount < ARRAYSIZE(Fallback)) {
                 Fallback[FallbackCount++].Address = Active;
             }
         }
@@ -10410,7 +10418,7 @@ QuicConnRebuildCandidatePairs(
         // call into torn-down paths.
         //
         BOOLEAN AnyRoute = FALSE;
-        for (uint32_t i = 0; i < RemoteCount; ++i) {
+        for (uint32_t i = 0; i < RemoteCount && i < ARRAYSIZE(Remotes); ++i) {
             if (Remotes[i].RoutePreferredLocalValid) {
                 AnyRoute = TRUE;
                 break;
