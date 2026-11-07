@@ -2936,4 +2936,221 @@ QuicTestAlternativeServerAddressAuto(
     TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
 }
 
+//
+// Stage 2 of #157: every path records how it came to exist, so that the stage 3
+// reconciler can remove the ones it created and leave everyone else's alone.
+//
+// Worth a test of its own because getting it wrong is silent and only shows up
+// later: an application-created path mislabelled as the reconciler's would be
+// deleted out from under an application that manages paths by hand, the first
+// time AUTO reconciled.
+//
+void
+QuicTestPathOrigins(
+    )
+{
+#if !DEBUG
+    //
+    // The origins are only readable through a debug-only parameter.
+    //
+#else
+    AltServerAddressTestContext ServerContext;
+    AltServerAddressTestContext ClientContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, AltServerAddressTestContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(
+        Registration, CleanUpManual, AltServerAddressTestContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QUIC_ADDRESS_FAMILY_INET,
+            QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(ClientContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+
+    //
+    // The connection's first path came from the handshake.
+    //
+    uint8_t Origins[QUIC_MAX_PATH_COUNT] = { 0 };
+    uint32_t Length = sizeof(Origins);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_TEST_PATH_ORIGINS, &Length, Origins));
+    TEST_EQUAL(1u, Length);
+    TEST_EQUAL((uint8_t)QUIC_PATH_ORIGIN_INITIAL, Origins[0]);
+
+    //
+    // One the application opened itself. Any second loopback address will do;
+    // what matters is who asked for the path, not where it goes.
+    //
+    QuicAddr SecondLocal(QUIC_ADDRESS_FAMILY_INET);
+    TEST_TRUE(QuicAddrFromString("127.0.0.1", 0, &SecondLocal.SockAddr));
+    QuicAddr Remote;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(Remote));
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    uint32_t Try = 0;
+    do {
+        SecondLocal.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam = { &SecondLocal.SockAddr, &Remote.SockAddr };
+        Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    Length = sizeof(Origins);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_TEST_PATH_ORIGINS, &Length, Origins));
+    TEST_EQUAL(2u, Length);
+
+    //
+    // The initial path stays Paths[0] and the new one is the application's.
+    // Asserted as a set rather than by index, because QuicConnAddPath inserts
+    // at index 1 and a future change to that ordering should not fail a test
+    // about provenance.
+    //
+    uint32_t InitialCount = 0;
+    uint32_t ApplicationCount = 0;
+    for (uint32_t i = 0; i < Length; ++i) {
+        if (Origins[i] == QUIC_PATH_ORIGIN_INITIAL) {
+            InitialCount++;
+        } else if (Origins[i] == QUIC_PATH_ORIGIN_APPLICATION) {
+            ApplicationCount++;
+        }
+    }
+    TEST_EQUAL(1u, InitialCount);
+    TEST_EQUAL(1u, ApplicationCount);
+
+    //
+    // And nothing is labelled as the reconciler's: this connection never asked
+    // for automatic path management, so stage 3 would have nothing to remove.
+    //
+    for (uint32_t i = 0; i < Length; ++i) {
+        TEST_NOT_EQUAL((uint8_t)QUIC_PATH_ORIGIN_RECONCILER, Origins[i]);
+    }
+
+    Connection.Shutdown(QUIC_TEST_NO_ERROR);
+    TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+#endif
+}
+
+//
+// The other half: a path opened because the peer advertised an address is the
+// reconciler's, and so is removable by it.
+//
+void
+QuicTestPathOriginsAdvertised(
+    )
+{
+#if !DEBUG
+#else
+    AltServerAddressTestContext ServerContext;
+    AltServerAddressTestContext ClientContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicSettings ClientSettings;
+    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
+    ClientSettings.IsSet.AddAddressMode = TRUE;
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, AltServerAddressTestContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(
+        Registration, CleanUpManual, AltServerAddressTestContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QUIC_ADDRESS_FAMILY_INET,
+            QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(ClientContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
+
+    //
+    // A real interface address, because the frame writer skips loopback
+    // observed addresses -- the same reason AlternativeServerAddressAuto needs
+    // one.
+    //
+    QuicAddr SecondAddr;
+    if (!AltServerAddressHostAddress(SecondAddr)) {
+        return;
+    }
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    uint32_t Try = 0;
+    do {
+        SecondAddr.SetEphemeralPort();
+        Status =
+            ServerContext.Connection->SetParam(
+                QUIC_PARAM_CONN_ADD_BOUND_ADDRESS,
+                sizeof(SecondAddr.SockAddr),
+                &SecondAddr.SockAddr);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    QUIC_ADD_OBSERVED_ADDRESS AddObserved = { &SecondAddr.SockAddr, &SecondAddr.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_ADD_OBSERVED_ADDRESS,
+            sizeof(AddObserved),
+            &AddObserved));
+
+    TEST_TRUE(AltServerAddressWaitForPathCount(Connection, 2));
+
+    uint8_t Origins[QUIC_MAX_PATH_COUNT] = { 0 };
+    uint32_t Length = sizeof(Origins);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_TEST_PATH_ORIGINS, &Length, Origins));
+    TEST_EQUAL(2u, Length);
+
+    uint32_t ReconcilerCount = 0;
+    for (uint32_t i = 0; i < Length; ++i) {
+        if (Origins[i] == QUIC_PATH_ORIGIN_RECONCILER) {
+            ReconcilerCount++;
+        }
+    }
+    TEST_EQUAL(1u, ReconcilerCount);
+
+    Connection.Shutdown(QUIC_TEST_NO_ERROR);
+    TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+#endif
+}
+
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES

@@ -1179,6 +1179,22 @@ TEST(Basic, AlternativeServerAddressAuto) {
     QuicTestAlternativeServerAddressAuto();
 }
 
+TEST(Basic, PathOrigins) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathOrigins is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathOrigins");
+    QuicTestPathOrigins();
+}
+
+TEST(Basic, PathOriginsAdvertised) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathOriginsAdvertised is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathOriginsAdvertised");
+    QuicTestPathOriginsAdvertised();
+}
+
 //
 // Reads a public parameter and needs no injection, so it runs in release too.
 //

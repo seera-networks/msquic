@@ -222,6 +222,14 @@ QuicTestAlternativeServerAddressAuto(
     );
 
 void
+QuicTestPathOrigins(
+    );
+
+void
+QuicTestPathOriginsAdvertised(
+    );
+
+void
 QuicTestLocalAddressChangeAutoRoute(
     );
 
