@@ -52,6 +52,7 @@
 ../src/core/pathid.c
 ../src/core/path.c
 ../src/core/settings.c
+../src/core/candidate.c
 ../src/core/connection.c
 ../src/core/packet_builder.c
 ../src/core/version_neg.c
@@ -121,6 +122,7 @@
 ../src/core/unittest/BbrTest.cpp
 ../src/core/unittest/VarIntTest.cpp
 ../src/core/unittest/CMakeLists.txt
+../src/core/unittest/CandidateTest.cpp
 ../src/core/unittest/FrameTest.cpp
 ../src/core/unittest/TicketTest.cpp
 ../src/core/unittest/PacketNumberTest.cpp

@@ -779,6 +779,30 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "CandidatePairsRebuilt": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs",
+      "UniqueId": "CandidatePairsRebuilt",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "CertCapiFormattedChain": {
       "ModuleProperites": {},
       "TraceString": "[cert] Successfully formatted chain of %u certificate(s)",
@@ -15820,6 +15844,11 @@
         "UniquenessHash": "6c1e8d47-86a1-ba49-405a-000c6a3f1bff",
         "TraceID": "BoundAddressWildcardForQtip",
         "EncodingString": "[conn][%p] Binding a bound address on the wildcard, as QTIP requires"
+      },
+      {
+        "UniquenessHash": "310aaae3-93b1-6592-bf2b-37e09a696639",
+        "TraceID": "CandidatePairsRebuilt",
+        "EncodingString": "[conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs"
       },
       {
         "UniquenessHash": "bc118133-e7f5-68c2-fd22-5dba9202e2eb",

@@ -582,7 +582,26 @@ typedef struct QUIC_CONNECTION {
     struct {
         QUIC_ADDR Address;
         QUIC_VAR_INT SequenceNumber;
+        //
+        // What the frame said about this address, kept because the candidate
+        // pair table ranks on it. #155 decoded both and then dropped them,
+        // since nothing downstream could use a priority it had no pair to
+        // apply it to.
+        //
+        QUIC_VAR_INT PriorityHint;
+        BOOLEAN PreferredToCurrentPath;
     } AltAddrs[QUIC_MAX_ALTERNATIVE_ADDRESSES];
+
+    //
+    // Every (local address, remote address) combination this connection could
+    // carry a path on, ordered best first. See candidate.h.
+    //
+    // Allocated on first use rather than inline: it is over a kilobyte, and a
+    // connection that never turns on dynamic address handling should not pay
+    // for it. Nothing reads it yet -- stage 3 of #157 is what makes paths
+    // follow it.
+    //
+    QUIC_CANDIDATE_SET* CandidatePairs;
 
     //
     // The sequence number to use for sending an punch me now.
@@ -1839,6 +1858,19 @@ QUIC_STATUS
 QuicConnProcessAddAddress(
     _In_ QUIC_CONNECTION* Connection,
     _In_ QUIC_ADD_ADDRESS_EX* Frame
+    );
+
+//
+// Rebuilds the candidate pair table from the host's local addresses and the
+// remote addresses this connection knows about. Nothing reads the table yet;
+// stage 3 of #157 is what makes paths follow it.
+//
+// Must run on the connection's worker: the per-remote route lookup can block.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnRebuildCandidatePairs(
+    _In_ QUIC_CONNECTION* Connection
     );
 
 //
