@@ -15,6 +15,7 @@ set(SOURCES
     binding.c
     configuration.c
     congestion_control.c
+    candidate.c
     connection.c
     connection_pool.c
     crypto.c
@@ -52,6 +53,7 @@ set(SOURCES
     version_neg.c
     operation.h
     stream.h
+    candidate.h
     connection.h
     sliding_window_extremum.c
 )

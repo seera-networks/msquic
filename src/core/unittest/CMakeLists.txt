@@ -6,6 +6,7 @@ set(SOURCES
     AllowanceTest.cpp
     BbrTest.cpp
     CubicTest.cpp
+    CandidateTest.cpp
     FrameTest.cpp
     PacketNumberTest.cpp
     PartitionTest.cpp

@@ -2216,6 +2216,37 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for CandidatePairsRebuilt
+// [conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs
+// QuicTraceLogConnVerbose(
+        CandidatePairsRebuilt,
+        Connection,
+        "Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs",
+        LocalCount,
+        RemoteCount,
+        Connection->CandidatePairs->Count);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = LocalCount = arg3
+// arg4 = arg4 = RemoteCount = arg4
+// arg5 = arg5 = Connection->CandidatePairs->Count = arg5
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, CandidatePairsRebuilt,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3,
+        unsigned int, arg4,
+        unsigned char, arg5), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(unsigned int, arg4, arg4)
+        ctf_integer(unsigned char, arg5, arg5)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for AlternativeAddressStale
 // [conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)
 // QuicTraceLogConnVerbose(
