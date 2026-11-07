@@ -9770,6 +9770,35 @@ QuicConnActivatePath(
     return QUIC_STATUS_SUCCESS;
 }
 
+//
+// Whether a destination CID is still referenced by a path other than this one.
+//
+// QuicConnGetPathForPacket hands a new path the active path's destination CID
+// whenever the peer's CID is zero length -- the "TODO - Copy instead?" on that
+// line -- and it does so without QUIC_CID_SET_PATH, which is what lets it past
+// that macro's one-path-per-CID assertion. So a CID can genuinely be in use by
+// two paths, and retiring it because one of them is going away takes it out
+// from under the other.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnDestCidUsedByAnotherPath(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path,
+    _In_ const QUIC_CID_LIST_ENTRY* DestCid
+    )
+{
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (&Connection->Paths[i] != Path &&
+            Connection->Paths[i].DestCid == DestCid) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 // Removes a bound address from the connection.
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -9856,7 +9885,16 @@ QuicConnRemoveBoundAddress(
             QUIC_PATH* Path = &Connection->Paths[i];
             uint8_t RemovingPathIndex = (uint8_t)i;
 
-            if (Path->DestCid != NULL && Connection->State.HandshakeConfirmed) {
+            //
+            // Not retired while another path still holds it. Retiring a shared
+            // CID sends RETIRE_CONNECTION_ID for one the surviving path is
+            // still using, and the acknowledgement then frees it underneath
+            // that path -- which is the assertion in
+            // QuicLossDetectionOnPacketAcknowledged that #156 was.
+            //
+            if (Path->DestCid != NULL &&
+                Connection->State.HandshakeConfirmed &&
+                !QuicConnDestCidUsedByAnotherPath(Connection, Path, Path->DestCid)) {
                 QuicPathIDRetireCid(Path->PathID, Path->DestCid);
             }
 
@@ -9944,7 +9982,15 @@ QuicConnRemovePath(
 
             if (!Connection->State.MultipathNegotiated) {
                 uint8_t RemovingPathIndex = (uint8_t)i;
-                if (Path->DestCid != NULL && Connection->State.HandshakeConfirmed) {
+                //
+                // Same shared-CID test as QuicConnRemoveBoundAddress makes, for
+                // the same reason: this path's destination CID may be the
+                // active path's, and retiring it would have the peer's
+                // acknowledgement free it while that path still sends on it.
+                //
+                if (Path->DestCid != NULL &&
+                    Connection->State.HandshakeConfirmed &&
+                    !QuicConnDestCidUsedByAnotherPath(Connection, Path, Path->DestCid)) {
                     QuicPathIDRetireCid(Path->PathID, Path->DestCid);
                 }
 
