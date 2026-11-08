@@ -4471,6 +4471,14 @@ StatelessPunchNegotiated(
     _Out_ BOOLEAN* Negotiated
     )
 {
+    //
+    // Written before the call, so the _Out_ annotation holds even when the
+    // call fails -- MSVC /analyze flags returning an uninitialized out
+    // parameter as C6101, and every other _Out_ helper in this file
+    // initializes first for the same reason.
+    //
+    *Negotiated = FALSE;
+
     uint32_t Length = sizeof(*Negotiated);
     const QUIC_STATUS Status =
         Connection->GetParam(

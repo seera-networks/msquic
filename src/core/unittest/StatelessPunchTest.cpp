@@ -117,7 +117,18 @@ TEST_F(StatelessPunchTest, DestinationRefusesLocalScope)
 //
 TEST_F(StatelessPunchTest, DestinationRefusesSensitivePorts)
 {
-    for (uint16_t Port : { 53, 123, 137, 161, 389, 1900, 11211 }) {
+    //
+    // A typed array rather than a braced list in the loop: a braced list of
+    // integer literals deduces std::initializer_list<int>, and int to uint16_t
+    // is a narrowing conversion MSVC refuses at /W4 /WX (C4244) while gcc says
+    // nothing. An aggregate initializer of constants that fit is fine, which
+    // is why the production list in connection.c has always been written this
+    // way.
+    //
+    static const uint16_t SensitivePorts[] = {
+        53, 123, 137, 161, 389, 1900, 11211
+    };
+    for (uint16_t Port : SensitivePorts) {
         ASSERT_FALSE(Allowed("203.0.113.5", Port)) << "port " << Port;
         ASSERT_FALSE(Allowed("2001:db8::1", Port)) << "port " << Port;
     }
