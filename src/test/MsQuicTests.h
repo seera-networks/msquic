@@ -258,6 +258,19 @@ QuicTestTableMigrationAfterFailure(
     );
 
 void
+QuicTestModeManual(
+    );
+
+void
+QuicTestModeNatTraversal(
+    );
+
+void
+QuicTestDeprecatedLocalAddressChangeMode(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestLocalAddressChangeAutoRoute(
     );
 

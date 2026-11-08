@@ -138,7 +138,7 @@ if (Status == QUIC_STATUS_BUFFER_TOO_SMALL) {
 }
 ```
 
-To be told when this set changes rather than polling it, set `QUIC_SETTINGS.LocalAddressChangeMode` to `QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY` and handle [QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED](QUIC_CONNECTION_EVENT.md#quic_connection_event_local_addresses_changed).
+To be told when this set changes rather than polling it, set `QUIC_SETTINGS.AddAddressMode` to `QUIC_ADD_ADDRESS_MANUAL` and handle [QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED](QUIC_CONNECTION_EVENT.md#quic_connection_event_local_addresses_changed). (`QUIC_SETTINGS.LocalAddressChangeMode` used to control this and is now deprecated and ignored.)
 
 # See Also
 

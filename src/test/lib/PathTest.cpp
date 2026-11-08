@@ -3614,7 +3614,7 @@ struct TableMigrationTest {
     Start(
         MsQuicConnection*& Connection,
         uint32_t HoldDownMs,
-        QUIC_LOCAL_ADDRESS_CHANGE_MODE LocalMode = QUIC_LOCAL_ADDRESS_CHANGE_DISABLED,
+        QUIC_ADD_ADDRESS_MODE Mode = QUIC_ADD_ADDRESS_AUTO,
         uint32_t InitialRttMs = 0
         )
     {
@@ -3630,11 +3630,11 @@ struct TableMigrationTest {
         }
 
         MsQuicSettings ClientSettings;
-        ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
+        ClientSettings.AddAddressMode = Mode;
         ClientSettings.IsSet.AddAddressMode = TRUE;
         ClientSettings.AutoMigrationHoldDownMs = HoldDownMs;
         ClientSettings.IsSet.AutoMigrationHoldDownMs = TRUE;
-        ClientSettings.SetLocalAddressChangeMode(LocalMode);
+
         if (InitialRttMs != 0) {
             //
             // The path validation timeout is six times this, so it is what
@@ -4037,11 +4037,10 @@ QuicTestTableMigrationNoFlap(
     TableMigrationTest Test;
     MsQuicConnection* Conn = nullptr;
     //
-    // LocalAddressChangeMode AUTO as well, which is what makes an injected
-    // route change reach the reconciler: QuicConnProcessLocalAddressChange
-    // returns before queueing anything when the local half is disabled.
+    // An injected route change reaches the reconciler in AUTO, which since
+    // stage 5 is the only mode setting involved.
     //
-    if (!Test.Start(Conn, HoldDownMs, QUIC_LOCAL_ADDRESS_CHANGE_AUTO)) {
+    if (!Test.Start(Conn, HoldDownMs)) {
         return;
     }
 
@@ -4136,7 +4135,7 @@ QuicTestTableMigrationAfterFailure(
     //
     TableMigrationTest Test;
     MsQuicConnection* Conn = nullptr;
-    if (!Test.Start(Conn, 0, QUIC_LOCAL_ADDRESS_CHANGE_DISABLED, 50)) {
+    if (!Test.Start(Conn, 0, QUIC_ADD_ADDRESS_AUTO, 50)) {
         return;
     }
 
@@ -4240,6 +4239,176 @@ QuicTestTableMigrationAfterFailure(
             &Good.SockAddr));
 
     TEST_TRUE(TableMigrationWaitForActiveRemote(*Conn, &Good.SockAddr, 5000));
+#endif
+}
+
+//
+// Stage 5 of #157: MANUAL builds no table and touches no path.
+//
+// The mode's contract is that the application is the interface. AUTO has had
+// tests since stage 3; this is the one that says the other half of the switch
+// actually switches, and it checks the strong form -- not just "no migration"
+// but "no table", because a table is what every path change here comes from.
+//
+void
+QuicTestModeManual(
+    )
+{
+#if !DEBUG
+#else
+    TableMigrationTest Test;
+    MsQuicConnection* Conn = nullptr;
+    if (!Test.Start(Conn, 0, QUIC_ADD_ADDRESS_MANUAL)) {
+        return;
+    }
+
+    QUIC_ADDR OriginalRemote;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &OriginalRemote));
+    TEST_EQUAL(1u, AltServerAddressPathCount(*Conn));
+
+    //
+    // An advertised address, marked preferred -- the strongest thing a server
+    // can say. In AUTO this opens a path and then migrates onto it.
+    //
+    QuicAddr Advertised;
+    if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Advertised)) {
+        return;
+    }
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(Advertised.SockAddr),
+            &Advertised.SockAddr));
+
+    //
+    // The application is told, which is the whole of what MANUAL does.
+    //
+    TEST_TRUE(Test.ClientContext.AddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(QuicAddrCompare(&Advertised.SockAddr, &Test.ClientContext.AddedAddress.SockAddr));
+
+    //
+    // And nothing else. Waited out rather than read once: a path opened or a
+    // migration started would happen asynchronously, so a single read here
+    // could beat it.
+    //
+    CxPlatSleep(500);
+    TEST_EQUAL(1u, AltServerAddressPathCount(*Conn));
+    QUIC_ADDR Active;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &Active));
+    TEST_TRUE(QuicAddrCompare(&Active, &OriginalRemote));
+
+    //
+    // The application can still do it by hand, which is the point of the
+    // mode -- and shows the path was reachable all along, so the assertions
+    // above are about policy and not about the address being unusable.
+    //
+    QuicAddr AppLocal;
+    TEST_QUIC_SUCCEEDED(Conn->GetLocalAddr(AppLocal));
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    uint32_t Try = 0;
+    do {
+        AppLocal.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam = { &AppLocal.SockAddr, &Advertised.SockAddr };
+        Status = Conn->SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+    TEST_EQUAL(2u, AltServerAddressPathCount(*Conn));
+
+    //
+    // Still the application's path, not reconciliation's.
+    //
+    uint8_t Origins[QUIC_MAX_PATH_COUNT];
+    memset(Origins, 0xFF, sizeof(Origins));
+    uint32_t Length = sizeof(Origins);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Conn->Handle, QUIC_PARAM_CONN_TEST_PATH_ORIGINS, &Length, Origins));
+    TEST_EQUAL(2u, Length);
+    for (uint32_t i = 0; i < Length; ++i) {
+        TEST_NOT_EQUAL((uint8_t)QUIC_PATH_ORIGIN_RECONCILER, Origins[i]);
+    }
+#endif
+}
+
+//
+// Stage 5 of #157: NAT_TRAVERSAL stays on the older ADD_ADDRESS mechanism, so
+// an advertised address does nothing on its own.
+//
+// Not the test this was meant to be, and the reason is worth stating. #163
+// tables NAT_TRAVERSAL as "table built, but a pair produces no path unless a
+// candidate is configured". That code is here -- the candidate requirement and
+// the punch-before-probe are in QuicConnReconcileCreatePaths -- but it cannot
+// be reached yet: a NAT_TRAVERSAL client deliberately does not offer the
+// alternative_address transport parameter, because PUNCH_ME_NOW names the
+// server's address by a per-address sequence number that only the older
+// ADD_ADDRESS frames carry. So the table's remote set is just the current
+// path's, and with one path per remote outside multipath there is no pair to
+// create anything for.
+//
+// #173 is what unblocks it: once PUNCH_ME_NOW names the address directly, the
+// parameter can be offered and the advertised set becomes table remotes. Until
+// then what is testable is the boundary itself -- that this mode does not act
+// on ALTERNATIVE_ADDRESS -- and that is what this asserts. It is also the
+// mode's first test of any kind.
+//
+void
+QuicTestModeNatTraversal(
+    )
+{
+#if !DEBUG
+#else
+    TableMigrationTest Test;
+    MsQuicConnection* Conn = nullptr;
+    if (!Test.Start(Conn, 0, QUIC_ADD_ADDRESS_NAT_TRAVERSAL)) {
+        return;
+    }
+
+    QUIC_ADDR OriginalRemote;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &OriginalRemote));
+    TEST_EQUAL(1u, AltServerAddressPathCount(*Conn));
+
+    //
+    // An advertised address, marked preferred. In AUTO this opens a path and
+    // migrates onto it; in MANUAL it raises an event.
+    //
+    QuicAddr Advertised;
+    if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Advertised)) {
+        return;
+    }
+    //
+    // The server cannot even express a preference to this client: marking an
+    // address preferred is an ALTERNATIVE_ADDRESS concept, and the extension
+    // was never negotiated. Refused rather than silently ignored, so a server
+    // that tries finds out.
+    //
+    TEST_EQUAL(
+        QUIC_STATUS_INVALID_STATE,
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(Advertised.SockAddr),
+            &Advertised.SockAddr));
+
+    CxPlatSleep(500);
+
+    //
+    // Neither. No path, no migration, and no report -- the client never asked
+    // the server to use this extension, so there is nothing to act on.
+    //
+    TEST_EQUAL(1u, AltServerAddressPathCount(*Conn));
+    TEST_FALSE(ReconcilerHasPathTo(*Conn, &Advertised.SockAddr));
+    QUIC_ADDR Active;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &Active));
+    TEST_TRUE(QuicAddrCompare(&Active, &OriginalRemote));
+    TEST_EQUAL(0u, Test.ClientContext.AddedCount);
+
+    //
+    // And the connection is unharmed by the frames it chose not to negotiate.
+    // Worth asserting: the server falls back to the older ADD_ADDRESS frames
+    // for a peer that did not offer the extension, and a client that mishandled
+    // those would abort rather than merely ignore them.
+    //
+    TEST_FALSE(Test.ServerContext.ShutdownEvent.WaitTimeout(100));
+    TEST_FALSE(Test.ClientContext.ShutdownEvent.WaitTimeout(100));
 #endif
 }
 

@@ -503,6 +503,18 @@
       ],
       "macroName": "QuicTraceLogConnWarning"
     },
+    "AutoMigrationUnavailableMode": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated",
+      "UniqueId": "AutoMigrationUnavailableMode",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "AutoRemovedLostPath": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] AUTO removed a path whose local address was lost",
@@ -15912,6 +15924,11 @@
         "UniquenessHash": "230a914f-39d3-e420-8615-8238b841d79e",
         "TraceID": "AutoMigrationUnavailable",
         "EncodingString": "[conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated"
+      },
+      {
+        "UniquenessHash": "10e68970-7f31-9ad2-6dc9-9f8451ca676f",
+        "TraceID": "AutoMigrationUnavailableMode",
+        "EncodingString": "[conn][%p] QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated"
       },
       {
         "UniquenessHash": "0ac0c49e-31b3-c3d9-d969-d9916e3206b5",

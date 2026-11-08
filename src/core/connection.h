@@ -361,6 +361,30 @@ typedef struct QUIC_CONN_STATS {
 //
 // Why a make-before-break migration is in flight.
 //
+//
+// Stage 5 of #157: AddAddressMode is the single switch for dynamic address
+// handling, and LocalAddressChangeMode is ignored. These three say what each
+// mode means, so that the policy lives in one place rather than in a dozen
+// comparisons.
+//
+//   AUTO           the connection manages its own paths: table, reconciler,
+//                  migration.
+//   MANUAL         the application manages them. It gets the four events and
+//                  acts through ADD_PATH / ACTIVATE_PATH / REMOVE_PATH, and
+//                  there is no table at all.
+//   NAT_TRAVERSAL  the table is built, but a pair becomes a path only where a
+//                  candidate is configured, and opening one punches first.
+//
+#define QuicConnWantsAddressReports(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_MANUAL)
+
+#define QuicConnManagesPathsAutomatically(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO)
+
+#define QuicConnWantsCandidateTable(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO || \
+     (Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL)
+
 typedef enum QUIC_MIGRATION_REASON {
 
     //

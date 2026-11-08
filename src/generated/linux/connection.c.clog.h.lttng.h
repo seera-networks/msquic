@@ -413,15 +413,15 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoRemoveOldRoutePathFailed,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for AutoMigrationUnavailable
-// [conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated
+// Decoder Ring for AutoMigrationUnavailableMode
+// [conn][%p] QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated
 // QuicTraceLogConnWarning(
-                AutoMigrationUnavailable,
+                AutoMigrationUnavailableMode,
                 Connection,
-                "QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated");
+                "QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrationUnavailable,
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrationUnavailableMode,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(

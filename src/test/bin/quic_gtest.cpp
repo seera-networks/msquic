@@ -1105,6 +1105,14 @@ TEST_P(WithFamilyArgs, LocalAddressChangeNotify) {
     QuicTestLocalAddressChangeNotify(GetParam());
 }
 
+TEST_P(WithFamilyArgs, DeprecatedLocalAddressChangeMode) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestDeprecatedLocalAddressChangeMode is user-mode only.";
+    }
+    TestLoggerT<ParamType> Logger("QuicTestDeprecatedLocalAddressChangeMode", GetParam());
+    QuicTestDeprecatedLocalAddressChangeMode(GetParam());
+}
+
 TEST_P(WithFamilyArgs, LocalAddressChangeDisabled) {
     if (TestingKernelMode) {
         GTEST_SKIP() << "QuicTestLocalAddressChangeDisabled is user-mode only.";
@@ -1296,6 +1304,32 @@ TEST(Basic, TableMigrationAfterFailure) {
     QuicTestTableMigrationAfterFailure();
 #endif
 }
+
+TEST(Basic, ModeManual) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestModeManual needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestModeManual is user-mode only.";
+    }
+    TestLogger Logger("QuicTestModeManual");
+    QuicTestModeManual();
+#endif
+}
+
+TEST(Basic, ModeNatTraversal) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestModeNatTraversal needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestModeNatTraversal is user-mode only.";
+    }
+    TestLogger Logger("QuicTestModeNatTraversal");
+    QuicTestModeNatTraversal();
+#endif
+}
+
+
 
 //
 // Reads a public parameter and needs no injection, so it runs in release too.
