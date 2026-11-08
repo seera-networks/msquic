@@ -1573,6 +1573,15 @@ QuicConnAutoFollowRoute(
 //     the default change stage 5 of #157 makes, documented on the enum in
 //     msquic.h: the OS address monitor now starts for every client connection,
 //     where before it started only for one that asked.
+//   - a server only where it could act -- multipath, per stage 6 -- or where
+//     the application asked to be told, in MANUAL. The ordinary server watches
+//     nothing, and servers are where the connection count lives, so that is
+//     where stage 5's default change actually cost something.
+//
+//     Keyed on MultipathEnabled rather than negotiated, because the settings
+//     are applied before the handshake. A server that offered multipath and
+//     did not get it watches addresses it will not act on, which costs a
+//     reference on a monitor already running for someone else.
 //   - nothing at all without preview features. QUIC_SETTINGS'
 //     IsSet.LocalAddressChangeMode, the LOCAL_ADDRESSES_CHANGED event and the
 //     path parameters an application would need to observe or override any of
@@ -1600,7 +1609,10 @@ QuicConnUpdateAddressMonitorRef(
     )
 {
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
-    const BOOLEAN WantsAddressChanges = TRUE;
+    const BOOLEAN WantsAddressChanges =
+        !QuicConnIsServer(Connection) ||
+        Connection->Settings.MultipathEnabled ||
+        QuicConnWantsAddressReports(Connection);
 #else
     const BOOLEAN WantsAddressChanges = FALSE;
 #endif
@@ -1638,6 +1650,82 @@ QuicConnUpdateAddressMonitorRef(
     if (ModeWasSet || !Connection->AddressChangePassQueued) {
         Connection->AddressChangePassQueued = TRUE;
         QuicConnQueueLocalAddressChange(Connection);
+    }
+}
+
+// Stage 6 of #157: the server's whole use of local address detection.
+//
+// Abandons the paths whose local address the host no longer has. Multipath
+// only -- without it a second path is a validation candidate rather than
+// somewhere traffic goes, and the one path a server has is the one the client
+// chose, which a server may not move.
+//
+// draft-ietf-quic-multipath section 3.4 is why this exists: an endpoint
+// abandoning a path has to tell its peer. The client cannot see that the
+// server's interface went away, and would go on scheduling traffic onto a path
+// that cannot carry it.
+//
+// Does not call QuicConnRemovePath, and must not. That is the application's
+// entry point and it refuses a server's calls unless server migration was
+// negotiated -- correctly, because a server has no business creating or
+// removing paths on an application's behalf. This is not an API call; it is the
+// abandon half of what that function does under multipath, which is to mark the
+// path closed locally and arm PATH_ABANDON. The path leaves Connection->Paths
+// when the abandon completes, so nothing here moves the array and the loop can
+// walk it forwards.
+//
+// Never Paths[0] and never the last path. That does leave a server whose
+// *active* path lost its address sitting on it, which is correct rather than a
+// gap: moving it would be a server-initiated migration, and the client is the
+// one that picks a different path once PATH_ABANDON tells it the others are
+// gone.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicConnAbandonLostLocalAddressPaths(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_reads_(LostCount) const QUIC_PATH_PARAM* LostPaths,
+    _In_ uint32_t LostCount
+    )
+{
+    if (Connection->PathsCount <= 1) {
+        return;
+    }
+
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount; ++i) {
+        QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path->Binding == NULL || Path->LocalClose) {
+            continue;
+        }
+
+        BOOLEAN Lost = FALSE;
+        for (uint32_t j = 0; j < LostCount; ++j) {
+            if (QuicAddrCompare(LostPaths[j].LocalAddress, &Path->Route.LocalAddress) &&
+                QuicAddrCompare(LostPaths[j].RemoteAddress, &Path->Route.RemoteAddress)) {
+                Lost = TRUE;
+                break;
+            }
+        }
+        if (!Lost) {
+            continue;
+        }
+
+        Path->LocalClose = TRUE;
+        //
+        // PathID can be NULL for a path that never finished opening; there is
+        // no abandon to send for a path ID it never got.
+        //
+        if (Path->PathID != NULL) {
+            Path->PathID->Flags.SendAbandon = TRUE;
+        }
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
+
+        QuicTraceLogConnInfo(
+            ServerAbandonedLostPath,
+            Connection,
+            "Server abandoned a path whose local address was lost");
     }
 }
 
@@ -2202,6 +2290,30 @@ QuicConnProcessLocalAddressChange(
             RemovedCount,
             LostCount);
         (void)QuicConnIndicateEvent(Connection, &Event);
+    }
+
+    if (QuicConnIsServer(Connection)) {
+        //
+        // Stage 6 of #157: a server does exactly one thing with the host's own
+        // addresses, and only with multipath negotiated -- it abandons the
+        // paths whose local address went away.
+        //
+        // draft-ietf-quic-multipath section 3.4 requires an endpoint
+        // abandoning a path to tell its peer, so the abandon is the point: the
+        // client cannot see that the server's interface went away and would go
+        // on scheduling traffic onto a path that cannot carry it.
+        //
+        // Nothing else. No table, no pair ranking, no local-address selection,
+        // no migration. All of that answers "where should this connection send
+        // from", which is the client's question: a server sends from wherever
+        // the client reached it, and RFC 9000 section 9 gives it no licence to
+        // move a connection on its own anyway.
+        //
+        if (Connection->State.MultipathNegotiated) {
+            QuicConnAbandonLostLocalAddressPaths(
+                Connection, LostPaths, LostCount);
+        }
+        goto Exit;
     }
 
     if (QuicConnManagesPathsAutomatically(Connection)) {
@@ -11311,16 +11423,28 @@ QuicConnReconcilePaths(
     }
 
     //
-    // And the server-migration test, which used to sit below the rebuild. The
-    // path APIs reject a client's calls once server migration is negotiated,
-    // and a server's unless it is, so there is nothing this pass can do on
-    // such a connection -- and the rebuild is the expensive half. An ordinary
-    // server, which is every server that has not negotiated it, was otherwise
-    // paying for a table it would discover it could not use a moment later.
+    // Client only, as of stage 6 of #157. The table answers "where should this
+    // connection send from and to", which is the client's question: a server
+    // sends from wherever the client reached it. A server's whole use of local
+    // address detection is abandoning the paths whose address went away, which
+    // QuicConnProcessLocalAddressChange does directly and without any of this.
     //
-    if ((QuicConnIsClient(Connection) && Connection->Settings.ServerMigrationEnabled) ||
-        (QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||
-        (QuicConnIsServer(Connection) && !Connection->State.ServerMigrationNegotiated)) {
+    // Previously this read as a server-migration test, which let a server that
+    // had negotiated that extension build a table and reconcile paths. Nothing
+    // wanted that: QuicConnAddPath is the only thing the table drives and a
+    // server calling it is creating paths the client never asked for.
+    //
+    if (QuicConnIsServer(Connection)) {
+        return;
+    }
+
+    //
+    // And a client that handed path creation to the server has nothing to do
+    // here either -- the path APIs reject its calls in that state, so every
+    // pair in the table would fail one at a time.
+    //
+    if (Connection->Settings.ServerMigrationEnabled ||
+        Connection->State.ServerMigrationNegotiated) {
         return;
     }
 

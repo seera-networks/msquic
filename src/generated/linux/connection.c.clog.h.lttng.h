@@ -803,6 +803,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoFollowRouteAddedPath,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ServerAbandonedLostPath
+// [conn][%p] Server abandoned a path whose local address was lost
+// QuicTraceLogConnInfo(
+            ServerAbandonedLostPath,
+            Connection,
+            "Server abandoned a path whose local address was lost");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ServerAbandonedLostPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for AutoMigrateToValidatedPath
 // [conn][%p] AUTO moved to an already validated path
 // QuicTraceLogConnInfo(

@@ -12401,6 +12401,34 @@
       ],
       "macroName": "QuicTraceLogStreamVerbose"
     },
+    "ServerAbandonedLostPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Server abandoned a path whose local address was lost",
+      "UniqueId": "ServerAbandonedLostPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ServerAbandonLostPathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Server failed to abandon a path whose address was lost, status=0x%x",
+      "UniqueId": "ServerAbandonLostPathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "ServerResumptionTicketDecodeFailAlpnLengthEncodedWrong": {
       "ModuleProperites": {},
       "TraceString": "[test] Attempting to decode Negotiated ALPN length (improperly encoded) %x (Actual: %u)",
@@ -19374,6 +19402,16 @@
         "UniquenessHash": "bd391397-df8d-a396-230b-c7846fcbda3b",
         "TraceID": "SendQueueDrained",
         "EncodingString": "[strm][%p] Send queue completely drained"
+      },
+      {
+        "UniquenessHash": "3914a8c1-e88f-43db-edd1-c08f12528762",
+        "TraceID": "ServerAbandonedLostPath",
+        "EncodingString": "[conn][%p] Server abandoned a path whose local address was lost"
+      },
+      {
+        "UniquenessHash": "4bf12526-2fae-13f5-a5ca-20766a3fb1d1",
+        "TraceID": "ServerAbandonLostPathFailed",
+        "EncodingString": "[conn][%p] Server failed to abandon a path whose address was lost, status=0x%x"
       },
       {
         "UniquenessHash": "10a2af3e-b6e9-d046-42b5-49a1f96ef4f2",
