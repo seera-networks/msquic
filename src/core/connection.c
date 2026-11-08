@@ -1563,6 +1563,85 @@ QuicConnAutoFollowRoute(
 
 
 //
+// Takes the library's address-monitor reference when this connection wants the
+// host's own addresses watched, and runs the opening pass.
+//
+// Whether it wants them:
+//
+//   - every AddAddressMode does, on a client. MANUAL to report them, AUTO and
+//     NAT_TRAVERSAL to act on them, and the setting has no "off" value. That is
+//     the default change stage 5 of #157 makes, documented on the enum in
+//     msquic.h: the OS address monitor now starts for every client connection,
+//     where before it started only for one that asked.
+//   - nothing at all without preview features. QUIC_SETTINGS'
+//     IsSet.LocalAddressChangeMode, the LOCAL_ADDRESSES_CHANGED event and the
+//     path parameters an application would need to observe or override any of
+//     this are preview-only, so without the gate such a build would get the
+//     monitor thread and automatic path management with no way to see or stop
+//     either.
+//
+// Not before the handshake is confirmed, which is the part that matters for
+// correctness rather than cost. The reference is given back in
+// QuicConnOnShutdownComplete, because tearing the monitor down joins the
+// backend's thread and that is PASSIVE_LEVEL work -- and that function needs a
+// worker to run. A connection opened, configured and closed without ever
+// starting has no worker, so it would reach QuicConnFree still holding the
+// reference, which is what its assert says must not happen. Taking it at
+// confirmation also means a connection that never connects pays nothing.
+//
+// One direction only: there is no mode that turns this off, so a reference
+// once taken is held until the connection closes.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnUpdateAddressMonitorRef(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ BOOLEAN ModeWasSet
+    )
+{
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    const BOOLEAN WantsAddressChanges = TRUE;
+#else
+    const BOOLEAN WantsAddressChanges = FALSE;
+#endif
+
+    if (!WantsAddressChanges ||
+        !Connection->State.HandshakeConfirmed ||
+        Connection->State.ShutdownComplete) {
+        return;
+    }
+
+    if (!Connection->AddressMonitorRef) {
+        //
+        // A failure here leaves the connection silent, which is the same as
+        // the platform having no backend.
+        //
+        if (QUIC_FAILED(QuicLibraryAddRefAddressMonitor())) {
+            return;
+        }
+        Connection->AddressMonitorRef = TRUE;
+        //
+        // Where "since I last looked" begins for route changes. Taken here
+        // rather than on the first reconciliation, which can be the route
+        // change itself.
+        //
+        Connection->LastRouteGeneration = QuicLibraryGetRouteGeneration();
+    }
+
+    //
+    // Run a pass when the reference is first taken, and again whenever the
+    // mode is set. Keying it on the reference alone meant the pass happened
+    // once in whatever mode was in force then, so an application that
+    // connected with the default AUTO and later set MANUAL never got the
+    // opening LOCAL_ADDRESSES_CHANGED enumerating its addresses.
+    //
+    if (ModeWasSet || !Connection->AddressChangePassQueued) {
+        Connection->AddressChangePassQueued = TRUE;
+        QuicConnQueueLocalAddressChange(Connection);
+    }
+}
+
+//
 // AUTO mode. Reconciles the connection's paths with the host's addresses by
 // itself, per the policy tables in #134.
 //
@@ -13515,68 +13594,7 @@ QuicConnApplyNewSettings(
     }
 #endif
 
-    //
-    // Whether this connection wants the host's own addresses watched.
-    //
-    // Every AddAddressMode does -- MANUAL to report them, AUTO and
-    // NAT_TRAVERSAL to act on them -- and the setting has no "off" value, so in
-    // a preview build this is simply true. That is the default change stage 5
-    // of #157 makes, and the reason it is documented on the enum in msquic.h:
-    // the OS address monitor now starts for every connection, where before it
-    // started only for one that asked.
-    //
-    // Behind the preview gate, though, and that matters. QUIC_SETTINGS'
-    // IsSet.LocalAddressChangeMode, the LOCAL_ADDRESSES_CHANGED event and the
-    // path parameters an application would need to observe or override any of
-    // this are all preview-only. Without the gate, an application built
-    // without preview features would get the monitor thread and automatic path
-    // management by default and have no way to see or stop it. With it, such a
-    // build behaves exactly as it did before this stage.
-    //
-#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
-    const BOOLEAN WantsAddressChanges = TRUE;
-#else
-    const BOOLEAN WantsAddressChanges = FALSE;
-#endif
-
-    //
-    // One direction only. There is no mode that turns this off, so a reference
-    // once taken is held until the connection closes; the branch that gave it
-    // back existed for LocalAddressChangeMode going to DISABLED and would now
-    // be dead code.
-    //
-    if (WantsAddressChanges && !Connection->AddressMonitorRef) {
-        //
-        // A failure here leaves the connection silent, which is the same as
-        // the platform having no backend.
-        //
-        if (QUIC_SUCCEEDED(QuicLibraryAddRefAddressMonitor())) {
-            Connection->AddressMonitorRef = TRUE;
-            //
-            // Where "since I last looked" begins for route changes. Taken here
-            // rather than on the first reconciliation, which can be the route
-            // change itself -- before the handshake is confirmed a
-            // reconciliation only marks the connection dirty and reads nothing,
-            // so the first pass that does read can be several generations later.
-            //
-            Connection->LastRouteGeneration = QuicLibraryGetRouteGeneration();
-        }
-    }
-
-    //
-    // Run a pass whenever the mode is set, not only when the reference is first
-    // taken. Keying it on the reference meant the pass happened once, at
-    // connection start, in whatever mode was in force then -- so an
-    // application that connected with the default AUTO and later set MANUAL
-    // never got the opening LOCAL_ADDRESSES_CHANGED enumerating its addresses,
-    // and one that switched to AUTO queued no reconciliation. Both waited for
-    // the next OS address change, which may never come.
-    //
-    if (WantsAddressChanges &&
-        (NewSettings->IsSet.AddAddressMode || !Connection->AddressChangePassQueued)) {
-        Connection->AddressChangePassQueued = TRUE;
-        QuicConnQueueLocalAddressChange(Connection);
-    }
+    QuicConnUpdateAddressMonitorRef(Connection, NewSettings->IsSet.AddAddressMode);
 
     if (OverWrite) {
         QuicSettingsDumpNew(NewSettings);

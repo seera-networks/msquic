@@ -4291,17 +4291,29 @@ QuicTestModeManual(
     TEST_TRUE(QuicAddrCompare(&Active, &OriginalRemote));
 
     //
-    // The application can still do it by hand, which is the point of the
-    // mode -- and shows the path was reachable all along, so the assertions
-    // above are about policy and not about the address being unusable.
+    // The application can still do it by hand, which is the point of the mode:
+    // nothing happened above because nothing was asked for, not because paths
+    // cannot be opened.
+    //
+    // To the connection's own remote address with a fresh port, not to the
+    // advertised one. The advertised address is a real interface address --
+    // it has to be, because the frame writer skips loopback -- and the
+    // connection's local address is loopback, so a path between them is
+    // unroutable and ADD_PATH fails with WSAENETUNREACH. That is what this
+    // test did, and the comment here used to claim the opposite. Fourth time
+    // in this work that a test picked an address the datapath could not use;
+    // the rule that keeps holding is to use what the connection has already
+    // proved it can carry.
     //
     QuicAddr AppLocal;
     TEST_QUIC_SUCCEEDED(Conn->GetLocalAddr(AppLocal));
+    QuicAddr AppRemote;
+    TEST_QUIC_SUCCEEDED(Conn->GetRemoteAddr(AppRemote));
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
     uint32_t Try = 0;
     do {
         AppLocal.SetEphemeralPort();
-        QUIC_PATH_PARAM PathParam = { &AppLocal.SockAddr, &Advertised.SockAddr };
+        QUIC_PATH_PARAM PathParam = { &AppLocal.SockAddr, &AppRemote.SockAddr };
         Status = Conn->SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
     } while (QUIC_FAILED(Status) && ++Try <= 3);
     TEST_QUIC_SUCCEEDED(Status);

@@ -522,6 +522,16 @@ QuicCryptoHandshakeConfirmed(
     }
 
     //
+    // The address monitor is taken here rather than when settings are applied,
+    // because the reference is given back in QuicConnOnShutdownComplete and
+    // that needs a worker -- a connection opened, configured and closed
+    // without ever starting would otherwise reach QuicConnFree still holding
+    // it, which is what its assert says must not happen. This is also where
+    // the opening local-address pass belongs.
+    //
+    QuicConnUpdateAddressMonitorRef(Connection, FALSE);
+
+    //
     // And a reconciliation, because one may have been dropped. The reconciler
     // bails out before confirmation -- RFC 9000 section 9 does not allow
     // migration there -- and nothing else would bring it back: an

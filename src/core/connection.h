@@ -2031,6 +2031,18 @@ QuicConnReconcilePaths(
     );
 
 //
+// Takes the address-monitor reference if this connection wants it, and runs the
+// opening local-address pass. Called when settings are applied and at handshake
+// confirmation; does nothing before the latter.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnUpdateAddressMonitorRef(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ BOOLEAN ModeWasSet
+    );
+
+//
 // Asks for a reconciliation on the connection's worker. Safe to call from frame
 // processing, which the reconciliation itself is not.
 //
