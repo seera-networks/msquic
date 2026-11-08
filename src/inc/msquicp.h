@@ -258,6 +258,21 @@ typedef struct QUIC_TEST_PATH_ADDRESSES {
 
 #define QUIC_PARAM_CONN_TEST_PATH_ADDRESSES             0x85000008  // QUIC_TEST_PATH_ADDRESSES[]
 
+//
+// Marks one of this connection's advertised addresses as preferred to the path
+// the ALTERNATIVE_ADDRESS frame goes out on -- the draft advertises that by
+// placing the entry before its CURRENT_PATH sentinel, and the client's
+// candidate pair table ranks on it. Takes the observed address of a bound
+// address already added with QUIC_PARAM_CONN_ADD_OBSERVED_ADDRESS. Set only.
+//
+// In the private header rather than the public one because the draft is
+// provisional, so the shape of "how a server expresses a preference" is not
+// something to commit to in the stable API yet. Without it a server has no way
+// to say this at all and the client's migration can only be tested by
+// hand-rolling a frame, so the client half of stage 4 could not be verified.
+//
+#define QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS         0x85000009  // QUIC_ADDR
+
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 #define QUIC_PARAM_STREAM_RELIABLE_OFFSET_RECV          0x88000000  // uint64_t
 #endif

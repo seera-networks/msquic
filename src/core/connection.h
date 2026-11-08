@@ -358,6 +358,26 @@ typedef struct QUIC_CONN_STATS {
 //   N.B. In general, all variables should only be written on the QUIC worker
 //        thread.
 //
+//
+// Why a make-before-break migration is in flight.
+//
+typedef enum QUIC_MIGRATION_REASON {
+
+    //
+    // The host changed which interface it sends this peer's traffic from
+    // (#134 phase 5). Gated on LocalAddressChangeMode.
+    //
+    QUIC_MIGRATION_REASON_ROUTE,
+
+    //
+    // The server advertised an address it would rather be reached at, and the
+    // candidate pair table ranks that pair above the one in use (#157 stage
+    // 4). Gated on AddAddressMode.
+    //
+    QUIC_MIGRATION_REASON_TABLE,
+
+} QUIC_MIGRATION_REASON;
+
 typedef struct QUIC_CONNECTION {
 
 #ifdef __cplusplus
@@ -707,8 +727,61 @@ typedef struct QUIC_CONNECTION {
     // addresses already in use -- and does not get recycled the way a path ID
     // slot can.
     //
-    BOOLEAN RouteMigrationPending;
-    QUIC_ADDR RouteMigrationLocal;
+    BOOLEAN MigrationPending;
+    QUIC_ADDR MigrationLocal;
+
+    //
+    // And its remote address, because stage 4 of #157 migrates between remote
+    // addresses rather than between local ones: a route change keeps the peer
+    // and swaps the interface, while a server saying it would rather be
+    // reached somewhere else keeps the interface and swaps the peer. The pair
+    // is what identifies the path either way, so both migrations wait on the
+    // same markers -- which also makes them mutually exclusive, and they have
+    // to be: two make-before-break attempts in flight would fight over which
+    // path ends up active.
+    //
+    QUIC_ADDR MigrationRemote;
+
+    //
+    // Which of the two started it. Only used to say so in the traces and to
+    // pick the mode that has to still be AUTO for it to complete; the
+    // mechanism is identical.
+    //
+    QUIC_MIGRATION_REASON MigrationReason;
+
+    //
+    // The ALTERNATIVE_ADDRESS sequence number whose preference was last acted
+    // on, so that one advertisement produces at most one migration.
+    //
+    // The draft's sentinel says the server would rather be reached at these
+    // addresses than on the path the frame arrived on. That is a statement
+    // about a particular path, so once the connection has moved it is spent.
+    //
+    // Without this, one advertisement authorises a migration on every
+    // reconciliation pass that follows it, and with two addresses marked the
+    // moves alternate: move to the first, and the second is still ranked above
+    // the path now in use, so the next pass moves there, where the first is
+    // above it again. Not self-sustaining -- a pass needs a trigger -- but
+    // every local address change, route change and later frame becomes one, so
+    // on a connection that sees any churn the server's single statement keeps
+    // moving it. One advertisement, at most one migration.
+    //
+    QUIC_VAR_INT MigratedAtAltSequenceNumber;
+    BOOLEAN MigratedAtAltSequenceNumberValid;
+
+    //
+    // The remote address the last table migration moved away from, so the
+    // connection does not come straight back to it on the strength of the same
+    // advertised set.
+    //
+    // The sequence number above does not cover this on its own: the frame
+    // writer numbers at encode time and the loss handler re-arms the flag, so
+    // a retransmission of an unchanged set arrives with a higher number and
+    // reads as a new statement. One step of history is what a two-address
+    // oscillation needs.
+    //
+    QUIC_ADDR MigratedFromRemote;
+    BOOLEAN MigratedFromRemoteValid;
 
     //
     // The path above has finished validating and the migration onto it is
@@ -718,7 +791,7 @@ typedef struct QUIC_CONNECTION {
     // and completing the migration swaps the path array and removes an entry,
     // which left that pointer naming a path that had just been taken away.
     //
-    BOOLEAN RouteMigrationReady;
+    BOOLEAN MigrationReady;
 
     CXPLAT_LIST_ENTRY BoundAddresses;
 
@@ -907,6 +980,13 @@ typedef struct QUIC_BOUND_ADDRESS_LIST_ENTRY {
     QUIC_VAR_INT WithdrawnAtAltSequenceNumber;
     BOOLEAN SequenceNumberValid : 1;
     BOOLEAN ObservedAddressSet : 1;
+    //
+    // Advertise this address before the draft's CURRENT_PATH sentinel, which
+    // is the server saying it would rather be reached here than on the path
+    // the frame goes out on. Off by default: the writer has no basis for
+    // asserting a preference the application has not expressed.
+    //
+    BOOLEAN PreferredToCurrentPath : 1;
     BOOLEAN SendAddAddress : 1;
     BOOLEAN SendRemoveAddress : 1;
     BOOLEAN Removing : 1;

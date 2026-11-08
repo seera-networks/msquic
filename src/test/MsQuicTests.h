@@ -238,6 +238,26 @@ QuicTestPathReconcilerKeepsApplicationPath(
     );
 
 void
+QuicTestTableMigration(
+    );
+
+void
+QuicTestTableMigrationBackupOnly(
+    );
+
+void
+QuicTestTableMigrationHoldDown(
+    );
+
+void
+QuicTestTableMigrationNoFlap(
+    );
+
+void
+QuicTestTableMigrationAfterFailure(
+    );
+
+void
 QuicTestLocalAddressChangeAutoRoute(
     );
 

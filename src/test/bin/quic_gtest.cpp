@@ -1237,6 +1237,66 @@ TEST(Basic, PathReconcilerKeepsApplicationPath) {
 #endif
 }
 
+TEST(Basic, TableMigration) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigration needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigration is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigration");
+    QuicTestTableMigration();
+#endif
+}
+
+TEST(Basic, TableMigrationBackupOnly) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationBackupOnly needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationBackupOnly is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationBackupOnly");
+    QuicTestTableMigrationBackupOnly();
+#endif
+}
+
+TEST(Basic, TableMigrationHoldDown) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationHoldDown needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationHoldDown is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationHoldDown");
+    QuicTestTableMigrationHoldDown();
+#endif
+}
+
+TEST(Basic, TableMigrationNoFlap) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationNoFlap needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationNoFlap is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationNoFlap");
+    QuicTestTableMigrationNoFlap();
+#endif
+}
+
+TEST(Basic, TableMigrationAfterFailure) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationAfterFailure needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationAfterFailure is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationAfterFailure");
+    QuicTestTableMigrationAfterFailure();
+#endif
+}
+
 //
 // Reads a public parameter and needs no injection, so it runs in release too.
 //

@@ -650,14 +650,32 @@ tracepoint(CLOG_CONNECTION_C, AutoMigrateMultipathActivate , arg1);\
 // Decoder Ring for AutoFollowedRoute
 // [conn][%p] AUTO followed a route change onto a validated path
 // QuicTraceLogConnInfo(
-        AutoFollowedRoute,
-        Connection,
-        "AUTO followed a route change onto a validated path");
+            AutoFollowedRoute,
+            Connection,
+            "AUTO followed a route change onto a validated path");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 #ifndef _clog_3_ARGS_TRACE_AutoFollowedRoute
 #define _clog_3_ARGS_TRACE_AutoFollowedRoute(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, AutoFollowedRoute , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowedTable
+// [conn][%p] AUTO migrated onto the candidate pair table's preferred pair
+// QuicTraceLogConnInfo(
+            AutoFollowedTable,
+            Connection,
+            "AUTO migrated onto the candidate pair table's preferred pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoFollowedTable
+#define _clog_3_ARGS_TRACE_AutoFollowedTable(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoFollowedTable , arg1);\
 
 #endif
 
@@ -1188,6 +1206,42 @@ tracepoint(CLOG_CONNECTION_C, ReconcileAddPathFailed , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_ReconcileAddedPath
 #define _clog_3_ARGS_TRACE_ReconcileAddedPath(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, ReconcileAddedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateAbandoned
+// [conn][%p] Reconciler lost the path it was migrating onto
+// QuicTraceLogConnInfo(
+            ReconcileMigrateAbandoned,
+            Connection,
+            "Reconciler lost the path it was migrating onto");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileMigrateAbandoned
+#define _clog_3_ARGS_TRACE_ReconcileMigrateAbandoned(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileMigrateAbandoned , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateStarted
+// [conn][%p] Reconciler started a migration onto the table's preferred pair
+// QuicTraceLogConnInfo(
+        ReconcileMigrateStarted,
+        Connection,
+        "Reconciler started a migration onto the table's preferred pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileMigrateStarted
+#define _clog_3_ARGS_TRACE_ReconcileMigrateStarted(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileMigrateStarted , arg1);\
 
 #endif
 
@@ -2056,6 +2110,44 @@ tracepoint(CLOG_CONNECTION_C, CandidatePairsRebuilt , arg1, arg3, arg4, arg5);\
 #ifndef _clog_4_ARGS_TRACE_ReconcileCreateHeldDownFor
 #define _clog_4_ARGS_TRACE_ReconcileCreateHeldDownFor(uniqueId, arg1, encoded_arg_string, arg3)\
 tracepoint(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateHeldDown
+// [conn][%p] Reconciler held down migrating for %llu us
+// QuicTraceLogConnVerbose(
+            ReconcileMigrateHeldDown,
+            Connection,
+            "Reconciler held down migrating for %llu us",
+            RemainingUs);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemainingUs = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileMigrateHeldDown
+#define _clog_4_ARGS_TRACE_ReconcileMigrateHeldDown(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileMigrateHeldDown , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateNoPath
+// [conn][%p] Reconciler has no path yet for the pair it wants to migrate to
+// QuicTraceLogConnVerbose(
+            ReconcileMigrateNoPath,
+            Connection,
+            "Reconciler has no path yet for the pair it wants to migrate to");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileMigrateNoPath
+#define _clog_3_ARGS_TRACE_ReconcileMigrateNoPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileMigrateNoPath , arg1);\
 
 #endif
 

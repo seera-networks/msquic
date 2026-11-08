@@ -952,16 +952,19 @@ QuicSendWriteFrames(
                 }
 
                 //
-                // Every entry a backup, with a priority hint of zero. The
-                // server is offering places the client could go, not claiming
-                // any of them beats the path in use -- and the draft makes the
-                // hints advisory, with the client deciding what to probe.
-                // Putting entries before the sentinel would assert a
-                // preference this implementation has no basis for.
+                // A backup with a priority hint of zero unless the
+                // application has said otherwise. The server is offering
+                // places the client could go, not claiming any of them beats
+                // the path in use -- and the draft makes the hints advisory,
+                // with the client deciding what to probe. Asserting a
+                // preference the application has not expressed is not the
+                // writer's call, which is why the flag exists and why it is
+                // off by default.
                 //
                 Frame.Addresses[Frame.AddressCount].Address = Bound->ObservedAddress;
                 Frame.Addresses[Frame.AddressCount].PriorityHint = 0;
-                Frame.Addresses[Frame.AddressCount].PreferredToCurrentPath = FALSE;
+                Frame.Addresses[Frame.AddressCount].PreferredToCurrentPath =
+                    Bound->PreferredToCurrentPath;
                 Frame.AddressCount++;
             }
 
