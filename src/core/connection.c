@@ -1653,6 +1653,7 @@ QuicConnUpdateAddressMonitorRef(
     }
 }
 
+//
 // Stage 6 of #157: the server's whole use of local address detection.
 //
 // Abandons the paths whose local address the host no longer has. Multipath
@@ -1668,11 +1669,21 @@ QuicConnUpdateAddressMonitorRef(
 // Does not call QuicConnRemovePath, and must not. That is the application's
 // entry point and it refuses a server's calls unless server migration was
 // negotiated -- correctly, because a server has no business creating or
-// removing paths on an application's behalf. This is not an API call; it is the
-// abandon half of what that function does under multipath, which is to mark the
-// path closed locally and arm PATH_ABANDON. The path leaves Connection->Paths
-// when the abandon completes, so nothing here moves the array and the loop can
-// walk it forwards.
+// removing paths on an application's behalf.
+//
+// QuicPathIDAbandonLocally instead, which is the canonical local abandon.
+// Hand-rolling the flags it sets -- LocalClose, SendAbandon, the connection
+// send flag -- looked equivalent and was not: it also indicates PATH_REMOVED
+// and arms the three-PTO QUIC_CONN_TIMER_PATH_CLOSE deadline. Without that
+// deadline, a peer that acknowledges our PATH_ABANDON but never sends its own
+// leaves the path in Connection->Paths with LocalClose set for the life of the
+// connection, holding a binding and one of four path slots on an address that
+// no longer exists -- and nothing recovers it, because the loss-detection
+// fallback that would arm the deadline is gated on !LocalClose, the very flag
+// the hand-rolled version had just set.
+//
+// The path leaves Connection->Paths when the abandon completes, so nothing
+// here moves the array and the loop can walk it forwards.
 //
 // Never Paths[0] and never the last path. That does leave a server whose
 // *active* path lost its address sitting on it, which is correct rather than a
@@ -1712,15 +1723,17 @@ QuicConnAbandonLostLocalAddressPaths(
             continue;
         }
 
-        Path->LocalClose = TRUE;
         //
-        // PathID can be NULL for a path that never finished opening; there is
-        // no abandon to send for a path ID it never got.
+        // A path that never finished opening has no path ID, so there is no
+        // abandon to send and nothing to arm a close deadline on. Skipped
+        // rather than half-abandoned: marking it LocalClose with no frame and
+        // no timer is what leaves a path stuck forever.
         //
-        if (Path->PathID != NULL) {
-            Path->PathID->Flags.SendAbandon = TRUE;
+        if (Path->PathID == NULL || Path->PathID->Path == NULL) {
+            continue;
         }
-        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
+
+        QuicPathIDAbandonLocally(Path->PathID);
 
         QuicTraceLogConnInfo(
             ServerAbandonedLostPath,
@@ -2029,6 +2042,19 @@ QuicConnProcessLocalAddressChange(
     )
 {
     //
+    // Not this connection's business if it never took the monitor reference.
+    // The library's fan-out walks every connection in the process and does not
+    // consult that flag, so a process holding one interested connection would
+    // otherwise have every uninterested one copy the address snapshot, walk
+    // its paths twice and allocate, before finding nothing to do. Which is
+    // most of what stage 6 set out to save on a server.
+    //
+    if (!Connection->AddressMonitorRef) {
+        (void)InterlockedFetchAndClearBoolean(&Connection->AddressChangeQueued);
+        return;
+    }
+
+    //
     // Cleared before the snapshot is read, not after. The other order loses a
     // change that lands while this runs: the fan-out would see the flag still
     // set, queue nothing, and this pass would already have read the older
@@ -2193,6 +2219,37 @@ QuicConnProcessLocalAddressChange(
         ++LostCount;
     }
 
+    if (QuicConnIsServer(Connection)) {
+        //
+        // Stage 6 of #157: a server does exactly one thing with the host's own
+        // addresses, and only with multipath negotiated -- it abandons the
+        // paths whose local address went away.
+        //
+        // draft-ietf-quic-multipath section 3.4 requires an endpoint
+        // abandoning a path to tell its peer, so the abandon is the point: the
+        // client cannot see that the server's interface went away and would go
+        // on scheduling traffic onto a path that cannot carry it.
+        //
+        // Nothing else. No table, no pair ranking, no local-address selection,
+        // no migration. All of that answers "where should this connection send
+        // from", which is the client's question: a server sends from wherever
+        // the client reached it, and RFC 9000 section 9 gives it no licence to
+        // move a connection on its own anyway.
+        //
+        // Placed here, above the allocation below, deliberately. It needs only
+        // LostPaths, and LastAddressGeneration is already committed -- so an
+        // allocation failure for the event lists would take the abandon with
+        // it *and* leave the generation gate skipping every later pass for the
+        // same generation. The server would then keep a dead path until some
+        // unrelated address change came along.
+        //
+        if (Connection->State.MultipathNegotiated) {
+            QuicConnAbandonLostLocalAddressPaths(
+                Connection, LostPaths, LostCount);
+        }
+        goto Exit;
+    }
+
     //
     // Addresses the connection is not already using. Reported as added rather
     // than diffed against the previous snapshot: what an application wants to
@@ -2290,30 +2347,6 @@ QuicConnProcessLocalAddressChange(
             RemovedCount,
             LostCount);
         (void)QuicConnIndicateEvent(Connection, &Event);
-    }
-
-    if (QuicConnIsServer(Connection)) {
-        //
-        // Stage 6 of #157: a server does exactly one thing with the host's own
-        // addresses, and only with multipath negotiated -- it abandons the
-        // paths whose local address went away.
-        //
-        // draft-ietf-quic-multipath section 3.4 requires an endpoint
-        // abandoning a path to tell its peer, so the abandon is the point: the
-        // client cannot see that the server's interface went away and would go
-        // on scheduling traffic onto a path that cannot carry it.
-        //
-        // Nothing else. No table, no pair ranking, no local-address selection,
-        // no migration. All of that answers "where should this connection send
-        // from", which is the client's question: a server sends from wherever
-        // the client reached it, and RFC 9000 section 9 gives it no licence to
-        // move a connection on its own anyway.
-        //
-        if (Connection->State.MultipathNegotiated) {
-            QuicConnAbandonLostLocalAddressPaths(
-                Connection, LostPaths, LostCount);
-        }
-        goto Exit;
     }
 
     if (QuicConnManagesPathsAutomatically(Connection)) {

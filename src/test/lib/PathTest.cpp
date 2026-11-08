@@ -4473,6 +4473,13 @@ AlternateLoopbackAddressForPathTest(
     _Out_ QUIC_ADDR* Alternate
     )
 {
+    //
+    // Written before the family test, so the _Out_ annotation holds on every
+    // path. MSVC /analyze flags returning an uninitialized out parameter as
+    // C6101, and the existing AlternateLoopbackAddress in AddressChangeTest.cpp
+    // copies the input first for the same reason.
+    //
+    *Alternate = *Address;
     if (QuicAddrGetFamily(Address) != QUIC_ADDRESS_FAMILY_INET) {
         return false;
     }
@@ -4611,14 +4618,19 @@ RunServerLostAddressTest(
         CxPlatSleep(50);
         ServerHasTwo = AltServerAddressPathCount(*ServerContext.Connection) == 2;
     }
-    if (!ServerHasTwo) {
+    if (!MultipathEnabled && !ServerHasTwo) {
         //
-        // The probe never got through -- without multipath the peer may not
-        // issue a connection ID for it. Nothing to take away, so nothing to
-        // test; skipped rather than failed.
+        // Without multipath the peer may not issue a connection ID for the
+        // probe, so there is nothing to take away and nothing to test. Skipped.
         //
         return;
     }
+    //
+    // With multipath it has to be there. Skipping here would let the one
+    // load-bearing positive test for this stage report success under CI timing
+    // pressure without ever exercising the abandon.
+    //
+    TEST_TRUE(ServerHasTwo);
 
     ServerContext.PathRemovedEvent.Reset();
     ClientContext.PathRemovedEvent.Reset();
@@ -4628,8 +4640,19 @@ RunServerLostAddressTest(
     // address the connection arrived on and the client's, so the only thing
     // lost is the server's second path.
     //
+    //
+    // The addresses to keep are the two ends of the original path, taken from
+    // the *connection* rather than from the listener. ServerLocalAddr is the
+    // wildcard 0.0.0.0 -- the listener binds wildcard and GetLocalAddr hands
+    // back 0.0.0.0:<port>, which is why only its port is used above -- so
+    // keeping that would not keep the address the server's Paths[0] is on, and
+    // the test would mis-classify Paths[0] as lost the moment the two ends
+    // were not on the identical loopback address.
+    //
+    QuicAddr OriginalServerAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(OriginalServerAddr));
     QUIC_ADDR Keep[2];
-    Keep[0] = ServerLocalAddr.SockAddr;
+    Keep[0] = OriginalServerAddr.SockAddr;
     QuicAddrSetPort(&Keep[0], 0);
     Keep[1] = ClientLocalAddr.SockAddr;
     QuicAddrSetPort(&Keep[1], 0);
