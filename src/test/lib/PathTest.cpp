@@ -3600,7 +3600,8 @@ struct TableMigrationTest {
     Start(
         MsQuicConnection*& Connection,
         uint32_t HoldDownMs,
-        QUIC_LOCAL_ADDRESS_CHANGE_MODE LocalMode = QUIC_LOCAL_ADDRESS_CHANGE_DISABLED
+        QUIC_LOCAL_ADDRESS_CHANGE_MODE LocalMode = QUIC_LOCAL_ADDRESS_CHANGE_DISABLED,
+        uint32_t InitialRttMs = 0
         )
     {
         if (!Registration.IsValid()) {
@@ -3623,6 +3624,14 @@ struct TableMigrationTest {
         ClientSettings.AutoMigrationHoldDownMs = HoldDownMs;
         ClientSettings.IsSet.AutoMigrationHoldDownMs = TRUE;
         ClientSettings.SetLocalAddressChangeMode(LocalMode);
+        if (InitialRttMs != 0) {
+            //
+            // The path validation timeout is six times this, so it is what
+            // decides how long a validation that will never be answered takes
+            // to give up. Left alone by default.
+            //
+            ClientSettings.SetInitialRttMs((uint16_t)InitialRttMs);
+        }
         ClientConfiguration =
             new(std::nothrow) MsQuicConfiguration(
                 Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
@@ -4045,6 +4054,126 @@ QuicTestTableMigrationNoFlap(
 
     TEST_FALSE(Test.ServerContext.ShutdownEvent.WaitTimeout(100));
     TEST_FALSE(Test.ClientContext.ShutdownEvent.WaitTimeout(100));
+#endif
+}
+
+//
+// Stage 4 of #157: a migration whose path never validates does not disable
+// every later one.
+//
+// The markers that track a make-before-break attempt are shared between the
+// two migrations, and nothing on the table side released them if the attempt's
+// path went away: the validation timer removes the path, knowing nothing about
+// what it was for, and the next pass then returns at "one attempt at a time"
+// for the life of the connection. One firewalled address the server advertised
+// was enough to disable every future migration -- and route migrations with
+// them.
+//
+// Silent, which is why it is worth a test rather than only a fix. Nothing
+// fails; the connection simply stops taking the server's advice.
+//
+void
+QuicTestTableMigrationAfterFailure(
+    )
+{
+#if !DEBUG
+#else
+    //
+    // No hold-down, so the only delay in the test is the validation timeout,
+    // and a small initial RTT so that timeout is six times something small.
+    //
+    TableMigrationTest Test;
+    MsQuicConnection* Conn = nullptr;
+    if (!Test.Start(Conn, 0, QUIC_LOCAL_ADDRESS_CHANGE_DISABLED, 50)) {
+        return;
+    }
+
+    QUIC_ADDR OriginalRemote;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &OriginalRemote));
+
+    //
+    // An address the server advertises but is not listening on. The observed
+    // address is a separate field from the bound one, so the server can bind a
+    // real port and advertise a different one -- which is exactly the
+    // firewalled-address case: the client can open a path to it, and the
+    // challenge will never be answered.
+    //
+    QuicAddr Bound;
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    uint32_t Try = 0;
+    do {
+        Bound = Test.Host;
+        Bound.SetEphemeralPort();
+        Status =
+            Test.ServerContext.Connection->SetParam(
+                QUIC_PARAM_CONN_ADD_BOUND_ADDRESS,
+                sizeof(Bound.SockAddr),
+                &Bound.SockAddr);
+    } while (QUIC_FAILED(Status) && ++Try <= 5);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    QuicAddr Dead = Test.Host;
+    Dead.SetPort((uint16_t)(Bound.GetPort() ^ 0x4000));
+    QUIC_ADD_OBSERVED_ADDRESS AddDead = { &Bound.SockAddr, &Dead.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_ADD_OBSERVED_ADDRESS,
+            sizeof(AddDead),
+            &AddDead));
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(Dead.SockAddr),
+            &Dead.SockAddr));
+
+    //
+    // The client opens a path to it and starts an attempt that cannot finish.
+    // Then the validation gives up and the path goes away.
+    //
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &Dead.SockAddr, true));
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &Dead.SockAddr, false));
+
+    //
+    // Still on the original path, which is the right outcome for an address
+    // that never answered.
+    //
+    QUIC_ADDR Active;
+    TEST_TRUE(TableMigrationActiveRemote(*Conn, &Active));
+    TEST_TRUE(QuicAddrCompare(&Active, &OriginalRemote));
+
+    //
+    // The server takes the dead address back before offering a live one.
+    //
+    // Needed to isolate what this test is about. Left advertised, the dead
+    // address stays in the table and keeps winning the head -- both are
+    // preferred and nothing else separates them, so the tie breaks on the
+    // address bytes -- and the reconciler keeps re-opening a path to it that
+    // keeps timing out. That is the server's instruction being followed, and
+    // arguably right, but it starves the live address and would make this test
+    // fail for a reason that has nothing to do with the stuck marker.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_REMOVE_BOUND_ADDRESS,
+            sizeof(Bound.SockAddr),
+            &Bound.SockAddr));
+
+    //
+    // And now one that does answer. This is the assertion the whole test is
+    // for: with the marker stuck, the client ignores it.
+    //
+    QuicAddr Good;
+    if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Good)) {
+        return;
+    }
+    TEST_TRUE(ReconcilerWaitForPathTo(*Conn, &Good.SockAddr, true));
+    TEST_QUIC_SUCCEEDED(
+        Test.ServerContext.Connection->SetParam(
+            QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
+            sizeof(Good.SockAddr),
+            &Good.SockAddr));
+
+    TEST_TRUE(TableMigrationWaitForActiveRemote(*Conn, &Good.SockAddr, 5000));
 #endif
 }
 

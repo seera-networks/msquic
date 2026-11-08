@@ -1309,6 +1309,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileAddedPath,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateAbandoned
+// [conn][%p] Reconciler lost the path it was migrating onto
+// QuicTraceLogConnInfo(
+            ReconcileMigrateAbandoned,
+            Connection,
+            "Reconciler lost the path it was migrating onto");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileMigrateAbandoned,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ReconcileMigrateStarted
 // [conn][%p] Reconciler started a migration onto the table's preferred pair
 // QuicTraceLogConnInfo(

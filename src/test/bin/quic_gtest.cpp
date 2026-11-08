@@ -1285,6 +1285,18 @@ TEST(Basic, TableMigrationNoFlap) {
 #endif
 }
 
+TEST(Basic, TableMigrationAfterFailure) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationAfterFailure needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationAfterFailure is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationAfterFailure");
+    QuicTestTableMigrationAfterFailure();
+#endif
+}
+
 //
 // Reads a public parameter and needs no injection, so it runs in release too.
 //

@@ -1376,7 +1376,16 @@ QuicConnAutoFollowRoute(
     // timer does not know what the path was for, and leaving the marker set
     // would block every later route change on this connection.
     //
+    //
+    // Only this function's own attempts. The markers are shared with the table
+    // migration now, and a table attempt is heading for a different *remote*
+    // address -- so this lookup would not find its path, and clearing the
+    // marker here would abandon an attempt that is proceeding normally. Worse
+    // than merely abandoning it: the advertisement was charged at the attempt,
+    // so it would never be retried.
+    //
     if (Connection->MigrationPending &&
+        Connection->MigrationReason == QUIC_MIGRATION_REASON_ROUTE &&
         QuicConnGetPathByLocalIp(
             Connection, &Connection->MigrationLocal, &ActiveRemote) == NULL) {
         QuicTraceLogConnInfo(
@@ -1395,11 +1404,20 @@ QuicConnAutoFollowRoute(
         //
         // The route still comes out of the address this connection is on, which
         // is what almost every route notification means: the table changed
-        // somewhere that has nothing to do with this peer. Any pending attempt
-        // is dropped, because the address it was heading for is no longer the
-        // one the OS would use.
+        // somewhere that has nothing to do with this peer. A pending *route*
+        // attempt is dropped, because the address it was heading for is no
+        // longer the one the OS would use.
         //
-        Connection->MigrationPending = FALSE;
+        // A table attempt is left alone. It is heading for a different remote
+        // address, not a different interface, so this condition says nothing
+        // about it -- and it is the common condition, since a table migration
+        // keeps the interface and this is then true on every route
+        // notification. Dropping it here lost the migration for good, the
+        // advertisement having been charged at the attempt.
+        //
+        if (Connection->MigrationReason == QUIC_MIGRATION_REASON_ROUTE) {
+            Connection->MigrationPending = FALSE;
+        }
         return;
     }
 
@@ -10454,6 +10472,15 @@ QuicConnRebuildCandidatePairs(
             if (Connection->CandidatePairs != NULL) {
                 QuicCandidateSetInitialize(Connection->CandidatePairs);
             }
+            //
+            // And marked approximate, which the branch below does for the
+            // weaker case and this one has to do for the stronger: no
+            // snapshot, no route answer and a wildcard active local address is
+            // the least information there is. Leaving the flag clear let the
+            // removal step read an empty table as "remove the paths", which is
+            // precisely what the flag exists to prevent.
+            //
+            Connection->CandidatePairsApproximate = TRUE;
             return;
         }
 
@@ -10471,14 +10498,22 @@ QuicConnRebuildCandidatePairs(
         // the filter accepted. Removing anyway would turn a missing platform
         // call into torn-down paths.
         //
-        BOOLEAN AnyRoute = FALSE;
+        //
+        // Every remote, not just one of them. A table built on the fallback
+        // can only say a pair is absent for the remotes it has an answer for;
+        // for the rest its silence means "unknown", and the removal step
+        // cannot tell the two apart. One advertised address whose lookup fails
+        // transiently would otherwise have its path torn down -- retiring the
+        // destination CID with it -- and reopened on the next pass.
+        //
+        BOOLEAN AllRoutes = TRUE;
         for (uint32_t i = 0; i < RemoteCount && i < ARRAYSIZE(Remotes); ++i) {
-            if (Remotes[i].RoutePreferredLocalValid) {
-                AnyRoute = TRUE;
+            if (!Remotes[i].RoutePreferredLocalValid) {
+                AllRoutes = FALSE;
                 break;
             }
         }
-        Connection->CandidatePairsApproximate = !AnyRoute;
+        Connection->CandidatePairsApproximate = !AllRoutes;
 
         //
         // No flags on any of these, which is honest: without the monitor there
@@ -10678,7 +10713,7 @@ QuicConnHasPathForRemote(
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
-BOOLEAN
+void
 QuicConnReconcileRemovePaths(
     _In_ QUIC_CONNECTION* Connection
     )
@@ -10688,7 +10723,7 @@ QuicConnReconcileRemovePaths(
         // The table was built without enough information to say that a pair is
         // absent rather than merely unknown. See the rebuild.
         //
-        return FALSE;
+        return;
     }
 
     const QUIC_CANDIDATE_SET* Set = Connection->CandidatePairs;
@@ -10730,7 +10765,6 @@ QuicConnReconcileRemovePaths(
         Count++;
     }
 
-    BOOLEAN RemovedAny = FALSE;
     for (uint32_t i = 0; i < Count; ++i) {
         //
         // Re-checked each time rather than once: removing the previous one may
@@ -10750,14 +10784,11 @@ QuicConnReconcileRemovePaths(
                 Status);
             continue;
         }
-        RemovedAny = TRUE;
         QuicTraceLogConnInfo(
             ReconcileRemovedPath,
             Connection,
             "Reconciler removed a path whose pair left the table");
     }
-
-    return RemovedAny;
 }
 
 //
@@ -10784,28 +10815,6 @@ QuicConnReconcileCreatePaths(
     _In_ QUIC_CONNECTION* Connection
     )
 {
-    //
-    // AutoMigrationHoldDownMs deliberately does not gate this, which is a
-    // departure from how #161 was written and worth the explanation.
-    //
-    // Gating it was tried first and is actively wrong without a mechanism this
-    // stage does not have. A held-down pass has nowhere to put the work: there
-    // is no timer that re-runs the reconciler when the window expires, so the
-    // pass simply returns and the pair gets a path only when some unrelated
-    // change happens to trigger another pass. That showed up immediately -- a
-    // server advertising three addresses in three frames had the second one
-    // wait not for the one-second hold-down but for the third frame to arrive,
-    // and on a server that advertised nothing further it would have waited
-    // forever. Silently dropping the work is worse than not rate-limiting it.
-    //
-    // It is also not the half that flaps. Opening a path into a free slot
-    // disturbs nothing and costs one validation; what flaps is replacing a
-    // working arrangement, which is the migration #162 specifies the hold-down
-    // for and charges at its own attempt. Nor does this charge
-    // LastAutoMigrationTimeUs, so that a path opened here cannot delay that
-    // migration either.
-    //
-
     //
     // Rate-limited by AutoMigrationHoldDownMs, and the timer is what makes
     // that safe. A held-down pass otherwise has nowhere to put the work: it
@@ -10989,6 +10998,30 @@ QuicConnReconcileMigrate(
     }
 
     //
+    // A pending attempt whose path is gone had its validation time out, and
+    // the validation timer took the path away. Released here, because that
+    // timer does not know what the path was for and nothing else on this side
+    // would ever clear the marker: with it set, the bail-out below returns on
+    // every later pass, so one firewalled address the server advertised would
+    // disable every future migration -- including route migrations, since the
+    // markers are shared. QuicConnAutoFollowRoute does the same thing for its
+    // own attempts, but only runs on a route change and only with the local
+    // half in AUTO, which is not the default.
+    //
+    if (Connection->MigrationPending &&
+        Connection->MigrationReason == QUIC_MIGRATION_REASON_TABLE &&
+        QuicConnGetPathByLocalIp(
+            Connection,
+            &Connection->MigrationLocal,
+            &Connection->MigrationRemote) == NULL) {
+        QuicTraceLogConnInfo(
+            ReconcileMigrateAbandoned,
+            Connection,
+            "Reconciler lost the path it was migrating onto");
+        Connection->MigrationPending = FALSE;
+    }
+
+    //
     // One attempt at a time. The markers are shared with the route migration
     // for exactly this reason: two make-before-break attempts in flight would
     // fight over which path ends up active.
@@ -11021,6 +11054,25 @@ QuicConnReconcileMigrate(
         CXPLAT_CONTAINING_RECORD(
             Connection->CandidatePairs->Pairs.Flink, QUIC_CANDIDATE_PAIR, Link);
     if (Head->SentinelRank != QUIC_CANDIDATE_PREFERRED_TO_CURRENT) {
+        return;
+    }
+
+    //
+    // Not straight back to where the last migration came from. One step of
+    // history, which is what a two-address oscillation needs: having decided
+    // to leave an address, the same advertised set is not a reason to return
+    // to it. A genuinely new preference names a third address, or arrives
+    // after a move that reset this.
+    //
+    // Deliberately not a full history. A three-address cycle would still
+    // alternate, one move per advertisement -- bounded, since every move needs
+    // a frame from the server, but not prevented. Tracking the whole set the
+    // connection has acted on would prevent it, and is not worth the state for
+    // a server that would have to be advertising three preferred addresses and
+    // re-advertising them to achieve it.
+    //
+    if (Connection->MigratedFromRemoteValid &&
+        QuicAddrCompare(&Head->RemoteAddress, &Connection->MigratedFromRemote)) {
         return;
     }
 
@@ -11097,6 +11149,17 @@ QuicConnReconcileMigrate(
     Connection->MigratedAtAltSequenceNumber = Connection->AltAddrPeerSequenceNumber;
     Connection->MigratedAtAltSequenceNumberValid = TRUE;
 
+    //
+    // And where it came from, so the connection does not come straight back.
+    // The sequence number alone does not hold: the writer numbers at encode
+    // time and the loss handler re-arms the flag, so a retransmission of the
+    // very same advertised set arrives with a higher number and authorises
+    // another move. On a lossy path that is one bounce per loss event, which
+    // is the oscillation again by a slower route.
+    //
+    Connection->MigratedFromRemote = Connection->Paths[0].Route.RemoteAddress;
+    Connection->MigratedFromRemoteValid = TRUE;
+
     QuicTraceLogConnInfo(
         ReconcileMigrateStarted,
         Connection,
@@ -11135,6 +11198,26 @@ QuicConnReconcilePaths(
     _In_ QUIC_CONNECTION* Connection
     )
 {
+    Connection->CandidatePairsRebuildQueued = FALSE;
+
+    //
+    // Before the rebuild, not after it. Only AUTO asked for any of this, and
+    // the rebuild is not cheap: a route lookup per remote address -- a socket,
+    // a connect and a getsockname each -- a copy of the library's address
+    // snapshot under a dispatch lock, and a kilobyte-and-a-half allocation for
+    // the table itself. Handshake confirmation queues a pass unconditionally,
+    // so with the gate below the rebuild every connection ever opened paid
+    // that for a table nothing would read.
+    //
+    // Stage 1 said the table was worth building anyway, being "also the answer
+    // to what could we do". That was true when the rebuild did no route
+    // lookups. It stopped being true in stage 3, which turned them on.
+    //
+    if (Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_AUTO &&
+        Connection->Settings.LocalAddressChangeMode != QUIC_LOCAL_ADDRESS_CHANGE_AUTO) {
+        return;
+    }
+
     QuicConnRebuildCandidatePairs(Connection);
 
     if (Connection->State.ShutdownComplete ||
@@ -11165,26 +11248,6 @@ QuicConnReconcilePaths(
     if ((QuicConnIsClient(Connection) && Connection->Settings.ServerMigrationEnabled) ||
         (QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||
         (QuicConnIsServer(Connection) && !Connection->State.ServerMigrationNegotiated)) {
-        return;
-    }
-
-    //
-    // Only AUTO asked for paths to be managed. With neither mode AUTO the
-    // table is still built -- it is also the answer to "what could we do", and
-    // cheap -- and nothing is done with it.
-    //
-    // This gate is not optional. Both callers queue a reconciliation
-    // unconditionally, which was harmless while nothing read the table and is
-    // not harmless now that a pass mutates paths. Without it a client in
-    // MANUAL, which still records advertised addresses so that it can report
-    // them, would have paths opened to those addresses behind the
-    // application's back -- the exact opposite of MANUAL, where the event is
-    // the whole interface and the application is the one that opens paths. The
-    // same for LocalAddressChangeMode NOTIFY, where the application asked only
-    // to be told.
-    //
-    if (Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_AUTO &&
-        Connection->Settings.LocalAddressChangeMode != QUIC_LOCAL_ADDRESS_CHANGE_AUTO) {
         return;
     }
 
@@ -11481,13 +11544,6 @@ QuicConnProcessRemoveAddressOper(
     }
 }
 
-//
-// Drops the path on an address the peer has stopped advertising. Matched on the
-// remote address because that is the only thing the ALTERNATIVE_ADDRESS draft
-// identifies an address by -- its receiver assigns sequence numbers for the
-// application's benefit, but nothing writes them onto a path outside
-// NAT-traversal mode, so QuicConnProcessRemoveAddressOper would find nothing
-// and withdraw nothing.
 // Sends a punch probe to the specified remote address using the specified bound address.
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
@@ -12195,6 +12251,21 @@ QuicConnParamSet(
                 !QuicAddrCompare(&Bound->ObservedAddress, (QUIC_ADDR*)Buffer)) {
                 continue;
             }
+            //
+            // Server only, and only once negotiated -- the same test the other
+            // place that arms this flag makes, and for the same reason. The
+            // draft makes ALTERNATIVE_ADDRESS a server-to-client frame, and a
+            // client has bound addresses with observed addresses of its own
+            // whenever NAT traversal was negotiated. Arming the flag there
+            // would send a frame the server is required to reject, which ends
+            // the connection on a protocol violation.
+            //
+            if (!QuicConnIsServer(Connection) ||
+                !Connection->State.AlternativeAddressNegotiated) {
+                Status = QUIC_STATUS_INVALID_STATE;
+                break;
+            }
+
             Bound->PreferredToCurrentPath = TRUE;
             //
             // Re-armed, because the set the peer holds is now wrong in a way

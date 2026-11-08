@@ -770,6 +770,20 @@ typedef struct QUIC_CONNECTION {
     BOOLEAN MigratedAtAltSequenceNumberValid;
 
     //
+    // The remote address the last table migration moved away from, so the
+    // connection does not come straight back to it on the strength of the same
+    // advertised set.
+    //
+    // The sequence number above does not cover this on its own: the frame
+    // writer numbers at encode time and the loss handler re-arms the flag, so
+    // a retransmission of an unchanged set arrives with a higher number and
+    // reads as a new statement. One step of history is what a two-address
+    // oscillation needs.
+    //
+    QUIC_ADDR MigratedFromRemote;
+    BOOLEAN MigratedFromRemoteValid;
+
+    //
     // The path above has finished validating and the migration onto it is
     // waiting to be made. Deferred rather than done where the validation
     // completes, because that is in the middle of processing a received

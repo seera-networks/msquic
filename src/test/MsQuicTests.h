@@ -254,6 +254,10 @@ QuicTestTableMigrationNoFlap(
     );
 
 void
+QuicTestTableMigrationAfterFailure(
+    );
+
+void
 QuicTestLocalAddressChangeAutoRoute(
     );
 
