@@ -4483,6 +4483,22 @@ AlternateLoopbackAddressForPathTest(
     if (QuicAddrGetFamily(Address) != QUIC_ADDRESS_FAMILY_INET) {
         return false;
     }
+
+    //
+    // And the address must itself be in 127/8, which the comment above says
+    // and this did not check. Family was never the question: the XDP runs put
+    // the server on the DuoNIC address, where an IPv4 address that is not
+    // loopback got 127.0.0.2 handed back as a second address for the same
+    // server -- and a client on the DuoNIC interface cannot route there, so
+    // ADD_PATH failed with WSAEADDRNOTAVAIL. The guard AlternateLoopbackAddress
+    // in AddressChangeTest.cpp has always had, which this was written from.
+    //
+    uint8_t Bytes[4];
+    CxPlatCopyMemory(Bytes, &Address->Ipv4.sin_addr, sizeof(Bytes));
+    if (Bytes[0] != 127) {
+        return false;
+    }
+
     CxPlatZeroMemory(Alternate, sizeof(*Alternate));
     if (!QuicAddrFromString("127.0.0.2", 0, Alternate)) {
         return false;
