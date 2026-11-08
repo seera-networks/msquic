@@ -246,6 +246,15 @@ typedef union QUIC_CONNECTION_STATE {
         //
         BOOLEAN AlternativeAddressNegotiated : 1;
 
+        //
+        // Both endpoints advertised draft-kozuka-quic-stateless-punch's
+        // transport parameter, so PUNCH_ME_NOW may be sent and acted on.
+        // Symmetric, unlike AlternativeAddressNegotiated: that parameter is
+        // client-only and a server is forbidden to echo it, while this one is
+        // sent by both.
+        //
+        BOOLEAN StatelessPunchNegotiated : 1;
+
         BOOLEAN NatTraverseNegotiated : 1;
 
     };

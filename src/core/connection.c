@@ -4159,6 +4159,22 @@ QuicConnGenerateLocalTransportParameters(
         LocalTP->Flags |= QUIC_TP_FLAG_ALTERNATIVE_ADDRESS;
     }
 
+    //
+    // draft-kozuka-quic-stateless-punch section 9: both endpoints advertise
+    // this one, and a client must advertise alternative_address as well -- a
+    // server receiving it without that is required to fail the handshake,
+    // because the extension pairs the client's candidates against the
+    // addresses that frame carries.
+    //
+    // So the client's condition is "we offered alternative_address", read off
+    // the decision just made rather than restated. A server has no such
+    // prerequisite: it does not send alternative_address at all.
+    //
+    if (QuicConnIsServer(Connection) ||
+        (LocalTP->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS)) {
+        LocalTP->Flags |= QUIC_TP_FLAG_STATELESS_PUNCH;
+    }
+
     if (QuicConnIsServer(Connection)) {
 
         if (Connection->Streams.Types[STREAM_ID_FLAG_IS_CLIENT | STREAM_ID_FLAG_IS_BI_DIR].MaxTotalStreamCount) {
@@ -4886,6 +4902,18 @@ QuicConnProcessPeerTransportParameters(
                 !Connection->Settings.ServerMigrationEnabled &&
                 Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_NAT_TRAVERSAL;
         }
+
+        //
+        // Symmetric, because the parameter is: both endpoints send it, so both
+        // can read the peer's. The local half is the same condition that
+        // decided to send it -- a server always does, a client does when it
+        // offered alternative_address, which is what
+        // AlternativeAddressNegotiated records for a client.
+        //
+        Connection->State.StatelessPunchNegotiated =
+            !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_STATELESS_PUNCH) &&
+            (QuicConnIsServer(Connection) ||
+             Connection->State.AlternativeAddressNegotiated);
 
         if (Connection->Settings.MultipathEnabled) {
             Connection->State.MultipathNegotiated =

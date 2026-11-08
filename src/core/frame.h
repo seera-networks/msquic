@@ -170,6 +170,19 @@ typedef enum QUIC_FRAME_TYPE {
     QUIC_FRAME_REMOVE_ADDRESS       = 0x3d7e94LL,
 
     //
+    // draft-kozuka-quic-stateless-punch. The client names both halves of a
+    // candidate pair -- its own endpoint and the server endpoint the server
+    // itself advertised -- so the server needs no per-attempt state and no
+    // per-address sequence number to look the request up by. The low bit
+    // selects the address family, as the pair above does.
+    //
+    // Separate codepoints from QUIC_FRAME_PUNCH_ME_NOW_V4/V6, which are the
+    // older mechanism this replaces: both exist until #173 retires that one.
+    //
+    QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 = 0x5eea90ULL,
+    QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6 = 0x5eea91ULL,
+
+    //
     // draft-munizaga-quic-alternative-server-address-02. One frame carries the
     // server's whole advertised address set; a newer one replaces the older
     // wholesale, and omission is how an address is withdrawn. That is why
@@ -1229,6 +1242,59 @@ QuicPunchMeNowFrameDecode(
         const uint8_t * const Buffer,
     _Inout_ uint16_t* Offset,
     _Out_ QUIC_PUNCH_ME_NOW_EX* Frame
+    );
+
+//
+// QUIC_FRAME_STATELESS_PUNCH_ME_NOW Encoding/Decoding
+//
+// draft-kozuka-quic-stateless-punch section 10:
+//
+//   Type (i) = 0x5eea90..0x5eea91
+//   Client Address (32 bits for IPv4 / 128 bits for IPv6)
+//   Client Port (16 bits)
+//   Server Address (32 bits for IPv4 / 128 bits for IPv6)
+//   Server Port (16 bits)
+//
+// Fixed width throughout: no varints in the body, so the frame's length
+// follows from its type alone. Both addresses carry their port, because the
+// draft's fields are address *and* port and what is being named is a pair of
+// endpoints, not of hosts.
+//
+typedef struct QUIC_STATELESS_PUNCH_ME_NOW_EX {
+
+    //
+    // Where the server should send the punch packet.
+    //
+    QUIC_ADDR ClientAddress;
+
+    //
+    // Which of the server's own advertised addresses this is about. The server
+    // looks it up among what it advertised; no match means the request is
+    // ignored, not that the connection is in error.
+    //
+    QUIC_ADDR ServerAddress;
+
+} QUIC_STATELESS_PUNCH_ME_NOW_EX;
+
+_Success_(return != FALSE)
+BOOLEAN
+QuicStatelessPunchMeNowFrameEncode(
+    _In_ const QUIC_STATELESS_PUNCH_ME_NOW_EX * const Frame,
+    _Inout_ uint16_t* Offset,
+    _In_ uint16_t BufferLength,
+    _Out_writes_to_(BufferLength, *Offset)
+        uint8_t* Buffer
+    );
+
+_Success_(return != FALSE)
+BOOLEAN
+QuicStatelessPunchMeNowFrameDecode(
+    _In_ QUIC_FRAME_TYPE FrameType,
+    _In_ uint16_t BufferLength,
+    _In_reads_bytes_(BufferLength)
+        const uint8_t * const Buffer,
+    _Inout_ uint16_t* Offset,
+    _Out_ QUIC_STATELESS_PUNCH_ME_NOW_EX* Frame
     );
 
 //

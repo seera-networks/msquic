@@ -1866,6 +1866,54 @@ tracepoint(CLOG_FRAME_C, FrameLogAlternativeAddressEntry , arg2, arg3, arg4, arg
 
 
 /*----------------------------------------------------------
+// Decoder Ring for FrameLogStatelessPunchMeNowInvalid
+// [%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]
+// QuicTraceLogVerbose(
+            FrameLogStatelessPunchMeNowInvalid,
+            "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_FrameLogStatelessPunchMeNowInvalid
+#define _clog_5_ARGS_TRACE_FrameLogStatelessPunchMeNowInvalid(uniqueId, encoded_arg_string, arg2, arg3, arg4)\
+tracepoint(CLOG_FRAME_C, FrameLogStatelessPunchMeNowInvalid , arg2, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogStatelessPunchMeNow
+// [%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s
+// QuicTraceLogVerbose(
+        FrameLogStatelessPunchMeNow,
+        "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s",
+        PtkConnPre(Connection),
+        PktRxPre(Rx),
+        PacketNumber,
+        ClientAddrStr.Address,
+        ServerAddrStr.Address);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+// arg5 = arg5 = ClientAddrStr.Address = arg5
+// arg6 = arg6 = ServerAddrStr.Address = arg6
+----------------------------------------------------------*/
+#ifndef _clog_7_ARGS_TRACE_FrameLogStatelessPunchMeNow
+#define _clog_7_ARGS_TRACE_FrameLogStatelessPunchMeNow(uniqueId, encoded_arg_string, arg2, arg3, arg4, arg5, arg6)\
+tracepoint(CLOG_FRAME_C, FrameLogStatelessPunchMeNow , arg2, arg3, arg4, arg5, arg6);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for FrameLogRemoveAddressInvalid
 // [%c][%cX][%llu]   REMOVE_ADDRESS [Invalid]
 // QuicTraceLogVerbose(

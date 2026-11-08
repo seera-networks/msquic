@@ -21,7 +21,13 @@ typedef struct QUIC_TRANSPORT_PARAMETERS {
     //
     // Flags listing which parameters below are set.
     //
-    uint32_t Flags; // Set of QUIC_TP_FLAG_*
+    //
+    // Widened to 64 bits because the 32 were full: every bit up to
+    // 0x80000000 is taken, with 0x40000000 deliberately left to the QMux
+    // branch. draft-kozuka-quic-stateless-punch is the parameter that needed
+    // the thirty-third.
+    //
+    uint64_t Flags; // Set of QUIC_TP_FLAG_*
 
     //
     // The initial timeout (in milliseconds) for the idle timeout of the

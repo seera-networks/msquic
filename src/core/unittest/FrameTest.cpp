@@ -1622,3 +1622,191 @@ TEST_F(AltAddrFrameTest, RejectsBadOrderingAmongDroppedAddresses)
     uint16_t Offset = ALT_ADDR_TYPE_LEN;
     ASSERT_FALSE(QuicAlternativeAddressFrameDecode(B.Length(), B.Buffer, &Offset, &Frame));
 }
+
+//
+// draft-kozuka-quic-stateless-punch PUNCH_ME_NOW.
+//
+// The frame type is a three byte varint (0x5eea90..0x5eea91 fits in 0x4000..
+// 0x3FFFFFFF, which varints encode in four bytes), so the decoder is handed an
+// offset past it the way the tests above are. Checked rather than assumed:
+// QuicVarIntSize of the type is what the encoder adds.
+//
+struct StatelessPunchFrameTest : public ::testing::Test {
+    static QUIC_ADDR V4(uint8_t Last, uint16_t Port) {
+        QUIC_ADDR Addr;
+        CxPlatZeroMemory(&Addr, sizeof(Addr));
+        QuicAddrSetFamily(&Addr, QUIC_ADDRESS_FAMILY_INET);
+        uint8_t Bytes[4] = {192, 0, 2, Last};
+        CxPlatCopyMemory(&Addr.Ipv4.sin_addr, Bytes, sizeof(Bytes));
+        QuicAddrSetPort(&Addr, Port);
+        return Addr;
+    }
+    static QUIC_ADDR V6(uint8_t Last, uint16_t Port) {
+        QUIC_ADDR Addr;
+        CxPlatZeroMemory(&Addr, sizeof(Addr));
+        QuicAddrSetFamily(&Addr, QUIC_ADDRESS_FAMILY_INET6);
+        uint8_t Bytes[16] =
+            {0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Last};
+        CxPlatCopyMemory(&Addr.Ipv6.sin6_addr, Bytes, sizeof(Bytes));
+        QuicAddrSetPort(&Addr, Port);
+        return Addr;
+    }
+
+    static uint16_t TypeLen(QUIC_VAR_INT Type) {
+        return QuicVarIntSize(Type);
+    }
+};
+
+TEST_F(StatelessPunchFrameTest, RoundTripsV4)
+{
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+    Frame.ClientAddress = V4(10, 51000);
+    Frame.ServerAddress = V4(20, 443);
+
+    uint8_t Buffer[64];
+    CxPlatZeroMemory(Buffer, sizeof(Buffer));
+    uint16_t Offset = 0;
+    ASSERT_TRUE(QuicStatelessPunchMeNowFrameEncode(&Frame, &Offset, sizeof(Buffer), Buffer));
+
+    //
+    // Fixed width: the type plus two four byte addresses and two ports.
+    //
+    ASSERT_EQ(TypeLen(QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4) + 12, Offset);
+
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Decoded;
+    uint16_t DecodeOffset = TypeLen(QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4);
+    ASSERT_TRUE(
+        QuicStatelessPunchMeNowFrameDecode(
+            QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4, Offset, Buffer, &DecodeOffset, &Decoded));
+    ASSERT_EQ(Offset, DecodeOffset); // Consumed exactly the frame.
+
+    ASSERT_TRUE(QuicAddrCompare(&Frame.ClientAddress, &Decoded.ClientAddress));
+    ASSERT_TRUE(QuicAddrCompare(&Frame.ServerAddress, &Decoded.ServerAddress));
+}
+
+TEST_F(StatelessPunchFrameTest, RoundTripsV6)
+{
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+    Frame.ClientAddress = V6(10, 51000);
+    Frame.ServerAddress = V6(20, 443);
+
+    uint8_t Buffer[64];
+    CxPlatZeroMemory(Buffer, sizeof(Buffer));
+    uint16_t Offset = 0;
+    ASSERT_TRUE(QuicStatelessPunchMeNowFrameEncode(&Frame, &Offset, sizeof(Buffer), Buffer));
+    ASSERT_EQ(TypeLen(QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6) + 36, Offset);
+
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Decoded;
+    uint16_t DecodeOffset = TypeLen(QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6);
+    ASSERT_TRUE(
+        QuicStatelessPunchMeNowFrameDecode(
+            QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6, Offset, Buffer, &DecodeOffset, &Decoded));
+    ASSERT_EQ(Offset, DecodeOffset);
+
+    ASSERT_TRUE(QuicAddrCompare(&Frame.ClientAddress, &Decoded.ClientAddress));
+    ASSERT_TRUE(QuicAddrCompare(&Frame.ServerAddress, &Decoded.ServerAddress));
+}
+
+//
+// Truncated at every byte boundary inside the body. A fixed-width frame has no
+// internal length to disagree with, so the only malformed input is a short
+// one -- and the decoder has to reject all of it, not just the obviously
+// short cases.
+//
+TEST_F(StatelessPunchFrameTest, RejectsTruncatedAtEveryLength)
+{
+    for (int Ipv6 = 0; Ipv6 <= 1; ++Ipv6) {
+        const QUIC_VAR_INT Type =
+            Ipv6 ? QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6
+                 : QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4;
+
+        QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+        Frame.ClientAddress = Ipv6 ? V6(10, 51000) : V4(10, 51000);
+        Frame.ServerAddress = Ipv6 ? V6(20, 443) : V4(20, 443);
+
+        uint8_t Buffer[64];
+        CxPlatZeroMemory(Buffer, sizeof(Buffer));
+        uint16_t Offset = 0;
+        ASSERT_TRUE(QuicStatelessPunchMeNowFrameEncode(&Frame, &Offset, sizeof(Buffer), Buffer));
+
+        for (uint16_t Short = TypeLen(Type); Short < Offset; ++Short) {
+            QUIC_STATELESS_PUNCH_ME_NOW_EX Decoded;
+            uint16_t DecodeOffset = TypeLen(Type);
+            ASSERT_FALSE(
+                QuicStatelessPunchMeNowFrameDecode(
+                    (QUIC_FRAME_TYPE)Type, Short, Buffer, &DecodeOffset, &Decoded))
+                << "accepted a body of " << Short << " bytes, Ipv6=" << Ipv6;
+        }
+    }
+}
+
+//
+// A v6-sized body under a v4 type decodes as v4 and leaves the rest
+// unconsumed, which is the caller's problem and not a decode failure -- but a
+// v4-sized body under a v6 type is short, and must be rejected. Worth stating
+// because the type is the only thing that says how long the body is.
+//
+TEST_F(StatelessPunchFrameTest, RejectsV4SizedBodyUnderV6Type)
+{
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+    Frame.ClientAddress = V4(10, 51000);
+    Frame.ServerAddress = V4(20, 443);
+
+    uint8_t Buffer[64];
+    CxPlatZeroMemory(Buffer, sizeof(Buffer));
+    uint16_t Offset = 0;
+    ASSERT_TRUE(QuicStatelessPunchMeNowFrameEncode(&Frame, &Offset, sizeof(Buffer), Buffer));
+
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Decoded;
+    uint16_t DecodeOffset = TypeLen(QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6);
+    ASSERT_FALSE(
+        QuicStatelessPunchMeNowFrameDecode(
+            QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6, Offset, Buffer, &DecodeOffset, &Decoded));
+}
+
+//
+// The encoder refuses a pair whose halves are different families, and anything
+// that is neither. One frame carries one family -- the type says which -- so
+// there is no encoding for a mixed pair, and it would not mean anything either.
+//
+TEST_F(StatelessPunchFrameTest, RejectsMixedFamilies)
+{
+    uint8_t Buffer[64];
+    uint16_t Offset;
+
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Mixed;
+    Mixed.ClientAddress = V4(10, 51000);
+    Mixed.ServerAddress = V6(20, 443);
+    Offset = 0;
+    ASSERT_FALSE(QuicStatelessPunchMeNowFrameEncode(&Mixed, &Offset, sizeof(Buffer), Buffer));
+
+    Mixed.ClientAddress = V6(10, 51000);
+    Mixed.ServerAddress = V4(20, 443);
+    Offset = 0;
+    ASSERT_FALSE(QuicStatelessPunchMeNowFrameEncode(&Mixed, &Offset, sizeof(Buffer), Buffer));
+
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Unspec;
+    CxPlatZeroMemory(&Unspec, sizeof(Unspec));
+    Offset = 0;
+    ASSERT_FALSE(QuicStatelessPunchMeNowFrameEncode(&Unspec, &Offset, sizeof(Buffer), Buffer));
+}
+
+//
+// And a buffer one byte short of the whole frame.
+//
+TEST_F(StatelessPunchFrameTest, RejectsTooSmallBuffer)
+{
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+    Frame.ClientAddress = V4(10, 51000);
+    Frame.ServerAddress = V4(20, 443);
+
+    const uint16_t Needed = (uint16_t)(TypeLen(QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4) + 12);
+    uint8_t Buffer[64];
+    for (uint16_t Size = 0; Size < Needed; ++Size) {
+        uint16_t Offset = 0;
+        ASSERT_FALSE(QuicStatelessPunchMeNowFrameEncode(&Frame, &Offset, Size, Buffer))
+            << "encoded into " << Size << " bytes, needing " << Needed;
+    }
+    uint16_t Offset = 0;
+    ASSERT_TRUE(QuicStatelessPunchMeNowFrameEncode(&Frame, &Offset, Needed, Buffer));
+}

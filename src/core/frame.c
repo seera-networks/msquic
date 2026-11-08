@@ -2046,6 +2046,139 @@ QuicAlternativeAddressEntryEncode(
     return Buffer;
 }
 
+//
+// draft-kozuka-quic-stateless-punch section 10. Fixed width throughout, which
+// is what makes this shorter than the frame it replaces: the whole body is two
+// endpoints, so the length is a function of the type and there is nothing to
+// decode before knowing it.
+//
+static
+uint16_t
+QuicStatelessPunchMeNowFrameBodyLength(
+    _In_ QUIC_ADDRESS_FAMILY Family
+    )
+{
+    return
+        Family == QUIC_ADDRESS_FAMILY_INET ?
+            2 * (uint16_t)(sizeof(struct in_addr) + sizeof(uint16_t)) :
+            2 * (uint16_t)(sizeof(struct in6_addr) + sizeof(uint16_t));
+}
+
+_Success_(return != FALSE)
+BOOLEAN
+QuicStatelessPunchMeNowFrameEncode(
+    _In_ const QUIC_STATELESS_PUNCH_ME_NOW_EX * const Frame,
+    _Inout_ uint16_t* Offset,
+    _In_ uint16_t BufferLength,
+    _Out_writes_to_(BufferLength, *Offset)
+        uint8_t* Buffer
+    )
+{
+    const QUIC_ADDRESS_FAMILY Family = QuicAddrGetFamily(&Frame->ClientAddress);
+
+    //
+    // One frame, one family. The type says which, so a pair that mixed them
+    // could not be encoded at all -- and would not mean anything either: the
+    // punch packet goes from the server address to the client address.
+    //
+    if (Family != QuicAddrGetFamily(&Frame->ServerAddress) ||
+        (Family != QUIC_ADDRESS_FAMILY_INET && Family != QUIC_ADDRESS_FAMILY_INET6)) {
+        return FALSE;
+    }
+
+    const QUIC_VAR_INT Type =
+        Family == QUIC_ADDRESS_FAMILY_INET ?
+            QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 :
+            QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6;
+
+    const uint16_t RequiredLength =
+        QuicVarIntSize(Type) + QuicStatelessPunchMeNowFrameBodyLength(Family);
+
+    if (BufferLength < *Offset + RequiredLength) {
+        return FALSE;
+    }
+
+    Buffer = Buffer + *Offset;
+    Buffer = QuicVarIntEncode(Type, Buffer);
+
+    //
+    // Addresses in network order, taken straight out of the sockaddr -- the
+    // draft's fields are the wire forms, so there is nothing to convert.
+    //
+    if (Family == QUIC_ADDRESS_FAMILY_INET) {
+        CxPlatCopyMemory(Buffer, &Frame->ClientAddress.Ipv4.sin_addr, sizeof(struct in_addr));
+        Buffer += sizeof(struct in_addr);
+        CxPlatCopyMemory(Buffer, &Frame->ClientAddress.Ipv4.sin_port, sizeof(uint16_t));
+        Buffer += sizeof(uint16_t);
+        CxPlatCopyMemory(Buffer, &Frame->ServerAddress.Ipv4.sin_addr, sizeof(struct in_addr));
+        Buffer += sizeof(struct in_addr);
+        CxPlatCopyMemory(Buffer, &Frame->ServerAddress.Ipv4.sin_port, sizeof(uint16_t));
+    } else {
+        CxPlatCopyMemory(Buffer, &Frame->ClientAddress.Ipv6.sin6_addr, sizeof(struct in6_addr));
+        Buffer += sizeof(struct in6_addr);
+        CxPlatCopyMemory(Buffer, &Frame->ClientAddress.Ipv6.sin6_port, sizeof(uint16_t));
+        Buffer += sizeof(uint16_t);
+        CxPlatCopyMemory(Buffer, &Frame->ServerAddress.Ipv6.sin6_addr, sizeof(struct in6_addr));
+        Buffer += sizeof(struct in6_addr);
+        CxPlatCopyMemory(Buffer, &Frame->ServerAddress.Ipv6.sin6_port, sizeof(uint16_t));
+    }
+
+    *Offset += RequiredLength;
+    return TRUE;
+}
+
+_Success_(return != FALSE)
+BOOLEAN
+QuicStatelessPunchMeNowFrameDecode(
+    _In_ QUIC_FRAME_TYPE FrameType,
+    _In_ uint16_t BufferLength,
+    _In_reads_bytes_(BufferLength)
+        const uint8_t * const Buffer,
+    _Inout_ uint16_t* Offset,
+    _Out_ QUIC_STATELESS_PUNCH_ME_NOW_EX* Frame
+    )
+{
+    CxPlatZeroMemory(Frame, sizeof(*Frame));
+
+    const QUIC_ADDRESS_FAMILY Family =
+        FrameType == QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 ?
+            QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+
+    //
+    // Length checked once, before anything is read. The body is fixed width,
+    // so there is no sequence of decodes that could each need its own check.
+    //
+    const uint16_t BodyLength = QuicStatelessPunchMeNowFrameBodyLength(Family);
+    if (BufferLength < *Offset + BodyLength) {
+        return FALSE;
+    }
+
+    QuicAddrSetFamily(&Frame->ClientAddress, Family);
+    QuicAddrSetFamily(&Frame->ServerAddress, Family);
+
+    const uint8_t* Body = Buffer + *Offset;
+    if (Family == QUIC_ADDRESS_FAMILY_INET) {
+        CxPlatCopyMemory(&Frame->ClientAddress.Ipv4.sin_addr, Body, sizeof(struct in_addr));
+        Body += sizeof(struct in_addr);
+        CxPlatCopyMemory(&Frame->ClientAddress.Ipv4.sin_port, Body, sizeof(uint16_t));
+        Body += sizeof(uint16_t);
+        CxPlatCopyMemory(&Frame->ServerAddress.Ipv4.sin_addr, Body, sizeof(struct in_addr));
+        Body += sizeof(struct in_addr);
+        CxPlatCopyMemory(&Frame->ServerAddress.Ipv4.sin_port, Body, sizeof(uint16_t));
+    } else {
+        CxPlatCopyMemory(&Frame->ClientAddress.Ipv6.sin6_addr, Body, sizeof(struct in6_addr));
+        Body += sizeof(struct in6_addr);
+        CxPlatCopyMemory(&Frame->ClientAddress.Ipv6.sin6_port, Body, sizeof(uint16_t));
+        Body += sizeof(uint16_t);
+        CxPlatCopyMemory(&Frame->ServerAddress.Ipv6.sin6_addr, Body, sizeof(struct in6_addr));
+        Body += sizeof(struct in6_addr);
+        CxPlatCopyMemory(&Frame->ServerAddress.Ipv6.sin6_port, Body, sizeof(uint16_t));
+    }
+
+    *Offset += BodyLength;
+    return TRUE;
+}
+
 _Success_(return != FALSE)
 BOOLEAN
 QuicAlternativeAddressFrameEncode(
@@ -3596,6 +3729,50 @@ QuicFrameLogAlternativeAddress(
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 static BOOLEAN
+QuicFrameLogStatelessPunchMeNow(
+    _In_opt_ QUIC_CONNECTION* Connection,
+    _In_ BOOLEAN Rx,
+    _In_ uint64_t PacketNumber,
+    _In_ uint16_t PacketLength,
+    _In_reads_bytes_(PacketLength)
+        const uint8_t * const Packet,
+    _Inout_ uint16_t* Offset,
+    _In_ QUIC_VAR_INT FrameType
+    )
+{
+    QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+    if (!QuicStatelessPunchMeNowFrameDecode(FrameType, PacketLength, Packet, Offset, &Frame)) {
+        QuicTraceLogVerbose(
+            FrameLogStatelessPunchMeNowInvalid,
+            "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber);
+        return FALSE;
+    }
+
+    //
+    // Both endpoints, in the order the frame carries them. The older frame's
+    // log printed a round and a sequence number; neither exists here, and a
+    // log that still showed them would be describing a different protocol.
+    //
+    QUIC_ADDR_STR ClientAddrStr;
+    QUIC_ADDR_STR ServerAddrStr;
+    QuicAddrToString(&Frame.ClientAddress, &ClientAddrStr);
+    QuicAddrToString(&Frame.ServerAddress, &ServerAddrStr);
+    QuicTraceLogVerbose(
+        FrameLogStatelessPunchMeNow,
+        "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s",
+        PtkConnPre(Connection),
+        PktRxPre(Rx),
+        PacketNumber,
+        ClientAddrStr.Address,
+        ServerAddrStr.Address);
+    return TRUE;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static BOOLEAN
 QuicFrameLogRemoveAddress(
     _In_opt_ QUIC_CONNECTION* Connection,
     _In_ BOOLEAN Rx,
@@ -3914,6 +4091,13 @@ QuicFrameLog(
     case QUIC_FRAME_PUNCH_ME_NOW_V4:
     case QUIC_FRAME_PUNCH_ME_NOW_V6:
         if (!QuicFrameLogPunchMeNow(Connection, Rx, PacketNumber, PacketLength, Packet, Offset, FrameType)) {
+            return FALSE;
+        }
+        break;
+
+    case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4:
+    case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6:
+        if (!QuicFrameLogStatelessPunchMeNow(Connection, Rx, PacketNumber, PacketLength, Packet, Offset, FrameType)) {
             return FALSE;
         }
         break;

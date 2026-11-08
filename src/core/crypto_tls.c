@@ -73,6 +73,7 @@ typedef enum eSniNameType {
 #define QUIC_TP_ID_NAT_TRAVERSE                             0x3d7e9f0bca12fea6 // varint
 #define QUIC_TP_ID_INITIAL_MAX_PATH_ID                      0x3e // varint (draft-ietf-quic-multipath-21, suggested)
 #define QUIC_TP_ID_ALTERNATIVE_ADDRESS                      0xff0969d85cULL // varint[] (draft-munizaga-quic-alternative-server-address-02)
+#define QUIC_TP_ID_STATELESS_PUNCH                          0x5eea9e7aULL   // empty (draft-kozuka-quic-stateless-punch, provisional)
 
 BOOLEAN
 QuicTpIdIsReserved(
@@ -946,6 +947,16 @@ QuicCryptoTlsEncodeTransportParameters(
                 QUIC_TP_ID_ALTERNATIVE_ADDRESS,
                 0);
     }
+    if (TransportParams->Flags & QUIC_TP_FLAG_STATELESS_PUNCH) {
+        //
+        // Empty. The parameter says only that the extension is wanted; there
+        // is nothing to negotiate about it.
+        //
+        RequiredTPLen +=
+            TlsTransportParamLength(
+                QUIC_TP_ID_STATELESS_PUNCH,
+                0);
+    }
     if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_PATH_ID) {
         RequiredTPLen +=
             TlsTransportParamLength(
@@ -1355,6 +1366,18 @@ QuicCryptoTlsEncodeTransportParameters(
             EncodeTPAlternativeAddress,
             Connection,
             "TP: Alternative Address");
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_STATELESS_PUNCH) {
+        TPBuf =
+            TlsWriteTransportParam(
+                QUIC_TP_ID_STATELESS_PUNCH,
+                0,
+                NULL,
+                TPBuf);
+        QuicTraceLogConnVerbose(
+            EncodeTPStatelessPunch,
+            Connection,
+            "TP: Stateless Punch");
     }
     if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_PATH_ID) {
         TPBuf =
@@ -2214,6 +2237,31 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
             break;
         }
 
+        case QUIC_TP_ID_STATELESS_PUNCH: {
+            //
+            // Empty value, both directions. A non-empty one is a
+            // TRANSPORT_PARAMETER_ERROR per the draft -- not ignored, because
+            // a peer that put something there means something by it and this
+            // implementation would not know what.
+            //
+            if (Length != 0) {
+                QuicTraceEvent(
+                    ConnErrorStatus,
+                    "[conn][%p] ERROR, %u, %s.",
+                    Connection,
+                    Length,
+                    "Invalid length of QUIC_TP_ID_STATELESS_PUNCH");
+                goto Exit;
+            }
+
+            TransportParams->Flags |= QUIC_TP_FLAG_STATELESS_PUNCH;
+            QuicTraceLogConnVerbose(
+                DecodeTPStatelessPunch,
+                Connection,
+                "TP: Stateless Punch");
+            break;
+        }
+
         case QUIC_TP_ID_NAT_TRAVERSE:
             if (!IsServerTP) {
                 if (Length != 0) {
@@ -2278,6 +2326,28 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
         }
 
         Offset += Length;
+    }
+
+    //
+    // A server receiving stateless_punch without alternative_address is a
+    // TRANSPORT_PARAMETER_ERROR. It is the draft's one cross-parameter rule:
+    // the extension pairs the client's candidates against the addresses the
+    // server advertises in ALTERNATIVE_ADDRESS, so a client that asks for the
+    // one and not the other has asked for something that cannot work.
+    //
+    // After the loop, not inside it, because the two can arrive in either
+    // order and by here both flags are set either way. IsServerTP false means
+    // these are the client's parameters, which is to say we are the server.
+    //
+    if (!IsServerTP &&
+        (TransportParams->Flags & QUIC_TP_FLAG_STATELESS_PUNCH) &&
+        !(TransportParams->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS)) {
+        QuicTraceEvent(
+            ConnError,
+            "[conn][%p] ERROR, %s.",
+            Connection,
+            "QUIC_TP_ID_STATELESS_PUNCH without QUIC_TP_ID_ALTERNATIVE_ADDRESS");
+        goto Exit;
     }
 
     if (TransportParams->Flags & QUIC_TP_FLAG_MIN_ACK_DELAY &&

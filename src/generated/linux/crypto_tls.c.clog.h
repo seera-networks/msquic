@@ -714,6 +714,24 @@ tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPAlternativeAddress , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for EncodeTPStatelessPunch
+// [conn][%p] TP: Stateless Punch
+// QuicTraceLogConnVerbose(
+            EncodeTPStatelessPunch,
+            Connection,
+            "TP: Stateless Punch");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_EncodeTPStatelessPunch
+#define _clog_3_ARGS_TRACE_EncodeTPStatelessPunch(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPStatelessPunch , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for EncodeTPInitMaxPathId
 // [conn][%p] TP: Max Path Id (%llu)
 // QuicTraceLogConnVerbose(
@@ -1355,6 +1373,24 @@ tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPServerMigration , arg1);\
 #ifndef _clog_3_ARGS_TRACE_DecodeTPAlternativeAddress
 #define _clog_3_ARGS_TRACE_DecodeTPAlternativeAddress(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPAlternativeAddress , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for DecodeTPStatelessPunch
+// [conn][%p] TP: Stateless Punch
+// QuicTraceLogConnVerbose(
+                DecodeTPStatelessPunch,
+                Connection,
+                "TP: Stateless Punch");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_DecodeTPStatelessPunch
+#define _clog_3_ARGS_TRACE_DecodeTPStatelessPunch(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPStatelessPunch , arg1);\
 
 #endif
 
