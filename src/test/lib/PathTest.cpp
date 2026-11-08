@@ -3582,6 +3582,24 @@ QuicTestPathReconcilerKeepsApplicationPath(
 
 #if DEBUG
 //
+// Whether an address is on this host. No public header offers this and the
+// core's own predicate is internal, so it is spelled out: 127/8 for IPv4 and
+// ::1 for IPv6, which is all the tests ever connect to.
+//
+static bool
+PathTestAddrIsLoopback(
+    const QUIC_ADDR* Addr
+    )
+{
+    if (QuicAddrGetFamily(Addr) == QUIC_ADDRESS_FAMILY_INET) {
+        return (CxPlatByteSwapUint32(Addr->Ipv4.sin_addr.s_addr) >> 24) == 127;
+    }
+    static const uint8_t Loopback[16] =
+        { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+    return memcmp(&Addr->Ipv6.sin6_addr, Loopback, sizeof(Loopback)) == 0;
+}
+
+//
 // Brings up a client in AUTO on a loopback connection, with the hold-down set
 // explicitly so the stage 4 tests do not depend on the default, and hands back
 // a real host address for the server to advertise.
@@ -3605,9 +3623,6 @@ struct TableMigrationTest {
         )
     {
         if (!Registration.IsValid()) {
-            return false;
-        }
-        if (!AltServerAddressHostAddress(Host)) {
             return false;
         }
 
@@ -3678,6 +3693,39 @@ struct TableMigrationTest {
         // Handshake confirmation, as the other add-path tests wait for.
         //
         CxPlatSleep(100);
+
+        //
+        // The address the server will advertise, chosen only now because it has
+        // to be one the client can validate a path to -- these tests migrate,
+        // and a migration needs the peer to answer a challenge on the new
+        // path.
+        //
+        // The address the connection is already on is that address by
+        // construction, so it is the first choice. On the DuoNIC runs it is
+        // 192.168.1.11 and picking an arbitrary interface address instead was
+        // the bug: AltServerAddressHostAddress can return the runner's real
+        // NIC, which the client cannot route to from the DuoNIC interface, so
+        // the path was created and never validated and the migration never
+        // happened. Basic.AlternativeServerAddressAuto did not notice because
+        // it only waits for the path to exist.
+        //
+        // Loopback is the exception, and the reason the fallback stays: the
+        // ALTERNATIVE_ADDRESS writer skips loopback observed addresses, so
+        // there would be nothing to advertise.
+        //
+        QuicAddr Remote;
+        if (QUIC_FAILED(Client->GetRemoteAddr(Remote))) {
+            return false;
+        }
+        if (PathTestAddrIsLoopback(&Remote.SockAddr)) {
+            if (!AltServerAddressHostAddress(Host)) {
+                return false;
+            }
+        } else {
+            Host = Remote;
+            Host.SetPort(0);
+        }
+
         Connection = Client;
         return true;
     }
