@@ -531,6 +531,26 @@ tracepoint(CLOG_CONNECTION_C, UnreachableInvalid , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileRemovePathFailed
+// [conn][%p] Reconciler failed to remove a path, status=0x%x
+// QuicTraceLogConnWarning(
+                ReconcileRemovePathFailed,
+                Connection,
+                "Reconciler failed to remove a path, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileRemovePathFailed
+#define _clog_4_ARGS_TRACE_ReconcileRemovePathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileRemovePathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for AlternativeAddressFull
 // [conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked
 // QuicTraceLogConnWarning(
@@ -620,44 +640,6 @@ tracepoint(CLOG_CONNECTION_C, AutoRemovedLostPath , arg1);\
 #ifndef _clog_3_ARGS_TRACE_AutoMigrateMultipathActivate
 #define _clog_3_ARGS_TRACE_AutoMigrateMultipathActivate(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, AutoMigrateMultipathActivate , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for AutoAddPathFailed
-// [conn][%p] AUTO could not open a path on a new address, status=0x%x
-// QuicTraceLogConnInfo(
-                    AutoAddPathFailed,
-                    Connection,
-                    "AUTO could not open a path on a new address, status=0x%x",
-                    Status);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Status = arg3
-----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_AutoAddPathFailed
-#define _clog_4_ARGS_TRACE_AutoAddPathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_CONNECTION_C, AutoAddPathFailed , arg1, arg3);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for AutoAddedPath
-// [conn][%p] AUTO opened a path on a new local address
-// QuicTraceLogConnInfo(
-                AutoAddedPath,
-                Connection,
-                "AUTO opened a path on a new local address");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_AutoAddedPath
-#define _clog_3_ARGS_TRACE_AutoAddedPath(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, AutoAddedPath , arg1);\
 
 #endif
 
@@ -1157,6 +1139,62 @@ tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileRemovedPath
+// [conn][%p] Reconciler removed a path whose pair left the table
+// QuicTraceLogConnInfo(
+            ReconcileRemovedPath,
+            Connection,
+            "Reconciler removed a path whose pair left the table");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileRemovedPath
+#define _clog_3_ARGS_TRACE_ReconcileRemovedPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileRemovedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileAddPathFailed
+// [conn][%p] Reconciler could not open a path, status=0x%x
+// QuicTraceLogConnInfo(
+                ReconcileAddPathFailed,
+                Connection,
+                "Reconciler could not open a path, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileAddPathFailed
+#define _clog_4_ARGS_TRACE_ReconcileAddPathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileAddPathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileAddedPath
+// [conn][%p] Reconciler opened a path for a table pair
+// QuicTraceLogConnInfo(
+            ReconcileAddedPath,
+            Connection,
+            "Reconciler opened a path for a table pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileAddedPath
+#define _clog_3_ARGS_TRACE_ReconcileAddedPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileAddedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for AlternativeAddressWithdrawn
 // [conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)
 // QuicTraceLogConnInfo(
@@ -1180,10 +1218,10 @@ tracepoint(CLOG_CONNECTION_C, AlternativeAddressWithdrawn , arg1, arg3);\
 // Decoder Ring for AlternativeAddressAddFailed
 // [conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x
 // QuicTraceLogConnInfo(
-                AlternativeAddressAddFailed,
-                Connection,
-                "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
-                Status);
+                    AlternativeAddressAddFailed,
+                    Connection,
+                    "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
+                    Status);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Status = arg3
 ----------------------------------------------------------*/
@@ -1374,24 +1412,6 @@ tracepoint(CLOG_CONNECTION_C, RouteLocalAddressUnavailable , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_IndicateLocalAddressChanged
 #define _clog_3_ARGS_TRACE_IndicateLocalAddressChanged(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, IndicateLocalAddressChanged , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for AutoAddPathHeldDown
-// [conn][%p] AUTO held down opening a path on a new address
-// QuicTraceLogConnVerbose(
-            AutoAddPathHeldDown,
-            Connection,
-            "AUTO held down opening a path on a new address");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_AutoAddPathHeldDown
-#define _clog_3_ARGS_TRACE_AutoAddPathHeldDown(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, AutoAddPathHeldDown , arg1);\
 
 #endif
 
@@ -2016,6 +2036,26 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
 #ifndef _clog_6_ARGS_TRACE_CandidatePairsRebuilt
 #define _clog_6_ARGS_TRACE_CandidatePairsRebuilt(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
 tracepoint(CLOG_CONNECTION_C, CandidatePairsRebuilt , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileCreateHeldDownFor
+// [conn][%p] Reconciler held down opening paths for %llu us
+// QuicTraceLogConnVerbose(
+            ReconcileCreateHeldDownFor,
+            Connection,
+            "Reconciler held down opening paths for %llu us",
+            RemainingUs);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemainingUs = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileCreateHeldDownFor
+#define _clog_4_ARGS_TRACE_ReconcileCreateHeldDownFor(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor , arg1, arg3);\
 
 #endif
 

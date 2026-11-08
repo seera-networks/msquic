@@ -555,6 +555,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, UnreachableInvalid,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileRemovePathFailed
+// [conn][%p] Reconciler failed to remove a path, status=0x%x
+// QuicTraceLogConnWarning(
+                ReconcileRemovePathFailed,
+                Connection,
+                "Reconciler failed to remove a path, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileRemovePathFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for AlternativeAddressFull
 // [conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked
 // QuicTraceLogConnWarning(
@@ -652,48 +675,6 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoRemovedLostPath,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoMigrateMultipathActivate,
-    TP_ARGS(
-        const void *, arg1), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for AutoAddPathFailed
-// [conn][%p] AUTO could not open a path on a new address, status=0x%x
-// QuicTraceLogConnInfo(
-                    AutoAddPathFailed,
-                    Connection,
-                    "AUTO could not open a path on a new address, status=0x%x",
-                    Status);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Status = arg3
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoAddPathFailed,
-    TP_ARGS(
-        const void *, arg1,
-        unsigned int, arg3), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned int, arg3, arg3)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for AutoAddedPath
-// [conn][%p] AUTO opened a path on a new local address
-// QuicTraceLogConnInfo(
-                AutoAddedPath,
-                Connection,
-                "AUTO opened a path on a new local address");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoAddedPath,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -1248,6 +1229,67 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, BoundAddressWildcardForQtip,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileRemovedPath
+// [conn][%p] Reconciler removed a path whose pair left the table
+// QuicTraceLogConnInfo(
+            ReconcileRemovedPath,
+            Connection,
+            "Reconciler removed a path whose pair left the table");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileRemovedPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileAddPathFailed
+// [conn][%p] Reconciler could not open a path, status=0x%x
+// QuicTraceLogConnInfo(
+                ReconcileAddPathFailed,
+                Connection,
+                "Reconciler could not open a path, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileAddPathFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileAddedPath
+// [conn][%p] Reconciler opened a path for a table pair
+// QuicTraceLogConnInfo(
+            ReconcileAddedPath,
+            Connection,
+            "Reconciler opened a path for a table pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileAddedPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for AlternativeAddressWithdrawn
 // [conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)
 // QuicTraceLogConnInfo(
@@ -1274,10 +1316,10 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, AlternativeAddressWithdrawn,
 // Decoder Ring for AlternativeAddressAddFailed
 // [conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x
 // QuicTraceLogConnInfo(
-                AlternativeAddressAddFailed,
-                Connection,
-                "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
-                Status);
+                    AlternativeAddressAddFailed,
+                    Connection,
+                    "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
+                    Status);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Status = arg3
 ----------------------------------------------------------*/
@@ -1495,25 +1537,6 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, RouteLocalAddressUnavailable,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateLocalAddressChanged,
-    TP_ARGS(
-        const void *, arg1), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for AutoAddPathHeldDown
-// [conn][%p] AUTO held down opening a path on a new address
-// QuicTraceLogConnVerbose(
-            AutoAddPathHeldDown,
-            Connection,
-            "AUTO held down opening a path on a new address");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, AutoAddPathHeldDown,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -2241,6 +2264,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, CandidatePairsRebuilt,
         ctf_integer(unsigned int, arg3, arg3)
         ctf_integer(unsigned int, arg4, arg4)
         ctf_integer(unsigned char, arg5, arg5)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileCreateHeldDownFor
+// [conn][%p] Reconciler held down opening paths for %llu us
+// QuicTraceLogConnVerbose(
+            ReconcileCreateHeldDownFor,
+            Connection,
+            "Reconciler held down opening paths for %llu us",
+            RemainingUs);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemainingUs = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 

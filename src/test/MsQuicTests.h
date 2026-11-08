@@ -230,6 +230,14 @@ QuicTestPathOriginsAdvertised(
     );
 
 void
+QuicTestPathReconcilerSwapAtPathLimit(
+    );
+
+void
+QuicTestPathReconcilerKeepsApplicationPath(
+    );
+
+void
 QuicTestLocalAddressChangeAutoRoute(
     );
 

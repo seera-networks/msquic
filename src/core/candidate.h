@@ -74,11 +74,13 @@ typedef struct QUIC_CANDIDATE_PAIR {
     QUIC_VAR_INT PriorityHint;  // Lower is higher priority.
 
     //
-    // Which path realises this pair, once stage 3 makes paths follow the table.
-    // Untouched here.
+    // Stage 1 reserved a PathIndex and a HasPath here for stage 3 to fill in.
+    // Stage 3 does not want them. An index into Connection->Paths cannot be
+    // kept valid -- QuicPathRemove memmoves the array and QuicConnAddPath
+    // inserts at index 1, so every mutation the reconciler makes invalidates
+    // the indices of the pairs it has not reached yet. The mapping is derived
+    // by address instead, which is cheap at four paths and cannot go stale.
     //
-    uint8_t PathIndex;
-    BOOLEAN HasPath;
 
 } QUIC_CANDIDATE_PAIR;
 

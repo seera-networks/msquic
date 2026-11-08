@@ -243,6 +243,21 @@ typedef enum QUIC_PATH_ORIGIN {
 //
 #define QUIC_PARAM_CONN_TEST_PATH_ORIGINS               0x85000007  // uint8_t[]
 
+//
+// The endpoints of each of the connection's paths, in path-array order.
+//
+// QUIC_PATH_STATISTICS is the public way to count paths but carries no
+// addresses, so a test can see that the number of paths changed and not which
+// pairs they are -- which is the whole question for a reconciler driven by a
+// table of pairs. Get only, debug only.
+//
+typedef struct QUIC_TEST_PATH_ADDRESSES {
+    QUIC_ADDR LocalAddress;
+    QUIC_ADDR RemoteAddress;
+} QUIC_TEST_PATH_ADDRESSES;
+
+#define QUIC_PARAM_CONN_TEST_PATH_ADDRESSES             0x85000008  // QUIC_TEST_PATH_ADDRESSES[]
+
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 #define QUIC_PARAM_STREAM_RELIABLE_OFFSET_RECV          0x88000000  // uint64_t
 #endif
