@@ -35,7 +35,7 @@ typedef enum QUIC_CONNECTION_EVENT_TYPE {
     QUIC_CONNECTION_EVENT_PATH_ADDED                        = 23,
     QUIC_CONNECTION_EVENT_PATH_REMOVED                      = 24,
     QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED               = 25,
-    QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED           = 26,   // Only indicated if QUIC_SETTINGS.LocalAddressChangeMode is NOTIFY
+    QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED           = 26,   // Only indicated if QUIC_SETTINGS.AddAddressMode is MANUAL
 #endif
 
 } QUIC_CONNECTION_EVENT_TYPE;
@@ -565,7 +565,7 @@ The Sequence Number of the removed address.
 
 **Preview feature**: This event is in [preview](../PreviewFeatures.md). It should be considered unstable and can be subject to breaking changes.
 
-This event is only indicated if `QUIC_SETTINGS.LocalAddressChangeMode` is `QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY`. It says that the set of addresses the *host* has changed -- a Wi-Fi interface going away, a cellular address appearing, a VPN coming up -- and leaves it to the application to decide what to do about it, through `QUIC_PARAM_CONN_ADD_PATH`, `QUIC_PARAM_CONN_ACTIVATE_PATH` and `QUIC_PARAM_CONN_REMOVE_PATH`.
+This event is only indicated if `QUIC_SETTINGS.AddAddressMode` is `QUIC_ADD_ADDRESS_MANUAL`, which is the mode in which the application manages paths itself. (`QUIC_SETTINGS.LocalAddressChangeMode` used to control this and is now deprecated and ignored.) It says that the set of addresses the *host* has changed -- a Wi-Fi interface going away, a cellular address appearing, a VPN coming up -- and leaves it to the application to decide what to do about it, through `QUIC_PARAM_CONN_ADD_PATH`, `QUIC_PARAM_CONN_ACTIVATE_PATH` and `QUIC_PARAM_CONN_REMOVE_PATH`.
 
 Nothing is indicated before the handshake is confirmed, since RFC 9000 section 9 does not allow migration until then; a change that happens earlier is reported once at confirmation.
 

@@ -400,17 +400,17 @@ tracepoint(CLOG_CONNECTION_C, AutoRemoveOldRoutePathFailed , arg1, arg3);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for AutoMigrationUnavailable
-// [conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated
+// Decoder Ring for AutoMigrationUnavailableMode
+// [conn][%p] QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated
 // QuicTraceLogConnWarning(
-                AutoMigrationUnavailable,
+                AutoMigrationUnavailableMode,
                 Connection,
-                "QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated");
+                "QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_AutoMigrationUnavailable
-#define _clog_3_ARGS_TRACE_AutoMigrationUnavailable(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, AutoMigrationUnavailable , arg1);\
+#ifndef _clog_3_ARGS_TRACE_AutoMigrationUnavailableMode
+#define _clog_3_ARGS_TRACE_AutoMigrationUnavailableMode(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrationUnavailableMode , arg1);\
 
 #endif
 

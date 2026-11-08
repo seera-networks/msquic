@@ -753,6 +753,11 @@ public:
     MsQuicSettings& SetSendObservedAddressReports(bool value) { SendObservedAddressReports = value; IsSet.SendObservedAddressReports = TRUE; return *this; }
     MsQuicSettings& SetReceiveObservedAddressReports(bool value) { ReceiveObservedAddressReports = value; IsSet.ReceiveObservedAddressReports = TRUE; return *this; }
     MsQuicSettings& SetPathKeepAlive(uint32_t Time) { PathKeepAliveIntervalMs = Time; IsSet.PathKeepAliveIntervalMs = TRUE; return *this; }
+    MsQuicSettings& SetAddAddressMode(QUIC_ADD_ADDRESS_MODE Mode) { AddAddressMode = (uint8_t)Mode; IsSet.AddAddressMode = TRUE; return *this; }
+    //
+    // DEPRECATED. The library accepts LocalAddressChangeMode and ignores it;
+    // use SetAddAddressMode. Kept so that existing C++ callers still compile.
+    //
     MsQuicSettings& SetLocalAddressChangeMode(QUIC_LOCAL_ADDRESS_CHANGE_MODE Mode) { LocalAddressChangeMode = (uint8_t)Mode; IsSet.LocalAddressChangeMode = TRUE; return *this; }
     MsQuicSettings& SetAutoMigrationHoldDownMs(uint32_t Value) { AutoMigrationHoldDownMs = Value; IsSet.AutoMigrationHoldDownMs = TRUE; return *this; }
 #endif

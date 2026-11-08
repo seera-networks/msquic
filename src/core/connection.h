@@ -361,11 +361,54 @@ typedef struct QUIC_CONN_STATS {
 //
 // Why a make-before-break migration is in flight.
 //
+//
+// Stage 5 of #157: AddAddressMode is the single switch for dynamic address
+// handling, and LocalAddressChangeMode is ignored. These three say what each
+// mode means, so that the policy lives in one place rather than in a dozen
+// comparisons.
+//
+//   AUTO           the connection manages its own paths: table, reconciler,
+//                  migration.
+//   MANUAL         the application manages them. It gets the four events and
+//                  acts through ADD_PATH / ACTIVATE_PATH / REMOVE_PATH, and
+//                  there is no table at all.
+//   NAT_TRAVERSAL  the connection manages its paths, but from the older
+//                  ADD_ADDRESS frames rather than from the table, because
+//                  PUNCH_ME_NOW names the server's address by a sequence
+//                  number only those frames carry. #173 is what moves it onto
+//                  the table.
+//
+// Reports go to MANUAL alone, because there the events are the whole
+// interface.
+//
+#define QuicConnWantsAddressReports(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_MANUAL)
+
+//
+// Whether the connection acts on the host's own addresses rather than
+// reporting them -- migrating off an address that went away, following the
+// route when it moves. True of NAT_TRAVERSAL as well as AUTO: that mode is
+// "like AUTO" as far as the host's addresses go, and leaving it out stranded a
+// NAT-traversal connection on a dead path with nothing to tell the
+// application, which is worse than either alternative.
+//
+#define QuicConnManagesPathsAutomatically(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO || \
+     (Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL)
+
+//
+// Whether paths follow the candidate pair table. AUTO only. NAT_TRAVERSAL
+// joins at #173, for the reason above; until then the table would hold pairs
+// it cannot punch for.
+//
+#define QuicConnWantsCandidateTable(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO)
+
 typedef enum QUIC_MIGRATION_REASON {
 
     //
     // The host changed which interface it sends this peer's traffic from
-    // (#134 phase 5). Gated on LocalAddressChangeMode.
+    // (#134 phase 5). Gated on AddAddressMode since #157 stage 5.
     //
     QUIC_MIGRATION_REASON_ROUTE,
 
@@ -637,6 +680,13 @@ typedef struct QUIC_CONNECTION {
     // route lookup. Paths may be created from it but not removed against it.
     //
     BOOLEAN CandidatePairsApproximate;
+
+    //
+    // Whether the opening "here are your addresses" pass has been queued, so
+    // that it happens once for a connection that never changes mode and again
+    // whenever one is set.
+    //
+    BOOLEAN AddressChangePassQueued;
 
     //
     // The sequence number to use for sending an punch me now.
@@ -1978,6 +2028,18 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicConnReconcilePaths(
     _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Takes the address-monitor reference if this connection wants it, and runs the
+// opening local-address pass. Called when settings are applied and at handshake
+// confirmation; does nothing before the latter.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnUpdateAddressMonitorRef(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ BOOLEAN ModeWasSet
     );
 
 //

@@ -206,6 +206,10 @@ QuicTestLocalAddressChangeAuto(
     );
 
 void
+QuicTestNatTraversalLocalAddressChange(
+    );
+
+void
 QuicTestLocalAddressChangeAutoOffline(
     );
 
@@ -255,6 +259,19 @@ QuicTestTableMigrationNoFlap(
 
 void
 QuicTestTableMigrationAfterFailure(
+    );
+
+void
+QuicTestModeManual(
+    );
+
+void
+QuicTestModeNatTraversal(
+    );
+
+void
+QuicTestDeprecatedLocalAddressChangeMode(
+    _In_ const FamilyArgs& Params
     );
 
 void
