@@ -141,6 +141,7 @@ RunAddressChangeTest(
     //
     UNREFERENCED_PARAMETER(Family);
     UNREFERENCED_PARAMETER(Mode);
+    UNREFERENCED_PARAMETER(DeprecatedLocalMode);
     UNREFERENCED_PARAMETER(ExpectEventOnLoss);
 #else
     AddressChangeContext Context;
