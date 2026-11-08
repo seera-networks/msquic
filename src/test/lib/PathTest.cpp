@@ -3630,7 +3630,7 @@ struct TableMigrationTest {
         }
 
         MsQuicSettings ClientSettings;
-        ClientSettings.AddAddressMode = Mode;
+        ClientSettings.AddAddressMode = (uint8_t)Mode;
         ClientSettings.IsSet.AddAddressMode = TRUE;
         ClientSettings.AutoMigrationHoldDownMs = HoldDownMs;
         ClientSettings.IsSet.AutoMigrationHoldDownMs = TRUE;

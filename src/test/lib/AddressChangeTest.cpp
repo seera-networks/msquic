@@ -156,7 +156,7 @@ RunAddressChangeTest(
     // Stage 5 of #157 folded the local half into AddAddressMode, so this is
     // what the tests drive now. There is no field setter for it.
     //
-    ClientSettings.AddAddressMode = Mode;
+    ClientSettings.AddAddressMode = (uint8_t)Mode;
     ClientSettings.IsSet.AddAddressMode = TRUE;
     if (DeprecatedLocalMode >= 0) {
         //
