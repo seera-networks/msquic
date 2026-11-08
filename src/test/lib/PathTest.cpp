@@ -1493,6 +1493,42 @@ QuicTestPathKeepAlive(
     TEST_TRUE(SecondPathCounter.Count >= Expected);
 }
 
+//
+// Client settings for a test that manages its own paths.
+//
+// AddAddressMode MANUAL, which is what MANUAL is for: the application
+// decides, and nothing happens to a path unless it asks. Every test that adds
+// paths and then counts them, or reads back the path IDs it was handed, needs
+// that. Under AUTO -- the default since #176, which made AddAddressMode drive
+// the host's own addresses as well as the peer's -- the connection builds the
+// candidate pair table and opens a path of its own for every usable local
+// address. That both inflates the count and spends the path IDs the test was
+// about to ask for, and QuicConnAddPath answers QUIC_STATUS_OUT_OF_MEMORY once
+// QuicPathIDSetGetUnusedPathID runs dry.
+//
+// Invisible on a loopback connection, which has no pairs to open a path from,
+// so the table stays empty and AUTO does nothing. The XDP runs put the
+// connection on a real interface, where it does.
+//
+// The server keeps the default, because the reconciler is client-only. Tests
+// that deliberately exercise it keep the default on both sides and do not use
+// this.
+//
+static
+MsQuicSettings
+MultipathOwnPathsClientSettings(
+    _In_ uint32_t InitialRttMs = 0
+    )
+{
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE).SetAddAddressMode(QUIC_ADD_ADDRESS_MANUAL);
+    if (InitialRttMs != 0) {
+        Settings.SetInitialRttMs(InitialRttMs);
+    }
+    return Settings;
+}
+
+
 void
 QuicTestPathStatistics(
     _In_ const FamilyArgs& Params
@@ -1514,7 +1550,7 @@ QuicTestPathStatistics(
     MsQuicCredentialConfig ClientCredConfig;
     MsQuicConfiguration ClientConfiguration(Registration,
         "MsQuicTest",
-        MsQuicSettings{}.SetMultipathEnabled(TRUE),
+        MultipathOwnPathsClientSettings(),
         ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
@@ -1821,7 +1857,8 @@ QuicTestMultipathPathValidationFailed(
     TEST_TRUE(ServerConfiguration.IsValid());
 
     MsQuicCredentialConfig ClientCredConfig;
-    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", MultipathOwnPathsClientSettings(InitialRttMs), ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
     MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
@@ -1934,7 +1971,8 @@ QuicTestMultipathPathIdReclaimed(
     TEST_TRUE(ServerConfiguration.IsValid());
 
     MsQuicCredentialConfig ClientCredConfig;
-    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", MultipathOwnPathsClientSettings(InitialRttMs), ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
     MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
@@ -2060,7 +2098,8 @@ QuicTestMultipathPathIdFreeAckState(
     TEST_TRUE(ServerConfiguration.IsValid());
 
     MsQuicCredentialConfig ClientCredConfig;
-    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", MultipathOwnPathsClientSettings(InitialRttMs), ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
     QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
@@ -2196,7 +2235,8 @@ QuicTestMultipathRemovedPathAcks(
     MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
     TEST_TRUE(ServerConfiguration.IsValid());
     MsQuicCredentialConfig ClientCredConfig;
-    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", MultipathOwnPathsClientSettings(InitialRttMs), ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
     MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
@@ -2347,7 +2387,8 @@ QuicTestMultipathPathValidationRetry(
     TEST_TRUE(ServerConfiguration.IsValid());
 
     MsQuicCredentialConfig ClientCredConfig;
-    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", MultipathOwnPathsClientSettings(InitialRttMs), ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
 
     MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
