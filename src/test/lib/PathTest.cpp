@@ -3582,31 +3582,27 @@ QuicTestPathReconcilerKeepsApplicationPath(
 
 #if DEBUG
 //
-// Whether an address is on this host. No public header offers this and the
-// core's own predicate is internal, so it is spelled out: 127/8 for IPv4 and
-// ::1 for IPv6, which is all the tests ever connect to.
+// Brings up a client in AUTO, with the hold-down set explicitly so the stage 4
+// tests do not depend on the default, and settles on an address for the server
+// to advertise.
 //
-static bool
-PathTestAddrIsLoopback(
-    const QUIC_ADDR* Addr
-    )
-{
-    if (QuicAddrGetFamily(Addr) == QUIC_ADDRESS_FAMILY_INET) {
-        return (CxPlatByteSwapUint32(Addr->Ipv4.sin_addr.s_addr) >> 24) == 127;
-    }
-    static const uint8_t Loopback[16] =
-        { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
-    return memcmp(&Addr->Ipv6.sin6_addr, Loopback, sizeof(Loopback)) == 0;
-}
-
+// That address is chosen after the handshake, from what the client has
+// demonstrably reached:
 //
-// Brings up a client in AUTO on a loopback connection, with the hold-down set
-// explicitly so the stage 4 tests do not depend on the default, and hands back
-// a real host address for the server to advertise.
+//   - a non-loopback remote -- the DuoNIC runs, where it is 192.168.1.11 -- is
+//     used as-is, so the advertised endpoint differs from the current one only
+//     in port. Picking an arbitrary interface address instead was a real bug:
+//     AltServerAddressHostAddress can return the runner's own NIC, which the
+//     client cannot route to from the DuoNIC interface, so the path was
+//     created and never validated and the migration never happened.
+//   - a loopback remote falls back to AltServerAddressHostAddress, because the
+//     ALTERNATIVE_ADDRESS writer skips loopback observed addresses and there
+//     would otherwise be nothing to advertise.
 //
-// Returns false when the host has no routable address, which is the same
-// condition AltServerAddressHostAddress reports: the frame writer skips
-// loopback observed addresses, so there would be nothing to advertise.
+// Returns false when there is no usable address -- which on the loopback path
+// means the host has none routable, the condition
+// AltServerAddressHostAddress reports -- and the caller skips rather than
+// pretends.
 //
 struct TableMigrationTest {
     AltServerAddressTestContext ServerContext;
@@ -3717,7 +3713,14 @@ struct TableMigrationTest {
         if (QUIC_FAILED(Client->GetRemoteAddr(Remote))) {
             return false;
         }
-        if (PathTestAddrIsLoopback(&Remote.SockAddr)) {
+        //
+        // IS_LOOPBACK, which is what the ALTERNATIVE_ADDRESS writer itself
+        // tests (send.c). The question here is exactly "will the writer skip
+        // this address", so asking it any other way can disagree with the
+        // answer that matters -- a hand-rolled 127/8 check would, since the
+        // POSIX macro matches only 127.0.0.1.
+        //
+        if (IS_LOOPBACK(Remote.SockAddr)) {
             if (!AltServerAddressHostAddress(Host)) {
                 return false;
             }
@@ -3877,13 +3880,14 @@ QuicTestTableMigration(
 //
 // What it does *not* do, despite looking as though it should, is isolate the
 // sentinel check -- deleting that check leaves this test passing. Verified by
-// control rather than assumed. The reason is the ranking: the route-derived
-// key outranks the sentinel, and on a single-interface host the pair the
-// connection is already on is route-preferred, so it heads the table and the
-// "already there" test returns before the sentinel is ever consulted. For a
-// backup to head the table the current pair would have to lose the route key,
-// which needs the host's route to this peer to actually move. The sentinel
-// ordering itself is covered by the unit tests in CandidateTest, and that the
+// control rather than assumed.
+//
+// The reason is that the pair the connection is already on heads the table
+// here, so the "already there" test returns before the sentinel is consulted.
+// It heads it on the sentinel rank itself: every pair is route-preferred for
+// its own remote, so that key ties, and CURRENT sorts above BACKUP. A backup
+// could only head the table if there were no current pair at all. The sentinel
+// ordering is covered by the unit tests in CandidateTest, and that the
 // preference is what triggers a move is covered by the test above, which does
 // fail if the server's mark is ignored.
 //
@@ -4160,8 +4164,22 @@ QuicTestTableMigrationAfterFailure(
     } while (QUIC_FAILED(Status) && ++Try <= 5);
     TEST_QUIC_SUCCEEDED(Status);
 
+    //
+    // A port nothing is listening on. Re-rolled until it differs from the
+    // connection's own remote endpoint: Test.Host is the server's address on
+    // the DuoNIC runs, so a port that happened to equal the listener's would
+    // name the live server rather than a dead end -- and nothing would catch
+    // it, because this address is only ever advertised and never bound, and
+    // QUIC_PARAM_CONN_ADD_OBSERVED_ADDRESS does not check for a collision.
+    //
+    QuicAddr ClientRemote;
+    TEST_QUIC_SUCCEEDED(Conn->GetRemoteAddr(ClientRemote));
     QuicAddr Dead = Test.Host;
     Dead.SetPort((uint16_t)(Bound.GetPort() ^ 0x4000));
+    for (uint32_t i = 0; i < 16 && QuicAddrCompare(&Dead.SockAddr, &ClientRemote.SockAddr); ++i) {
+        Dead.SetEphemeralPort();
+    }
+    TEST_FALSE(QuicAddrCompare(&Dead.SockAddr, &ClientRemote.SockAddr));
     QUIC_ADD_OBSERVED_ADDRESS AddDead = { &Bound.SockAddr, &Dead.SockAddr };
     TEST_QUIC_SUCCEEDED(
         Test.ServerContext.Connection->SetParam(
