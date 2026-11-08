@@ -2239,10 +2239,18 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
 
         case QUIC_TP_ID_STATELESS_PUNCH: {
             //
-            // Empty value, both directions. A non-empty one is a
-            // TRANSPORT_PARAMETER_ERROR per the draft -- not ignored, because
-            // a peer that put something there means something by it and this
-            // implementation would not know what.
+            // Empty value, both directions. A non-empty one is an error per
+            // the draft -- not ignored, because a peer that put something
+            // there means something by it and this implementation would not
+            // know what.
+            //
+            // The draft calls for TRANSPORT_PARAMETER_ERROR and the peer will
+            // see CRYPTO_ERROR. A server decodes the client's parameters once,
+            // from QuicCryptoTlsReadInitial, and a failure there closes with
+            // CRYPTO_HANDSHAKE_FAILURE; only the client's path can raise a
+            // parameter-specific code. That is true of every server-side
+            // parameter check in this implementation rather than anything
+            // about this one, so it is recorded rather than worked around.
             //
             if (Length != 0) {
                 QuicTraceEvent(
@@ -2329,8 +2337,10 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
     }
 
     //
-    // A server receiving stateless_punch without alternative_address is a
-    // TRANSPORT_PARAMETER_ERROR. It is the draft's one cross-parameter rule:
+    // A server receiving stateless_punch without alternative_address is an
+    // error -- CRYPTO_ERROR on the wire, for the reason recorded at the length
+    // check above, where the draft asks for TRANSPORT_PARAMETER_ERROR. It is
+    // the draft's one cross-parameter rule:
     // the extension pairs the client's candidates against the addresses the
     // server advertises in ALTERNATIVE_ADDRESS, so a client that asks for the
     // one and not the other has asked for something that cannot work.

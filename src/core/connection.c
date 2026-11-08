@@ -4160,20 +4160,30 @@ QuicConnGenerateLocalTransportParameters(
     }
 
     //
-    // draft-kozuka-quic-stateless-punch section 9: both endpoints advertise
-    // this one, and a client must advertise alternative_address as well -- a
-    // server receiving it without that is required to fail the handshake,
-    // because the extension pairs the client's candidates against the
-    // addresses that frame carries.
+    // draft-kozuka-quic-stateless-punch's transport parameter is deliberately
+    // NOT advertised yet.
     //
-    // So the client's condition is "we offered alternative_address", read off
-    // the decision just made rather than restated. A server has no such
-    // prerequisite: it does not send alternative_address at all.
+    // Negotiating it says "send me PUNCH_ME_NOW and I will punch", and this
+    // stage does neither: the frame is parsed and dropped. A peer that
+    // implements the draft -- a later stage of this work, or an interop
+    // partner -- would send requests and wait for packets that never come.
+    // Advertising support for something unimplemented is the one thing a
+    // wire-format-only stage must not do.
     //
-    if (QuicConnIsServer(Connection) ||
-        (LocalTP->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS)) {
-        LocalTP->Flags |= QUIC_TP_FLAG_STATELESS_PUNCH;
-    }
+    // #171 turns it on, when the server can answer. The condition it wants is
+    // already settled by the draft: both endpoints advertise it, and a client
+    // must advertise alternative_address as well -- a server receiving it
+    // without that is required to fail the handshake, because the extension
+    // pairs the client's candidates against the addresses that frame carries.
+    // So the client's condition is "we offered alternative_address", which is
+    // the decision made just above rather than a restatement of it, and a
+    // server has no prerequisite at all.
+    //
+    //  if (QuicConnIsServer(Connection) ||
+    //      (LocalTP->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS)) {
+    //      LocalTP->Flags |= QUIC_TP_FLAG_STATELESS_PUNCH;
+    //  }
+    //
 
     if (QuicConnIsServer(Connection)) {
 
@@ -7819,6 +7829,75 @@ QuicConnRecvFrames(
                     Status,
                     "Process REMOVE_ADDRESS frame");
             }
+            break;
+        }
+
+        case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4:
+        case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6: {
+            //
+            // Stage 1 of #169: parsed, consumed and dropped. Nothing acts on
+            // it until #171 gives the server a response.
+            //
+            // Decoded rather than skipped, and that is the point of handling
+            // it at all. The frame is in QUIC_FRAME_IS_KNOWN now -- it has to
+            // be, or the frame log cannot reach it -- and a known frame type
+            // the loop does not consume leaves the body to be re-read as more
+            // frame types. So the two go together: the type is known, the body
+            // is consumed, and the contents are ignored for now.
+            //
+            //
+            // Ack-eliciting and non-probing, which the draft says outright
+            // (section 10). Set before the decode so that a malformed one
+            // still counts -- the packet carried a non-probing frame whatever
+            // its contents turn out to be, and the connection is about to be
+            // closed anyway.
+            //
+            AckEliciting = TRUE;
+            Packet->HasNonProbingFrame = TRUE;
+
+            QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+            if (!QuicStatelessPunchMeNowFrameDecode(
+                    FrameType, PayloadLength, Payload, &Offset, &Frame)) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Decoding STATELESS_PUNCH_ME_NOW frame");
+                QuicConnTransportError(Connection, QUIC_ERROR_FRAME_ENCODING_ERROR);
+                return FALSE;
+            }
+
+            //
+            // Client to server only, and a client receiving one is a
+            // PROTOCOL_VIOLATION per the draft -- the punch flows the other
+            // way, so a server asking us to punch has misunderstood the
+            // extension.
+            //
+            if (QuicConnIsClient(Connection)) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Client received STATELESS_PUNCH_ME_NOW frame");
+                QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+                return FALSE;
+            }
+
+            //
+            // And not negotiated means the peer was never told it could send
+            // this, so the frame is not one we agreed to parse. The same
+            // treatment ALTERNATIVE_ADDRESS gets.
+            //
+            if (!Connection->State.StatelessPunchNegotiated) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "STATELESS_PUNCH_ME_NOW without the transport parameter");
+                QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+                return FALSE;
+            }
+
             break;
         }
 
