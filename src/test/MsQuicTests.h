@@ -206,6 +206,10 @@ QuicTestLocalAddressChangeAuto(
     );
 
 void
+QuicTestNatTraversalLocalAddressChange(
+    );
+
+void
 QuicTestLocalAddressChangeAutoOffline(
     );
 

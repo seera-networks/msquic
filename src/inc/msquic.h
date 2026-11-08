@@ -127,6 +127,13 @@ typedef enum QUIC_LOAD_BALANCING_MODE {
 //                  QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS, and opening one
 //                  sends PUNCH_ME_NOW before probing it.
 //
+//
+// A note for MANUAL, where an application acts on these events itself:
+// SetParam runs inline from a connection callback, so calling ADD_PATH or
+// ACTIVATE_PATH from inside one raises LOCAL_ADDRESS_CHANGED before the call
+// returns, re-entering the handler. Do not hold a non-recursive lock across a
+// handler that calls the path parameters.
+//
 typedef enum QUIC_ADD_ADDRESS_MODE {
     QUIC_ADD_ADDRESS_AUTO,                      // Default. The connection manages its own paths.
     QUIC_ADD_ADDRESS_MANUAL,                    // Report every change; the application acts.
@@ -135,21 +142,6 @@ typedef enum QUIC_ADD_ADDRESS_MODE {
                                                 // MUST BE LAST
 } QUIC_ADD_ADDRESS_MODE;
 
-//
-// What a connection does when the set of addresses the host has changes.
-//
-// N.B. The two active modes differ in who owns the paths, and an application
-// cannot treat them alike. Under NOTIFY it is the application's job to act,
-// from the LOCAL_ADDRESSES_CHANGED callback, using ADD_PATH / ACTIVATE_PATH /
-// REMOVE_PATH. Under AUTO the connection owns that decision, and an
-// application calling those from the callback races the policy -- there, the
-// events are informational only.
-//
-// N.B. SetParam runs inline when called from a connection callback, so
-// ACTIVATE_PATH from inside one raises LOCAL_ADDRESS_CHANGED before the call
-// returns, re-entering the handler. Do not hold a non-recursive lock across a
-// handler that calls the path parameters.
-//
 //
 // DEPRECATED. Setting QUIC_SETTINGS.LocalAddressChangeMode has no effect; it is
 // accepted and ignored. QUIC_ADD_ADDRESS_MODE governs the host's own addresses

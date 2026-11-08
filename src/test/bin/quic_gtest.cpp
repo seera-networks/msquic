@@ -1133,6 +1133,14 @@ TEST(Basic, LocalAddressChangeAuto) {
     QuicTestLocalAddressChangeAuto();
 }
 
+TEST(Basic, NatTraversalLocalAddressChange) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestNatTraversalLocalAddressChange is user-mode only.";
+    }
+    TestLogger Logger("QuicTestNatTraversalLocalAddressChange");
+    QuicTestNatTraversalLocalAddressChange();
+}
+
 TEST(Basic, LocalAddressChangeAutoOffline) {
     if (TestingKernelMode) {
         GTEST_SKIP() << "QuicTestLocalAddressChangeAutoOffline is user-mode only.";

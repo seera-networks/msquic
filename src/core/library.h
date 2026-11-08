@@ -219,11 +219,14 @@ typedef struct QUIC_LIBRARY {
     //
     // The host's usable local addresses, and the monitor that keeps them.
     //
-    // The monitor is started the first time a connection runs with
-    // LocalAddressChangeMode set to something other than DISABLED, and stopped
-    // when the last such connection goes, so an application that never asks
-    // pays for none of it -- no netlink socket, no thread. AddressMonitorRefCount
-    // counts those connections and is guarded by MsQuicLib.Lock.
+    // The monitor is started by the first connection to run and stopped when
+    // the last one goes. Since stage 5 of #157 every connection takes a
+    // reference, because AddAddressMode governs the host's addresses too and
+    // has no "off" value -- so in a preview build this is no longer something
+    // an application opts into. A build without preview features takes no
+    // reference at all and pays nothing, which is what it did before.
+    // AddressMonitorRefCount counts the holders and is guarded by
+    // MsQuicLib.Lock.
     //
     // LocalAddressesLock is a leaf: it is never held while taking another lock,
     // so the platform callback can replace the snapshot while a worker reads it.

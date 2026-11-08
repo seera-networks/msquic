@@ -2711,8 +2711,7 @@ QuicTestAlternativeServerAddress(
     // is no helper for this field.
     //
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_MANUAL;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_MANUAL);
     MsQuicCredentialConfig ClientCredConfig;
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
@@ -2853,8 +2852,7 @@ QuicTestAlternativeServerAddressAuto(
     // the mode that manages paths for itself.
     //
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
     MsQuicCredentialConfig ClientCredConfig;
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
@@ -2985,8 +2983,7 @@ QuicTestPathOrigins(
     // a route change mid-test would fail it for the wrong reason.
     //
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_MANUAL;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_MANUAL);
     MsQuicCredentialConfig ClientCredConfig;
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
@@ -3121,8 +3118,7 @@ QuicTestPathOriginsAdvertised(
     TEST_TRUE(ServerConfiguration.IsValid());
 
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
     MsQuicCredentialConfig ClientCredConfig;
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
@@ -3333,8 +3329,7 @@ QuicTestPathReconcilerSwapAtPathLimit(
     TEST_TRUE(ServerConfiguration.IsValid());
 
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
     MsQuicCredentialConfig ClientCredConfig;
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
@@ -3452,8 +3447,7 @@ QuicTestPathReconcilerKeepsApplicationPath(
     TEST_TRUE(ServerConfiguration.IsValid());
 
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
     MsQuicCredentialConfig ClientCredConfig;
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
     TEST_TRUE(ClientConfiguration.IsValid());
@@ -3630,8 +3624,7 @@ struct TableMigrationTest {
         }
 
         MsQuicSettings ClientSettings;
-        ClientSettings.AddAddressMode = (uint8_t)Mode;
-        ClientSettings.IsSet.AddAddressMode = TRUE;
+        ClientSettings.SetAddAddressMode(Mode);
         ClientSettings.AutoMigrationHoldDownMs = HoldDownMs;
         ClientSettings.IsSet.AutoMigrationHoldDownMs = TRUE;
 

@@ -2133,9 +2133,13 @@ QuicConnProcessLocalAddressChange(
 
     //
     // The host's addresses have changed, so the pairs they take part in have
-    // too.
+    // too -- but only where something reads them. MANUAL and NAT_TRAVERSAL
+    // would otherwise pay for a rebuild, and its route lookup per remote, on
+    // every address change for a table nothing consults.
     //
-    QuicConnQueueReconcile(Connection);
+    if (QuicConnWantsCandidateTable(Connection)) {
+        QuicConnQueueReconcile(Connection);
+    }
 
 Exit:
 
@@ -10667,37 +10671,6 @@ QuicConnHasPathForPair(
 }
 
 //
-// Whether the application has configured a NAT-traversal candidate on this
-// local address. Compared without the port: a candidate names an address the
-// application believes is reachable from outside, and the port is whatever the
-// binding is given.
-//
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-BOOLEAN
-QuicConnHasCandidateOnLocalAddress(
-    _In_ const QUIC_CONNECTION* Connection,
-    _In_ const QUIC_ADDR* Local
-    )
-{
-    QUIC_ADDR LocalNoPort = *Local;
-    QuicAddrSetPort(&LocalNoPort, 0);
-
-    for (const CXPLAT_LIST_ENTRY* Entry = Connection->CandidateAddresses.Flink;
-            Entry != &Connection->CandidateAddresses;
-            Entry = Entry->Flink) {
-        const QUIC_CANDIDATE_ADDRESS_LIST_ENTRY* Candidate =
-            CXPLAT_CONTAINING_RECORD(Entry, QUIC_CANDIDATE_ADDRESS_LIST_ENTRY, Link);
-        QUIC_ADDR CandidateNoPort = Candidate->Address;
-        QuicAddrSetPort(&CandidateNoPort, 0);
-        if (QuicAddrCompare(&CandidateNoPort, &LocalNoPort)) {
-            return TRUE;
-        }
-    }
-    return FALSE;
-}
-
-//
 // Whether any path of this connection already sends to this remote address.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -10904,18 +10877,6 @@ QuicConnReconcileCreatePaths(
             continue;
         }
 
-        //
-        // NAT_TRAVERSAL opens a path only where the application has put a
-        // candidate. The whole point of the mode is that the local address has
-        // to be one the peer can be told to punch towards, and only the
-        // application knows which of the host's addresses that is -- so a pair
-        // without one is a pair there is nothing useful to do with.
-        //
-        if (Connection->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL &&
-            !QuicConnHasCandidateOnLocalAddress(Connection, &Pair->LocalAddress)) {
-            continue;
-        }
-
         if (!Connection->State.MultipathNegotiated &&
             QuicConnHasPathForRemote(Connection, &Pair->RemoteAddress)) {
             //
@@ -10951,35 +10912,13 @@ QuicConnReconcileCreatePaths(
                 Status);
             break;
         }
-        if (Connection->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL) {
-            //
-            // Punch first, and hold the challenge back for a moment. A
-            // PATH_CHALLENGE that arrives before the peer's NAT has a binding
-            // for us is simply dropped, so sending it immediately spends the
-            // attempt for nothing. The same order QuicConnProcessAddAddress
-            // uses for the older ADD_ADDRESS frames, which is where this mode
-            // still gets its remote addresses from until #173.
-            //
-            NewPath->NatTraversal = TRUE;
-            if (NewPath->Binding != NULL) {
-                NewPath->SendPunchMeNow = TRUE;
-                QuicSendSetSendFlag(
-                    &Connection->Send, QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW);
-                if (NewPath->DestCid != NULL) {
-                    QuicConnTimerSet(
-                        Connection,
-                        QUIC_CONN_TIMER_PROBE_AFTER_PUNCH,
-                        Connection->Paths[0].SmoothedRtt);
-                }
-            }
-        } else if (NewPath != &Connection->Paths[0] && NewPath->DestCid != NULL) {
-            //
-            // Arm the send loop, the same way QUIC_PARAM_CONN_ADD_PATH does.
-            // QuicConnOpenNewPath sets the path's own SendChallenge and
-            // validation timer, but the connection-level flag is what gets the
-            // send loop to look; without it the challenge waits for an
-            // unrelated send.
-            //
+        //
+        // Arm the send loop, the same way QUIC_PARAM_CONN_ADD_PATH does.
+        // QuicConnOpenNewPath sets the path's own SendChallenge and validation
+        // timer, but the connection-level flag is what gets the send loop to
+        // look; without it the challenge waits for an unrelated send.
+        //
+        if (NewPath != &Connection->Paths[0] && NewPath->DestCid != NULL) {
             QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
         }
 
@@ -11292,6 +11231,20 @@ QuicConnReconcilePaths(
         return;
     }
 
+    //
+    // And the server-migration test, which used to sit below the rebuild. The
+    // path APIs reject a client's calls once server migration is negotiated,
+    // and a server's unless it is, so there is nothing this pass can do on
+    // such a connection -- and the rebuild is the expensive half. An ordinary
+    // server, which is every server that has not negotiated it, was otherwise
+    // paying for a table it would discover it could not use a moment later.
+    //
+    if ((QuicConnIsClient(Connection) && Connection->Settings.ServerMigrationEnabled) ||
+        (QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||
+        (QuicConnIsServer(Connection) && !Connection->State.ServerMigrationNegotiated)) {
+        return;
+    }
+
     QuicConnRebuildCandidatePairs(Connection);
 
     if (Connection->State.ShutdownComplete ||
@@ -11313,17 +11266,6 @@ QuicConnReconcilePaths(
         return;
     }
 
-    //
-    // The path APIs reject a client's calls once server migration is
-    // negotiated, and a server's unless it is. There is nothing this can do on
-    // such a connection, and QuicConnAddPath would fail every pair in the
-    // table one at a time.
-    //
-    if ((QuicConnIsClient(Connection) && Connection->Settings.ServerMigrationEnabled) ||
-        (QuicConnIsClient(Connection) && Connection->State.ServerMigrationNegotiated) ||
-        (QuicConnIsServer(Connection) && !Connection->State.ServerMigrationNegotiated)) {
-        return;
-    }
 
     QuicConnReconcileRemovePaths(Connection);
     QuicConnReconcileCreatePaths(Connection);
@@ -13574,39 +13516,39 @@ QuicConnApplyNewSettings(
 #endif
 
     //
-    // Every mode wants the monitor now, which is the default change stage 5 of
-    // #157 makes: AddAddressMode has no "off" value and defaults to AUTO, so
-    // the OS address monitor starts for every connection. MANUAL needs it to
-    // report local address changes at all; AUTO and NAT_TRAVERSAL need the
-    // snapshot the table is built from.
+    // Whether this connection wants the host's own addresses watched.
     //
-    // This is what #161 and #168 were waiting for. The reconciler had to cope
-    // with no snapshot -- falling back to the addresses the route lookup named
-    // -- because the reference followed LocalAddressChangeMode, which defaults
-    // to DISABLED. That fallback stays, because it is still reached: the
-    // reference is taken when the settings are applied, and a pass can run
-    // before the monitor has produced its first snapshot.
+    // Every AddAddressMode does -- MANUAL to report them, AUTO and
+    // NAT_TRAVERSAL to act on them -- and the setting has no "off" value, so in
+    // a preview build this is simply true. That is the default change stage 5
+    // of #157 makes, and the reason it is documented on the enum in msquic.h:
+    // the OS address monitor now starts for every connection, where before it
+    // started only for one that asked.
     //
-    // The reference itself is refcounted library-wide, so the cost is the
-    // monitor running whenever any connection exists, not one subscription per
-    // connection. Documented on AddAddressMode in msquic.h, because an
-    // application that wanted none of this now gets it by default.
+    // Behind the preview gate, though, and that matters. QUIC_SETTINGS'
+    // IsSet.LocalAddressChangeMode, the LOCAL_ADDRESSES_CHANGED event and the
+    // path parameters an application would need to observe or override any of
+    // this are all preview-only. Without the gate, an application built
+    // without preview features would get the monitor thread and automatic path
+    // management by default and have no way to see or stop it. With it, such a
+    // build behaves exactly as it did before this stage.
     //
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
     const BOOLEAN WantsAddressChanges = TRUE;
+#else
+    const BOOLEAN WantsAddressChanges = FALSE;
+#endif
 
-    if (!WantsAddressChanges && Connection->AddressMonitorRef) {
+    //
+    // One direction only. There is no mode that turns this off, so a reference
+    // once taken is held until the connection closes; the branch that gave it
+    // back existed for LocalAddressChangeMode going to DISABLED and would now
+    // be dead code.
+    //
+    if (WantsAddressChanges && !Connection->AddressMonitorRef) {
         //
-        // Turned back off. Give the reference back rather than holding the
-        // monitor up until the connection closes.
-        //
-        Connection->AddressMonitorRef = FALSE;
-        QuicLibraryReleaseAddressMonitor();
-    } else if (WantsAddressChanges && !Connection->AddressMonitorRef) {
-        //
-        // The monitor is started on demand and stopped when the last interested
-        // connection goes away, so an application that never asks for this pays
-        // nothing for it. A failure here leaves the mode set but silent, which
-        // is the same as the platform having no backend.
+        // A failure here leaves the connection silent, which is the same as
+        // the platform having no backend.
         //
         if (QUIC_SUCCEEDED(QuicLibraryAddRefAddressMonitor())) {
             Connection->AddressMonitorRef = TRUE;
@@ -13618,15 +13560,22 @@ QuicConnApplyNewSettings(
             // so the first pass that does read can be several generations later.
             //
             Connection->LastRouteGeneration = QuicLibraryGetRouteGeneration();
-            //
-            // Run once up front. Before the handshake is confirmed this only
-            // marks the connection dirty, so what the application actually
-            // gets is one indication at confirmation naming every address it
-            // could open a path on -- which is the question it is asking by
-            // turning the mode on at all.
-            //
-            QuicConnQueueLocalAddressChange(Connection);
         }
+    }
+
+    //
+    // Run a pass whenever the mode is set, not only when the reference is first
+    // taken. Keying it on the reference meant the pass happened once, at
+    // connection start, in whatever mode was in force then -- so an
+    // application that connected with the default AUTO and later set MANUAL
+    // never got the opening LOCAL_ADDRESSES_CHANGED enumerating its addresses,
+    // and one that switched to AUTO queued no reconciliation. Both waited for
+    // the next OS address change, which may never come.
+    //
+    if (WantsAddressChanges &&
+        (NewSettings->IsSet.AddAddressMode || !Connection->AddressChangePassQueued)) {
+        Connection->AddressChangePassQueued = TRUE;
+        QuicConnQueueLocalAddressChange(Connection);
     }
 
     if (OverWrite) {

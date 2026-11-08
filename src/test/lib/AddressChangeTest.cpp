@@ -157,8 +157,7 @@ RunAddressChangeTest(
     // Stage 5 of #157 folded the local half into AddAddressMode, so this is
     // what the tests drive now. There is no field setter for it.
     //
-    ClientSettings.AddAddressMode = (uint8_t)Mode;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(Mode);
     if (DeprecatedLocalMode >= 0) {
         //
         // Set on purpose, by a caller that wants to show it is ignored.
@@ -389,6 +388,12 @@ struct AutoMigrationServerContext {
     }
 };
 
+static
+void
+RunLocalAddressChangeAuto(
+    _In_ QUIC_ADD_ADDRESS_MODE Mode
+    );
+
 //
 // A second address on the same host that the connection could actually bind
 // and reach the peer from. Only 127/8 qualifies: a connection to loopback
@@ -433,6 +438,33 @@ void
 QuicTestLocalAddressChangeAuto(
     )
 {
+    RunLocalAddressChangeAuto(QUIC_ADD_ADDRESS_AUTO);
+}
+
+//
+// Stage 5 of #157: NAT_TRAVERSAL gets the same local-address handling.
+//
+// The mode is documented as "like AUTO" and its paths come from the older
+// ADD_ADDRESS frames, so it is only the *remote* half it does differently.
+// Consolidating the switch made it easy to get this wrong in the other
+// direction: with reports keyed on MANUAL and migration keyed on AUTO alone, a
+// NAT_TRAVERSAL connection whose active address went away was migrated by
+// nothing and told nothing, and sat on a dead path until the idle timeout.
+// Caught in review rather than by a test, which is why it has one now.
+//
+void
+QuicTestNatTraversalLocalAddressChange(
+    )
+{
+    RunLocalAddressChangeAuto(QUIC_ADD_ADDRESS_NAT_TRAVERSAL);
+}
+
+static
+void
+RunLocalAddressChangeAuto(
+    _In_ QUIC_ADD_ADDRESS_MODE Mode
+    )
+{
     //
     // Declared before the registration, so they outlive it. The server
     // connection is auto-deleted and its SHUTDOWN_COMPLETE arrives while
@@ -450,8 +482,7 @@ QuicTestLocalAddressChangeAuto(
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
 
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(Mode);
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
     TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
 
@@ -548,8 +579,7 @@ QuicTestLocalAddressChangeAutoOffline(
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
 
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
     TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
 
@@ -655,8 +685,7 @@ QuicTestLocalAddressChangeAutoServerMigration(
 
     MsQuicSettings ClientSettings;
     ClientSettings.SetServerMigrationEnabled(true);
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
     TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
 
@@ -788,8 +817,7 @@ QuicTestLocalAddressChangeAutoRoute(
     // up happens moments earlier -- well inside the default window.
     //
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
     ClientSettings.SetAutoMigrationHoldDownMs(0);
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
     TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
@@ -943,8 +971,7 @@ QuicTestLocalAddressChangeAutoRouteUnchanged(
     TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
 
     MsQuicSettings ClientSettings;
-    ClientSettings.AddAddressMode = QUIC_ADD_ADDRESS_AUTO;
-    ClientSettings.IsSet.AddAddressMode = TRUE;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
     ClientSettings.SetAutoMigrationHoldDownMs(0);
     MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, MsQuicCredentialConfig{});
     TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
