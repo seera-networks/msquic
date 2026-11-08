@@ -13594,7 +13594,14 @@ QuicConnApplyNewSettings(
     }
 #endif
 
-    QuicConnUpdateAddressMonitorRef(Connection, NewSettings->IsSet.AddAddressMode);
+    //
+    // !! rather than the bitfield itself: IsSet.AddAddressMode is a uint64_t:1
+    // and the parameter is a BOOLEAN, which MSVC reports as C4244 and gcc does
+    // not report at all. Third time this class has got through in this work,
+    // after the mode enum and the deprecated setter.
+    //
+    QuicConnUpdateAddressMonitorRef(
+        Connection, !!NewSettings->IsSet.AddAddressMode);
 
     if (OverWrite) {
         QuicSettingsDumpNew(NewSettings);
