@@ -16,6 +16,7 @@ set(SOURCES
     SettingsTest.cpp
     SlidingWindowExtremumTest.cpp
     SpinFrame.cpp
+    StatelessPunchTest.cpp
     TicketTest.cpp
     TransportParamTest.cpp
     VarIntTest.cpp

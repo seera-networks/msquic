@@ -198,6 +198,20 @@ typedef struct CXPLAT_RAW_TCP_STATE {
 typedef struct CXPLAT_QUEUE CXPLAT_QUEUE;
 
 //
+// Which datapath carries a route. Here rather than in platform_internal.h,
+// where it used to be, because CXPLAT_ROUTE.DatapathType below has always been
+// the field it names -- so the core could set that field but not say what it
+// meant. The stateless punch has to say it: its route goes to an address
+// nothing has spoken to, which the raw datapath cannot send to without
+// resolving a neighbor first.
+//
+typedef enum CXPLAT_DATAPATH_TYPE {
+    CXPLAT_DATAPATH_TYPE_UNKNOWN = 0,
+    CXPLAT_DATAPATH_TYPE_NORMAL,
+    CXPLAT_DATAPATH_TYPE_RAW, // currently raw == xdp
+} CXPLAT_DATAPATH_TYPE;
+
+//
 // Structure to represent a network route.
 //
 typedef struct CXPLAT_ROUTE {

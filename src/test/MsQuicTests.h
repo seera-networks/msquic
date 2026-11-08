@@ -270,6 +270,10 @@ QuicTestModeNatTraversal(
     );
 
 void
+QuicTestStatelessPunchNegotiation(
+    );
+
+void
 QuicTestServerLostAddressAbandonsPath(
     );
 

@@ -273,6 +273,20 @@ typedef struct QUIC_TEST_PATH_ADDRESSES {
 //
 #define QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS         0x85000009  // QUIC_ADDR
 
+//
+// Whether draft-kozuka-quic-stateless-punch was negotiated on this connection:
+// both endpoints advertised stateless_punch, and for a client it also offered
+// alternative_address. Get only, debug only.
+//
+// Nothing else makes the answer visible. The handshake carries no event for
+// it, and the server's half of the extension is deliberately unobservable --
+// one unacknowledged datagram and no state kept -- so a test cannot infer
+// negotiation from behaviour either. Without this, the condition that decides
+// whether the parameter is sent at all could only be checked by reading the
+// code.
+//
+#define QUIC_PARAM_CONN_TEST_STATELESS_PUNCH_NEGOTIATED 0x8500000A  // BOOLEAN
+
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 #define QUIC_PARAM_STREAM_RELIABLE_OFFSET_RECV          0x88000000  // uint64_t
 #endif

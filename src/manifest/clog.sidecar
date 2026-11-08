@@ -11344,6 +11344,150 @@
       ],
       "macroName": "QuicTraceLogInfo"
     },
+    "PunchAddressFamilyMismatch": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Punch request address family does not match the bound address",
+      "UniqueId": "PunchAddressFamilyMismatch",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchAlreadySentForPacket": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Ignoring a second punch request in one packet",
+      "UniqueId": "PunchAlreadySentForPacket",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchBeforeHandshakeConfirmed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Ignoring a punch request before the handshake is confirmed",
+      "UniqueId": "PunchBeforeHandshakeConfirmed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchDestinationRefused": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Refusing to punch towards an unspecified address",
+      "UniqueId": "PunchDestinationRefused",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchDestinationRefusedLocal": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Refusing to punch towards a loopback or link-local address",
+      "UniqueId": "PunchDestinationRefusedLocal",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchDestinationRefusedPort": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Refusing to punch towards a sensitive port (%hu)",
+      "UniqueId": "PunchDestinationRefusedPort",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchDestinationRefusedScope": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Refusing to punch towards a multicast or broadcast address",
+      "UniqueId": "PunchDestinationRefusedScope",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchPacketSent": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Sent a punch packet of %hu bytes",
+      "UniqueId": "PunchPacketSent",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "PunchRateLimited": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Punch rate limit reached, dropping the request",
+      "UniqueId": "PunchRateLimited",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchRequestPacketTooSmall": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Punch request packet too small to answer within (%hu)",
+      "UniqueId": "PunchRequestPacketTooSmall",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchRequestUnknownAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Punch request named an address this server did not advertise",
+      "UniqueId": "PunchRequestUnknownAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "QueueDatagrams": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Queuing %u UDP datagrams",
@@ -19149,6 +19293,61 @@
         "UniquenessHash": "6b3701bb-e123-0217-1320-5d55303df4c4",
         "TraceID": "ProviderDetachClient",
         "EncodingString": "[ nmr][%p] Client detached"
+      },
+      {
+        "UniquenessHash": "508ef51e-7ce3-8e62-0660-127bdeb32d90",
+        "TraceID": "PunchAddressFamilyMismatch",
+        "EncodingString": "[conn][%p] Punch request address family does not match the bound address"
+      },
+      {
+        "UniquenessHash": "05d7067c-e15f-611e-de7a-2bcb664a7747",
+        "TraceID": "PunchAlreadySentForPacket",
+        "EncodingString": "[conn][%p] Ignoring a second punch request in one packet"
+      },
+      {
+        "UniquenessHash": "7752ab7d-ac45-024e-c096-3a6663acc4d9",
+        "TraceID": "PunchBeforeHandshakeConfirmed",
+        "EncodingString": "[conn][%p] Ignoring a punch request before the handshake is confirmed"
+      },
+      {
+        "UniquenessHash": "410e9620-6a49-251a-5213-f8aacbaa55cd",
+        "TraceID": "PunchDestinationRefused",
+        "EncodingString": "[conn][%p] Refusing to punch towards an unspecified address"
+      },
+      {
+        "UniquenessHash": "fc381412-1f3b-3f8e-3af7-4e4a5789309f",
+        "TraceID": "PunchDestinationRefusedLocal",
+        "EncodingString": "[conn][%p] Refusing to punch towards a loopback or link-local address"
+      },
+      {
+        "UniquenessHash": "4524c90b-feb5-fe3e-5e8e-5c52e422082b",
+        "TraceID": "PunchDestinationRefusedPort",
+        "EncodingString": "[conn][%p] Refusing to punch towards a sensitive port (%hu)"
+      },
+      {
+        "UniquenessHash": "fada28fd-bdb4-c4e7-4206-7ea5d8d0bd62",
+        "TraceID": "PunchDestinationRefusedScope",
+        "EncodingString": "[conn][%p] Refusing to punch towards a multicast or broadcast address"
+      },
+      {
+        "UniquenessHash": "23f5c717-fd6e-971f-58ed-049899a8fe23",
+        "TraceID": "PunchPacketSent",
+        "EncodingString": "[conn][%p] Sent a punch packet of %hu bytes"
+      },
+      {
+        "UniquenessHash": "41cf0d3c-0af0-43bc-1c8c-a557ce488381",
+        "TraceID": "PunchRateLimited",
+        "EncodingString": "[conn][%p] Punch rate limit reached, dropping the request"
+      },
+      {
+        "UniquenessHash": "df47f75f-4079-4b2b-83a2-2e60810773e2",
+        "TraceID": "PunchRequestPacketTooSmall",
+        "EncodingString": "[conn][%p] Punch request packet too small to answer within (%hu)"
+      },
+      {
+        "UniquenessHash": "8930afbc-80f9-850d-27b8-65fb41330383",
+        "TraceID": "PunchRequestUnknownAddress",
+        "EncodingString": "[conn][%p] Punch request named an address this server did not advertise"
       },
       {
         "UniquenessHash": "18ef147d-5376-d7f2-f624-3b27af96dd05",

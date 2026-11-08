@@ -4460,6 +4460,122 @@ QuicTestModeNatTraversal(
 
 #if DEBUG
 //
+// Whether a connection ended up with draft-kozuka-quic-stateless-punch in
+// effect, which is a debug-only parameter for the reason msquicp.h records:
+// nothing else makes the answer visible.
+//
+static
+bool
+StatelessPunchNegotiated(
+    _In_ MsQuicConnection* Connection,
+    _Out_ BOOLEAN* Negotiated
+    )
+{
+    uint32_t Length = sizeof(*Negotiated);
+    const QUIC_STATUS Status =
+        Connection->GetParam(
+            QUIC_PARAM_CONN_TEST_STATELESS_PUNCH_NEGOTIATED, &Length, Negotiated);
+    if (QUIC_FAILED(Status)) {
+        TEST_FAILURE("GetParam(STATELESS_PUNCH_NEGOTIATED) failed, 0x%x", Status);
+        return false;
+    }
+    return true;
+}
+#endif
+
+//
+// Stage 2 of #169: the transport parameter is now sent, because the server can
+// answer a request.
+//
+// Negotiation is the only part of the server's half that anything outside the
+// library can see. The answer itself is one unacknowledged datagram sent to an
+// address this process is not listening on, carrying opaque bytes and leaving
+// no state behind -- there is nothing for a test to receive and nothing to read
+// back afterwards, which is the property the draft is named for. So what is
+// asserted here is the condition that decides whether the extension is in
+// effect at all, from both ends, in the mode that uses it and in the mode that
+// does not.
+//
+void
+QuicTestStatelessPunchNegotiation(
+    )
+{
+#if !DEBUG
+#else
+    //
+    // AUTO. The client offers alternative_address, so it offers
+    // stateless_punch; the server offers it unconditionally.
+    //
+    {
+        TableMigrationTest Test;
+        MsQuicConnection* Conn = nullptr;
+        //
+        // The return value is deliberately not the gate here. Start also
+        // returns false when the host has no address the server could
+        // advertise, which every other test in this file needs and this one
+        // does not -- it asks only what the handshake agreed. So the handshake
+        // is checked directly, and its failure is a failure rather than a
+        // skip: a connection that cannot be established in AUTO over loopback
+        // is a defect, and letting Start's false stand for both would have
+        // this test pass by not running.
+        //
+        (void)Test.Start(Conn, 0, QUIC_ADD_ADDRESS_AUTO);
+        if (Test.Client == nullptr || Test.ServerContext.Connection == nullptr) {
+            TEST_FAILURE("Handshake did not complete in AUTO mode");
+            return;
+        }
+
+        BOOLEAN ClientNegotiated = FALSE;
+        if (!StatelessPunchNegotiated(Test.Client, &ClientNegotiated)) {
+            return;
+        }
+        TEST_TRUE(ClientNegotiated);
+
+        //
+        // Both ends, because the two read it from different places: the server
+        // from the parameter the client sent, the client from the condition
+        // that decided to send its own. A change that broke one would leave
+        // the other saying yes.
+        //
+        BOOLEAN ServerNegotiated = FALSE;
+        if (!StatelessPunchNegotiated(Test.ServerContext.Connection, &ServerNegotiated)) {
+            return;
+        }
+        TEST_TRUE(ServerNegotiated);
+    }
+
+    //
+    // NAT_TRAVERSAL. This client stays on the older ADD_ADDRESS and
+    // PUNCH_ME_NOW frames and offers no alternative_address, which the draft
+    // makes a prerequisite -- so neither end has the extension, even though
+    // the server advertised it and the client received that.
+    //
+    {
+        TableMigrationTest Test;
+        MsQuicConnection* Conn = nullptr;
+        (void)Test.Start(Conn, 0, QUIC_ADD_ADDRESS_NAT_TRAVERSAL);
+        if (Test.Client == nullptr || Test.ServerContext.Connection == nullptr) {
+            TEST_FAILURE("Handshake did not complete in NAT_TRAVERSAL mode");
+            return;
+        }
+
+        BOOLEAN ClientNegotiated = TRUE;
+        if (!StatelessPunchNegotiated(Test.Client, &ClientNegotiated)) {
+            return;
+        }
+        TEST_FALSE(ClientNegotiated);
+
+        BOOLEAN ServerNegotiated = TRUE;
+        if (!StatelessPunchNegotiated(Test.ServerContext.Connection, &ServerNegotiated)) {
+            return;
+        }
+        TEST_FALSE(ServerNegotiated);
+    }
+#endif
+}
+
+#if DEBUG
+//
 // A second address on the same host that a connection could be carried by.
 // Only 127/8 qualifies -- a loopback connection cannot be carried by a real
 // interface address, and IPv6 has only ::1 -- so this answers only for IPv4

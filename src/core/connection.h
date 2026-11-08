@@ -698,6 +698,15 @@ typedef struct QUIC_CONNECTION {
     BOOLEAN AddressChangePassQueued;
 
     //
+    // When the current punch rate-limiting window opened, and how many punch
+    // packets have gone out inside it. Zero until the first request arrives.
+    // QUIC_PUNCH_RATE_LIMIT_PER_WINDOW and QUIC_PUNCH_RATE_WINDOW_US are the
+    // bound and the width, and say why they are those.
+    //
+    uint64_t PunchWindowStartUs;
+    uint16_t PunchesInWindow;
+
+    //
     // The sequence number to use for sending an punch me now.
     //
     QUIC_VAR_INT PunchMeNowSequenceNumber;
@@ -2079,6 +2088,37 @@ QuicConnProcessRemoveAddress(
     _In_ QUIC_CONNECTION* Connection,
     _In_ QUIC_REMOVE_ADDRESS_EX* Frame
     );
+
+//
+// Whether a punch packet may be sent to this address at all, and whether this
+// connection's punch allowance has anything left in it. Exposed because they
+// are the policy half of draft-kozuka-quic-stateless-punch and are worth
+// testing without a peer: the send they guard produces nothing a test can
+// see, since the whole point is that no state is kept.
+//
+// Linkage spelled out because the rest of this header does not, and the unit
+// test is C++ -- the same reason candidate.h wraps itself whole.
+//
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchDestinationAllowed(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Address
+    );
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchRateAllows(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+#if defined(__cplusplus)
+}
+#endif
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void

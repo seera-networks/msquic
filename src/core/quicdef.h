@@ -645,6 +645,27 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_DEFAULT_AUTO_MIGRATION_HOLD_DOWN_MS     1000
 
 //
+// How many punch packets one connection may provoke per window, and how long
+// the window is. draft-kozuka-quic-stateless-punch section 5.1 requires a
+// per-connection rate limit and leaves the number to the implementation;
+// section 11 gives the reason -- without one an attacker exhausts the NAT
+// mapping table on the server's side by asking for punches it never follows
+// up.
+//
+// Ten per second is meant to be generous for the legitimate case and useless
+// for the abusive one. A client has at most QUIC_MAX_ALTERNATIVE_ADDRESSES
+// server candidates to pair against, and the draft has it wait roughly a round
+// trip between a request and the validation that follows, so a real client's
+// rate is a handful per RTT. An attacker wants thousands.
+//
+// A window rather than a token bucket: the bound that matters is "not many per
+// second", and a window that closes by time cannot accumulate an allowance
+// into a burst, which is what the draft asks for in so many words.
+//
+#define QUIC_PUNCH_RATE_LIMIT_PER_WINDOW             10
+#define QUIC_PUNCH_RATE_WINDOW_US                    MS_TO_US(1000)
+
+//
 // The default settings for ignore unreachable addresses.
 //
 #define QUIC_DEFAULT_IGNORE_UNREACHABLE              FALSE
