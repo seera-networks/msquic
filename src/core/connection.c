@@ -2415,7 +2415,21 @@ QuicConnLogPathIDStatistics(
                 QuicPathIDLogStatistics(Connection->Paths[i].PathID);
             }
         }
-    } else {
+    } else if (Connection->Paths[0].PathID != NULL) {
+        //
+        // The same guard the multipath branch above has always had, and the
+        // same one QuicPathRemove applies to this exact field before
+        // repointing it -- so a NULL here was already understood to be
+        // reachable, just not on this path through the code.
+        //
+        // It is reached when route resolution fails on the last path:
+        // QuicConnProcessRouteCompletion removes the path, QuicPathRemove
+        // finds nowhere left to go and closes the connection, and the close
+        // logs statistics for a path ID that is no longer there.
+        // QuicPathIDLogStatistics then reads PathID->Path and
+        // PathID->CongestionControl, which on an ASAN build aborts with an
+        // access violation at a small offset off the zero page.
+        //
         QuicPathIDLogStatistics(Connection->Paths[0].PathID);
     }
 }

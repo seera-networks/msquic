@@ -10,6 +10,7 @@ set(SOURCES
     FrameTest.cpp
     PacketNumberTest.cpp
     PartitionTest.cpp
+    PathIdStatsTest.cpp
     RangeTest.cpp
     RecvBufferTest.cpp
     SettingsTest.cpp
