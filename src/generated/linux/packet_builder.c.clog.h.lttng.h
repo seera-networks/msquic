@@ -44,23 +44,23 @@ TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, SkipPacketNumber,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for GetPacketTypeFailure
-// [conn][%p] Failed to get packet type for control frames, 0x%x
+// Decoder Ring for GetPacketTypeFailure64
+// [conn][%p] Failed to get packet type for control frames, 0x%llx
 // QuicTraceLogConnWarning(
-        GetPacketTypeFailure,
+        GetPacketTypeFailure64,
         Builder->Connection,
-        "Failed to get packet type for control frames, 0x%x",
+        "Failed to get packet type for control frames, 0x%llx",
         SendFlags);
 // arg1 = arg1 = Builder->Connection = arg1
 // arg3 = arg3 = SendFlags = arg3
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, GetPacketTypeFailure,
+TRACEPOINT_EVENT(CLOG_PACKET_BUILDER_C, GetPacketTypeFailure64,
     TP_ARGS(
         const void *, arg1,
-        unsigned int, arg3), 
+        unsigned long long, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 

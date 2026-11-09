@@ -7205,6 +7205,22 @@
       ],
       "macroName": "QuicTraceLogConnWarning"
     },
+    "GetPacketTypeFailure64": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Failed to get packet type for control frames, 0x%llx",
+      "UniqueId": "GetPacketTypeFailure64",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llx",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "GetTxOffloadConfig": {
       "ModuleProperites": {},
       "TraceString": "[ lib] %u, %u",
@@ -12043,6 +12059,22 @@
         },
         {
           "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "RemoveSendFlagsMsg64": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Removing flags %llx",
+      "UniqueId": "RemoveSendFlagsMsg64",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llx",
           "MacroVariableName": "arg3"
         }
       ],
@@ -18078,6 +18110,11 @@
         "EncodingString": "[conn][%p] Failed to get packet type for control frames, 0x%x"
       },
       {
+        "UniquenessHash": "a7fa2830-ef70-a4ad-9f36-a4d19970b084",
+        "TraceID": "GetPacketTypeFailure64",
+        "EncodingString": "[conn][%p] Failed to get packet type for control frames, 0x%llx"
+      },
+      {
         "UniquenessHash": "72895611-1b21-d389-c78b-ab44b14b458f",
         "TraceID": "GetTxOffloadConfig",
         "EncodingString": "[ lib] %u, %u"
@@ -19601,6 +19638,11 @@
         "UniquenessHash": "b4aa5fad-d1de-466c-0214-1bbda4b9eb95",
         "TraceID": "RemoveSendFlagsMsg",
         "EncodingString": "[conn][%p] Removing flags %x"
+      },
+      {
+        "UniquenessHash": "9ed3b4ea-a45c-7455-62c1-3783ebee0b75",
+        "TraceID": "RemoveSendFlagsMsg64",
+        "EncodingString": "[conn][%p] Removing flags %llx"
       },
       {
         "UniquenessHash": "1f2558ac-412e-da8c-33d7-7c45995dbcf9",

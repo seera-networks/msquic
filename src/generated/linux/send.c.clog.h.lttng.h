@@ -156,23 +156,23 @@ TRACEPOINT_EVENT(CLOG_SEND_C, ScheduleSendFlags64,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for RemoveSendFlagsMsg
-// [conn][%p] Removing flags %x
+// Decoder Ring for RemoveSendFlagsMsg64
+// [conn][%p] Removing flags %llx
 // QuicTraceLogConnVerbose(
-            RemoveSendFlagsMsg,
+            RemoveSendFlagsMsg64,
             QuicSendGetConnection(Send),
-            "Removing flags %x",
+            "Removing flags %llx",
             (SendFlags & Send->SendFlags));
 // arg1 = arg1 = QuicSendGetConnection(Send) = arg1
 // arg3 = arg3 = (SendFlags & Send->SendFlags) = arg3
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SEND_C, RemoveSendFlagsMsg,
+TRACEPOINT_EVENT(CLOG_SEND_C, RemoveSendFlagsMsg64,
     TP_ARGS(
         const void *, arg1,
-        unsigned int, arg3), 
+        unsigned long long, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 

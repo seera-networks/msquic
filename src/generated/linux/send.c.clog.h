@@ -166,19 +166,19 @@ tracepoint(CLOG_SEND_C, ScheduleSendFlags64 , arg1, arg3, arg4, arg5);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for RemoveSendFlagsMsg
-// [conn][%p] Removing flags %x
+// Decoder Ring for RemoveSendFlagsMsg64
+// [conn][%p] Removing flags %llx
 // QuicTraceLogConnVerbose(
-            RemoveSendFlagsMsg,
+            RemoveSendFlagsMsg64,
             QuicSendGetConnection(Send),
-            "Removing flags %x",
+            "Removing flags %llx",
             (SendFlags & Send->SendFlags));
 // arg1 = arg1 = QuicSendGetConnection(Send) = arg1
 // arg3 = arg3 = (SendFlags & Send->SendFlags) = arg3
 ----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_RemoveSendFlagsMsg
-#define _clog_4_ARGS_TRACE_RemoveSendFlagsMsg(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_SEND_C, RemoveSendFlagsMsg , arg1, arg3);\
+#ifndef _clog_4_ARGS_TRACE_RemoveSendFlagsMsg64
+#define _clog_4_ARGS_TRACE_RemoveSendFlagsMsg64(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_SEND_C, RemoveSendFlagsMsg64 , arg1, arg3);\
 
 #endif
 

@@ -618,9 +618,9 @@ QuicPacketBuilderGetPacketTypeAndKeyForControlFrames(
     }
 
     QuicTraceLogConnWarning(
-        GetPacketTypeFailure,
+        GetPacketTypeFailure64,
         Builder->Connection,
-        "Failed to get packet type for control frames, 0x%x",
+        "Failed to get packet type for control frames, 0x%llx",
         SendFlags);
     CXPLAT_DBG_ASSERT(CxPlatIsRandomMemoryFailureEnabled()); // This shouldn't have been called then!
 

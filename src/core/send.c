@@ -463,10 +463,13 @@ QuicSendClearSendFlag(
     )
 {
     if (Send->SendFlags & SendFlags) {
+        //
+        // A new id for the widened value, as with ScheduleSendFlags64 above.
+        //
         QuicTraceLogConnVerbose(
-            RemoveSendFlagsMsg,
+            RemoveSendFlagsMsg64,
             QuicSendGetConnection(Send),
-            "Removing flags %x",
+            "Removing flags %llx",
             (SendFlags & Send->SendFlags));
         Send->SendFlags &= ~SendFlags;
     }
