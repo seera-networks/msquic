@@ -270,6 +270,14 @@ QuicTestModeNatTraversal(
     );
 
 void
+QuicTestServerLostAddressAbandonsPath(
+    );
+
+void
+QuicTestServerLostAddressWithoutMultipath(
+    );
+
+void
 QuicTestDeprecatedLocalAddressChangeMode(
     _In_ const FamilyArgs& Params
     );

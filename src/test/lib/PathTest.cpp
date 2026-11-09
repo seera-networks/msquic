@@ -4458,4 +4458,277 @@ QuicTestModeNatTraversal(
 #endif
 }
 
+#if DEBUG
+//
+// A second address on the same host that a connection could be carried by.
+// Only 127/8 qualifies -- a loopback connection cannot be carried by a real
+// interface address, and IPv6 has only ::1 -- so this answers only for IPv4
+// loopback and the caller skips otherwise. The same reasoning, and the same
+// limitation, as AlternateLoopbackAddress in AddressChangeTest.cpp.
+//
+static
+bool
+AlternateLoopbackAddressForPathTest(
+    _In_ const QUIC_ADDR* Address,
+    _Out_ QUIC_ADDR* Alternate
+    )
+{
+    //
+    // Written before the family test, so the _Out_ annotation holds on every
+    // path. MSVC /analyze flags returning an uninitialized out parameter as
+    // C6101, and the existing AlternateLoopbackAddress in AddressChangeTest.cpp
+    // copies the input first for the same reason.
+    //
+    *Alternate = *Address;
+    if (QuicAddrGetFamily(Address) != QUIC_ADDRESS_FAMILY_INET) {
+        return false;
+    }
+
+    //
+    // And the address must itself be in 127/8, which the comment above says
+    // and this did not check. Family was never the question: the XDP runs put
+    // the server on the DuoNIC address, where an IPv4 address that is not
+    // loopback got 127.0.0.2 handed back as a second address for the same
+    // server -- and a client on the DuoNIC interface cannot route there, so
+    // ADD_PATH failed with WSAEADDRNOTAVAIL. The guard AlternateLoopbackAddress
+    // in AddressChangeTest.cpp has always had, which this was written from.
+    //
+    uint8_t Bytes[4];
+    CxPlatCopyMemory(Bytes, &Address->Ipv4.sin_addr, sizeof(Bytes));
+    if (Bytes[0] != 127) {
+        return false;
+    }
+
+    CxPlatZeroMemory(Alternate, sizeof(*Alternate));
+    if (!QuicAddrFromString("127.0.0.2", 0, Alternate)) {
+        return false;
+    }
+    if (QuicAddrCompareIp(Address, Alternate)) {
+        return QuicAddrFromString("127.0.0.3", 0, Alternate);
+    }
+    return true;
+}
+
+//
+// Stage 6 of #157: the server's whole use of local address detection.
+//
+// Builds the one shape the server acts on -- multipath, and a server path on a
+// local address other than the one the connection arrived on -- and takes that
+// address away.
+//
+// Getting there needs a little care. The client cannot learn the server's
+// second address from ALTERNATIVE_ADDRESS, because the frame writer skips
+// loopback observed addresses and loopback is the only place a second bindable
+// address exists on a test host. So the client opens the path by hand, to the
+// server's second bound address, and the server's side of it is created by
+// QuicConnGetPathForPacket when the probe arrives. The client is in MANUAL
+// throughout, so nothing on its side reacts to the injection and what the test
+// observes is the server's doing alone.
+//
+static
+void
+RunServerLostAddressTest(
+    _In_ bool MultipathEnabled
+    )
+{
+    PathTestContext ServerContext;
+    PathTestClientContext ClientContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings ServerSettings;
+    ServerSettings.SetMultipathEnabled(MultipathEnabled ? TRUE : FALSE);
+    MsQuicConfiguration ServerConfiguration(
+        Registration, "MsQuicTest", ServerSettings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    //
+    // MANUAL on the client, so its own address handling does nothing and the
+    // server is the only thing that can react.
+    //
+    MsQuicSettings ClientSettings;
+    ClientSettings.SetMultipathEnabled(MultipathEnabled ? TRUE : FALSE);
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_MANUAL);
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, PathTestContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(
+        Registration, CleanUpManual, PathTestClientContext::ClientCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    Connection.SetShareUdpBinding();
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QUIC_ADDRESS_FAMILY_INET,
+            QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(ClientContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
+    CxPlatSleep(100);
+
+    //
+    // A second loopback address for the server to be reachable at. Only 127/8
+    // offers one, so the test skips where it cannot have it.
+    //
+    QuicAddr ClientLocalAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ClientLocalAddr));
+    QUIC_ADDR SecondServerIp;
+    if (!AlternateLoopbackAddressForPathTest(&ServerLocalAddr.SockAddr, &SecondServerIp)) {
+        return;
+    }
+    //
+    // An ephemeral port, not the listener's. The listener already holds that
+    // port and binding it again on a second loopback address is refused.
+    // Which port does not matter: the client names the endpoint explicitly
+    // below rather than discovering it.
+    //
+    QuicAddr SecondServerAddr;
+    QUIC_STATUS BindStatus = QUIC_STATUS_SUCCESS;
+    uint32_t BindTry = 0;
+    do {
+        SecondServerAddr.SockAddr = SecondServerIp;
+        SecondServerAddr.SetEphemeralPort();
+        BindStatus =
+            ServerContext.Connection->SetParam(
+                QUIC_PARAM_CONN_ADD_BOUND_ADDRESS,
+                sizeof(SecondServerAddr.SockAddr),
+                &SecondServerAddr.SockAddr);
+    } while (QUIC_FAILED(BindStatus) && ++BindTry <= 5);
+    TEST_QUIC_SUCCEEDED(BindStatus);
+
+    //
+    // The client opens a path to it. The server's side of that path is created
+    // when the probe lands, with the second address as its local.
+    //
+    QuicAddr ClientSecond = ClientLocalAddr;
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    uint32_t Try = 0;
+    do {
+        ClientSecond.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam =
+            { &ClientSecond.SockAddr, &SecondServerAddr.SockAddr };
+        Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    //
+    // Wait for the server to have two paths, which is what says its side of
+    // the new path exists.
+    //
+    bool ServerHasTwo = false;
+    for (uint32_t i = 0; i < 100 && !ServerHasTwo; ++i) {
+        CxPlatSleep(50);
+        ServerHasTwo = AltServerAddressPathCount(*ServerContext.Connection) == 2;
+    }
+    if (!MultipathEnabled && !ServerHasTwo) {
+        //
+        // Without multipath the peer may not issue a connection ID for the
+        // probe, so there is nothing to take away and nothing to test. Skipped.
+        //
+        return;
+    }
+    //
+    // With multipath it has to be there. Skipping here would let the one
+    // load-bearing positive test for this stage report success under CI timing
+    // pressure without ever exercising the abandon.
+    //
+    TEST_TRUE(ServerHasTwo);
+
+    ServerContext.PathRemovedEvent.Reset();
+    ClientContext.PathRemovedEvent.Reset();
+
+    //
+    // Now the server's second address goes away. The injected set keeps the
+    // address the connection arrived on and the client's, so the only thing
+    // lost is the server's second path.
+    //
+    //
+    // The addresses to keep are the two ends of the original path, taken from
+    // the *connection* rather than from the listener. ServerLocalAddr is the
+    // wildcard 0.0.0.0 -- the listener binds wildcard and GetLocalAddr hands
+    // back 0.0.0.0:<port>, which is why only its port is used above -- so
+    // keeping that would not keep the address the server's Paths[0] is on, and
+    // the test would mis-classify Paths[0] as lost the moment the two ends
+    // were not on the identical loopback address.
+    //
+    QuicAddr OriginalServerAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(OriginalServerAddr));
+    QUIC_ADDR Keep[2];
+    Keep[0] = OriginalServerAddr.SockAddr;
+    QuicAddrSetPort(&Keep[0], 0);
+    Keep[1] = ClientLocalAddr.SockAddr;
+    QuicAddrSetPort(&Keep[1], 0);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->SetParam(
+            nullptr,
+            QUIC_PARAM_GLOBAL_TEST_INJECT_ADDRESS_CHANGE,
+            sizeof(Keep),
+            Keep));
+
+    if (MultipathEnabled) {
+        //
+        // Abandoned, and the peer is told -- which is the requirement from
+        // draft-ietf-quic-multipath section 3.4 and the whole reason the
+        // server does this at all.
+        //
+        TEST_TRUE(AltServerAddressWaitForPathCount(*ServerContext.Connection, 1));
+        TEST_TRUE(ClientContext.PathRemovedEvent.WaitTimeout(TestWaitTimeout));
+    } else {
+        //
+        // Without multipath the server does nothing. A second path there is a
+        // validation candidate rather than somewhere traffic goes, and the one
+        // path that matters is the one the client chose.
+        //
+        CxPlatSleep(500);
+        TEST_EQUAL(2u, AltServerAddressPathCount(*ServerContext.Connection));
+    }
+
+    //
+    // Either way the connection is alive: this is a tidy-up, not a teardown.
+    //
+    TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(100));
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
+
+    Connection.Shutdown(QUIC_TEST_NO_ERROR);
+    TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+}
+#endif // DEBUG
+
+void
+QuicTestServerLostAddressAbandonsPath(
+    )
+{
+#if !DEBUG
+    //
+    // Needs the debug-only address injection.
+    //
+#else
+    RunServerLostAddressTest(true);
+#endif
+}
+
+void
+QuicTestServerLostAddressWithoutMultipath(
+    )
+{
+#if !DEBUG
+#else
+    RunServerLostAddressTest(false);
+#endif
+}
+
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES

@@ -757,6 +757,24 @@ tracepoint(CLOG_CONNECTION_C, AutoFollowRouteAddedPath , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ServerAbandonedLostPath
+// [conn][%p] Server abandoned a path whose local address was lost
+// QuicTraceLogConnInfo(
+            ServerAbandonedLostPath,
+            Connection,
+            "Server abandoned a path whose local address was lost");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ServerAbandonedLostPath
+#define _clog_3_ARGS_TRACE_ServerAbandonedLostPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ServerAbandonedLostPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for AutoMigrateToValidatedPath
 // [conn][%p] AUTO moved to an already validated path
 // QuicTraceLogConnInfo(

@@ -1337,6 +1337,30 @@ TEST(Basic, ModeNatTraversal) {
 #endif
 }
 
+TEST(Basic, ServerLostAddressAbandonsPath) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestServerLostAddressAbandonsPath needs the debug-only address injection.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestServerLostAddressAbandonsPath is user-mode only.";
+    }
+    TestLogger Logger("QuicTestServerLostAddressAbandonsPath");
+    QuicTestServerLostAddressAbandonsPath();
+#endif
+}
+
+TEST(Basic, ServerLostAddressWithoutMultipath) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestServerLostAddressWithoutMultipath needs the debug-only address injection.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestServerLostAddressWithoutMultipath is user-mode only.";
+    }
+    TestLogger Logger("QuicTestServerLostAddressWithoutMultipath");
+    QuicTestServerLostAddressWithoutMultipath();
+#endif
+}
+
 
 
 //
