@@ -287,6 +287,31 @@ typedef struct QUIC_TEST_PATH_ADDRESSES {
 //
 #define QUIC_PARAM_CONN_TEST_STATELESS_PUNCH_NEGOTIATED 0x8500000A  // BOOLEAN
 
+//
+// Counters for the draft-kozuka-quic-stateless-punch exchange on this
+// connection. Get only, debug only.
+//
+// The exchange leaves nothing else to look at. The punch packet is
+// unacknowledged, carries opaque bytes and leaves no state behind; the request
+// is one frame among many in an ordinary packet. Without these a test can
+// drive the whole sequence and observe nothing at all.
+//
+// RequestsIgnoredPerPacket is the one worth having: a request that was not the
+// first in its packet is read and dropped, so a client that batches requests
+// is visible here and nowhere else. Zero is the assertion that the client
+// honoured one-request-per-packet.
+//
+typedef struct QUIC_TEST_PUNCH_COUNTERS {
+    uint32_t RequestsSent;              // This endpoint asked for a punch.
+    uint32_t RequestsReceived;          // This endpoint was asked, including
+                                        // requests it then ignored.
+    uint32_t PunchesSent;               // This endpoint answered.
+    uint32_t RequestsIgnoredPerPacket;  // Dropped for being a second request
+                                        // in one packet.
+} QUIC_TEST_PUNCH_COUNTERS;
+
+#define QUIC_PARAM_CONN_TEST_PUNCH_COUNTERS             0x8500000B  // QUIC_TEST_PUNCH_COUNTERS
+
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 #define QUIC_PARAM_STREAM_RELIABLE_OFFSET_RECV          0x88000000  // uint64_t
 #endif

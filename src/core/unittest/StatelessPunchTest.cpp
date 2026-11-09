@@ -219,3 +219,203 @@ TEST_F(StatelessPunchTest, RateLimitStartsFresh)
     ASSERT_NE(0u, Connection.PunchWindowStartUs);
     ASSERT_EQ(1u, Connection.PunchesInWindow);
 }
+
+//
+// Which candidate pairs a client will ask the server to punch for.
+//
+// Three things have to be true at once, and the value of testing it here is
+// that each can be false on its own: the extension negotiated, the pair's
+// remote among the addresses the server advertised, and the pair's local
+// carrying a candidate whose observed address is somewhere a server could
+// actually send. The last one is the application's to supply and the only
+// place this client learns how it is seen from outside.
+//
+struct PunchPairTest : public ::testing::Test {
+
+    QUIC_CONNECTION Connection {};
+    QUIC_CANDIDATE_ADDRESS_LIST_ENTRY Candidates[4] {};
+    uint8_t CandidateCount {0};
+
+    void SetUp() override
+    {
+        CxPlatListInitializeHead(&Connection.CandidateAddresses);
+        Connection.State.StatelessPunchNegotiated = TRUE;
+    }
+
+    static QUIC_ADDR Addr(const char* Address, uint16_t Port = 0)
+    {
+        QUIC_ADDR Result;
+        CxPlatZeroMemory(&Result, sizeof(Result));
+        EXPECT_TRUE(QuicAddrFromString(Address, Port, &Result));
+        return Result;
+    }
+
+    //
+    // An address the server told us about, which is what the request names and
+    // what the server looks the request up by.
+    //
+    void Advertise(const char* Address, uint16_t Port)
+    {
+        Connection.AltAddrs[Connection.AltAddrCount].Address = Addr(Address, Port);
+        Connection.AltAddrCount++;
+    }
+
+    //
+    // A local address the application registered, with the address the server
+    // would see this client at.
+    //
+    void AddCandidate(const char* Host, const char* Observed, uint16_t ObservedPort)
+    {
+        QUIC_CANDIDATE_ADDRESS_LIST_ENTRY* Entry = &Candidates[CandidateCount++];
+        Entry->Address = Addr(Host);
+        Entry->ObservedAddress = Addr(Observed, ObservedPort);
+        CxPlatListInsertTail(&Connection.CandidateAddresses, &Entry->Link);
+    }
+
+    bool Punchable(const char* Local, const char* Remote, uint16_t RemotePort,
+                   QUIC_ADDR* Named = nullptr)
+    {
+        const QUIC_ADDR LocalAddr = Addr(Local);
+        const QUIC_ADDR RemoteAddr = Addr(Remote, RemotePort);
+        QUIC_ADDR Out;
+        const BOOLEAN Result =
+            QuicConnPunchableClientAddress(&Connection, &LocalAddr, &RemoteAddr, &Out);
+        if (Named != nullptr) {
+            *Named = Out;
+        }
+        return Result != FALSE;
+    }
+};
+
+//
+// The ordinary case, and the one the whole stage exists for: the request names
+// the client's observed address, not its local one. The server cannot reach
+// the local address -- that is the entire problem -- so naming it would make
+// the punch useless.
+//
+TEST_F(PunchPairTest, NamesTheObservedAddress)
+{
+    Advertise("203.0.113.9", 443);
+    AddCandidate("192.168.1.50", "198.51.100.7", 51234);
+
+    QUIC_ADDR Named;
+    ASSERT_TRUE(Punchable("192.168.1.50", "203.0.113.9", 443, &Named));
+
+    const QUIC_ADDR Expected = Addr("198.51.100.7", 51234);
+    ASSERT_TRUE(QuicAddrCompare(&Expected, &Named));
+}
+
+//
+// Not negotiated means the peer never said it would punch, so the request
+// would be a frame it is entitled to treat as a protocol violation.
+//
+TEST_F(PunchPairTest, RefusesWhenNotNegotiated)
+{
+    Advertise("203.0.113.9", 443);
+    AddCandidate("192.168.1.50", "198.51.100.7", 51234);
+    Connection.State.StatelessPunchNegotiated = FALSE;
+
+    ASSERT_FALSE(Punchable("192.168.1.50", "203.0.113.9", 443));
+}
+
+//
+// A remote the server never advertised. The server looks a request up among
+// the addresses it told us about, so this one would be read and dropped --
+// the request is not worth the packet.
+//
+TEST_F(PunchPairTest, RefusesAnUnadvertisedRemote)
+{
+    Advertise("203.0.113.9", 443);
+    AddCandidate("192.168.1.50", "198.51.100.7", 51234);
+
+    ASSERT_FALSE(Punchable("192.168.1.50", "203.0.113.10", 443));
+
+    //
+    // The port is part of it: the draft advertises endpoints, and the server
+    // matches on the whole endpoint.
+    //
+    ASSERT_FALSE(Punchable("192.168.1.50", "203.0.113.9", 444));
+}
+
+//
+// No candidate for this local address means the application never said how
+// this client is seen from it, and there is nothing to put in the frame.
+//
+TEST_F(PunchPairTest, RefusesALocalWithNoCandidate)
+{
+    Advertise("203.0.113.9", 443);
+    AddCandidate("192.168.1.50", "198.51.100.7", 51234);
+
+    ASSERT_FALSE(Punchable("192.168.1.51", "203.0.113.9", 443));
+}
+
+//
+// An observed address that names nowhere reachable. The server's own
+// destination filter would refuse each of these, so queueing the request would
+// spend a packet to be told no.
+//
+TEST_F(PunchPairTest, RefusesAnUnusableObservedAddress)
+{
+    Advertise("203.0.113.9", 443);
+
+    AddCandidate("192.168.1.50", "127.0.0.1", 51234);      // loopback
+    AddCandidate("192.168.1.51", "0.0.0.0", 51234);        // wildcard
+    AddCandidate("192.168.1.52", "198.51.100.7", 0);       // no port
+
+    ASSERT_FALSE(Punchable("192.168.1.50", "203.0.113.9", 443));
+    ASSERT_FALSE(Punchable("192.168.1.51", "203.0.113.9", 443));
+    ASSERT_FALSE(Punchable("192.168.1.52", "203.0.113.9", 443));
+}
+
+//
+// The frame type carries the family for both addresses, so a client candidate
+// of one family cannot be paired with a server address of the other.
+//
+TEST_F(PunchPairTest, RefusesAFamilyMismatch)
+{
+    Advertise("2001:db8::9", 443);
+    AddCandidate("192.168.1.50", "198.51.100.7", 51234);
+
+    ASSERT_FALSE(Punchable("192.168.1.50", "2001:db8::9", 443));
+
+    //
+    // And allows it once both sides agree.
+    //
+    AddCandidate("2001:db8:1::50", "2001:db8:2::7", 51234);
+    ASSERT_TRUE(Punchable("2001:db8:1::50", "2001:db8::9", 443));
+}
+
+//
+// Several candidates, and the one matching this pair's local address is the one
+// named -- not merely the first on the list.
+//
+TEST_F(PunchPairTest, PicksTheCandidateForThisLocalAddress)
+{
+    Advertise("203.0.113.9", 443);
+    AddCandidate("192.168.1.50", "198.51.100.7", 51234);
+    AddCandidate("192.168.1.51", "198.51.100.8", 51235);
+    AddCandidate("192.168.1.52", "198.51.100.9", 51236);
+
+    QUIC_ADDR Named;
+    ASSERT_TRUE(Punchable("192.168.1.51", "203.0.113.9", 443, &Named));
+    const QUIC_ADDR Expected = Addr("198.51.100.8", 51235);
+    ASSERT_TRUE(QuicAddrCompare(&Expected, &Named));
+}
+
+//
+// The local address is matched on the IP alone, because a table pair's local
+// address carries no port and a candidate is a host address rather than an
+// endpoint.
+//
+TEST_F(PunchPairTest, MatchesTheLocalAddressIgnoringPort)
+{
+    Advertise("203.0.113.9", 443);
+    AddCandidate("192.168.1.50", "198.51.100.7", 51234);
+
+    QUIC_ADDR LocalWithPort = Addr("192.168.1.50", 9999);
+    const QUIC_ADDR RemoteAddr = Addr("203.0.113.9", 443);
+    QUIC_ADDR Named;
+    ASSERT_TRUE(
+        QuicConnPunchableClientAddress(
+            &Connection, &LocalWithPort, &RemoteAddr, &Named) != FALSE);
+}

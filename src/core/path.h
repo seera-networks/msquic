@@ -173,6 +173,29 @@ typedef struct QUIC_PATH {
     BOOLEAN PunchMeNowRoundValid : 1;
 
     //
+    // A draft-kozuka-quic-stateless-punch request is queued for this path:
+    // the client asking the server to send a packet towards PunchClientAddress
+    // from this path's remote address, so the NAT in front of the client opens
+    // a mapping before the client's own PATH_CHALLENGE arrives.
+    //
+    // Distinct from SendPunchMeNow above, which is the older NAT-traversal
+    // frame. The two never coexist on one connection -- a NAT_TRAVERSAL client
+    // does not offer alternative_address and so cannot negotiate this -- but
+    // they are different frames with different contents, so they get different
+    // state rather than sharing it.
+    //
+    BOOLEAN SendStatelessPunch : 1;
+
+    //
+    // This path exists because of a punch request, and stays marked after the
+    // request has gone out -- unlike SendStatelessPunch, which is cleared as
+    // soon as the frame is written. Kept because the obligation it carries
+    // only comes due if the path fails: the destination CID it probed with has
+    // been seen on this path, so a later attempt must not reuse it.
+    //
+    BOOLEAN StatelessPunchAttempt : 1;
+
+    //
     // The ending time of ECN validation testing state in microseconds.
     //
     uint64_t EcnTestingEndingTime;
@@ -207,6 +230,16 @@ typedef struct QUIC_PATH {
     QUIC_VAR_INT RemoteAddressSequenceNumber;
 
     QUIC_VAR_INT PunchMeNowRound;
+
+    //
+    // Where the server should send its punch packet: this client's address as
+    // the server would see it, which is the observed address of the candidate
+    // matching this path's local address. Snapshotted when the request is
+    // queued rather than looked up when it is written, because the application
+    // can add and replace candidates at any time and a retransmission has to
+    // name the address the first attempt named.
+    //
+    QUIC_ADDR PunchClientAddress;
 
     //
     // The destination CID used for sending on this path.

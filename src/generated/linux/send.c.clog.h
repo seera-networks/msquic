@@ -142,12 +142,12 @@ tracepoint(CLOG_SEND_C, EcnValidationUnknown , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for ScheduleSendFlags
-// [conn][%p] Adding send flags 0x%x (prev: 0x%x, new: 0x%x)
+// Decoder Ring for ScheduleSendFlags64
+// [conn][%p] Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)
 // QuicTraceLogConnVerbose(
-            ScheduleSendFlags,
+            ScheduleSendFlags64,
             Connection,
-            "Adding send flags 0x%x (prev: 0x%x, new: 0x%x)",
+            "Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
             SendFlags,
             Send->SendFlags,
             Send->SendFlags | SendFlags);
@@ -156,9 +156,9 @@ tracepoint(CLOG_SEND_C, EcnValidationUnknown , arg1);\
 // arg4 = arg4 = Send->SendFlags = arg4
 // arg5 = arg5 = Send->SendFlags | SendFlags = arg5
 ----------------------------------------------------------*/
-#ifndef _clog_6_ARGS_TRACE_ScheduleSendFlags
-#define _clog_6_ARGS_TRACE_ScheduleSendFlags(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
-tracepoint(CLOG_SEND_C, ScheduleSendFlags , arg1, arg3, arg4, arg5);\
+#ifndef _clog_6_ARGS_TRACE_ScheduleSendFlags64
+#define _clog_6_ARGS_TRACE_ScheduleSendFlags64(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_SEND_C, ScheduleSendFlags64 , arg1, arg3, arg4, arg5);\
 
 #endif
 
@@ -204,19 +204,19 @@ tracepoint(CLOG_SEND_C, AmplificationProtectionBlocked , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SendFlushComplete
-// [conn][%p] Flush complete flags=0x%x
+// Decoder Ring for SendFlushComplete64
+// [conn][%p] Flush complete flags=0x%llx
 // QuicTraceLogConnVerbose(
-        SendFlushComplete,
+        SendFlushComplete64,
         Connection,
-        "Flush complete flags=0x%x",
+        "Flush complete flags=0x%llx",
         Send->SendFlags);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Send->SendFlags = arg3
 ----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_SendFlushComplete
-#define _clog_4_ARGS_TRACE_SendFlushComplete(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_SEND_C, SendFlushComplete , arg1, arg3);\
+#ifndef _clog_4_ARGS_TRACE_SendFlushComplete64
+#define _clog_4_ARGS_TRACE_SendFlushComplete64(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_SEND_C, SendFlushComplete64 , arg1, arg3);\
 
 #endif
 

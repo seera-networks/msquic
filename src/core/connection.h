@@ -707,6 +707,24 @@ typedef struct QUIC_CONNECTION {
     uint16_t PunchesInWindow;
 
     //
+    // Counters for the stateless punch exchange, read back by a debug-only
+    // parameter. They exist because the exchange is otherwise invisible: the
+    // punch packet is unacknowledged and leaves no state, and the request is
+    // one frame among many in an ordinary packet, so a test has nothing to
+    // observe without them.
+    //
+    // RequestsIgnoredPerPacket is the one that earns its keep. It counts
+    // requests a second-or-later in their packet, which the server reads and
+    // drops -- so a client that batches requests shows up here, and the
+    // one-per-packet rule becomes something a test can check rather than
+    // something only the code says.
+    //
+    uint32_t PunchRequestsSent;
+    uint32_t PunchRequestsReceived;
+    uint32_t PunchesSent;
+    uint32_t PunchRequestsIgnoredPerPacket;
+
+    //
     // The sequence number to use for sending an punch me now.
     //
     QUIC_VAR_INT PunchMeNowSequenceNumber;
@@ -2114,6 +2132,22 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicConnPunchRateAllows(
     _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Whether a candidate pair is one this client can ask the server to punch
+// for, and the address the request should name. Exposed for the same reason
+// the two above are: it is the decision that selects which pair gets a
+// request, and it is a pure function of the connection's advertised set and
+// configured candidates.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchableClientAddress(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* LocalAddress,
+    _In_ const QUIC_ADDR* RemoteAddress,
+    _Out_ QUIC_ADDR* ClientAddress
     );
 
 #if defined(__cplusplus)

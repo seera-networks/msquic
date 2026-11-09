@@ -1245,6 +1245,35 @@ QuicLossDetectionRetransmitFrames(
             }
             break;
         }
+
+        case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4:
+        case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6: {
+            //
+            // Re-queued on the path that asked. The request is reliable -- the
+            // opposite of the punch packet it provokes, which is sent once and
+            // never tracked -- because a lost request means the server never
+            // learned to punch at all, and the client would then wait out a
+            // validation timeout for a hole that was never opened.
+            //
+            // A path that has gone away in the meantime finds no match and
+            // nothing is re-queued, which is what "unless the attempt has been
+            // abandoned" asks for: no separate cancellation is needed, because
+            // abandoning the attempt is removing the path.
+            //
+            for (uint8_t j = 0; j < Connection->PathsCount; ++j) {
+                QUIC_PATH* TempPath = &Connection->Paths[j];
+                if (TempPath->ID ==
+                        Packet->Frames[i].STATELESS_PUNCH_ME_NOW.PathId) {
+                    TempPath->SendStatelessPunch = TRUE;
+                    NewDataQueued |=
+                        QuicSendSetSendFlag(
+                            &Connection->Send,
+                            QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW);
+                    break;
+                }
+            }
+            break;
+        }
         }
     }
 

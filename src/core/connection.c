@@ -7947,7 +7947,10 @@ QuicConnRecvFrames(
             // ignoring has to happen after the decode above, because the body
             // still has to be consumed for the loop to reach the next frame.
             //
+            Connection->PunchRequestsReceived++;
+
             if (PunchSentForThisPacket) {
+                Connection->PunchRequestsIgnoredPerPacket++;
                 QuicTraceLogConnVerbose(
                     PunchAlreadySentForPacket,
                     Connection,
@@ -9259,6 +9262,37 @@ QuicConnProcessPathValidationTimerOperation(
             Connection->Paths[i].PathValidationStartTime = 0;
             ++i;
             continue;
+        }
+
+        //
+        // A punch attempt that failed gives its destination CID back by
+        // retiring it, so the peer issues a replacement and this one is never
+        // used again. RFC 9000 section 9.5: the CID has been seen on this
+        // path, and reusing it from a different local address is what links
+        // the two attempts together. The multipath branch above has this
+        // already -- PATH_ABANDON retires the path's CIDs with it -- so this
+        // is the branch that did not.
+        //
+        // Scoped to punch attempts rather than applied to every failed
+        // validation. Retiring on all of them would be defensible on the same
+        // privacy grounds, but it changes CID churn for ordinary migration
+        // failures, and QuicPathIDRetireCid aborts the connection once
+        // retirements pass 8x the CID limit -- a flapping path would then
+        // close the connection outright. Worth deciding separately rather
+        // than as a side effect of this stage.
+        //
+        if (Connection->Paths[i].StatelessPunchAttempt &&
+            Connection->Paths[i].DestCid != NULL &&
+            Connection->Paths[i].PathID != NULL) {
+            QUIC_CID_CLEAR_PATH(Connection->Paths[i].DestCid);
+            QuicPathIDRetireCid(
+                Connection->Paths[i].PathID, Connection->Paths[i].DestCid);
+            Connection->Paths[i].DestCid = NULL;
+            QuicTraceLogConnInfo(
+                PunchAttemptCidRetired,
+                Connection,
+                "Path[%hhu] punch attempt failed; retired its destination CID",
+                Connection->Paths[i].ID);
         }
 
         //
@@ -11301,6 +11335,91 @@ QuicConnReconcileRemovePaths(
 // pair is somewhere the connection can actually send, so the four slots go to
 // the four best pairs and that is the cross product working.
 //
+// Whether a table pair is one this client can ask the server to punch for,
+// and if so the address the request should name.
+//
+// Three conditions, and all three are about having something real to say:
+//
+//  - the extension is negotiated, so the frame is one the peer agreed to read;
+//  - the pair's remote is an address the server actually advertised, because
+//    that is what the server matches the request against -- it looks the
+//    request up among the addresses it told us about, so naming anything else
+//    is a frame it will ignore;
+//  - the pair's local address has a configured candidate with an observed
+//    address, because the request has to tell the server where to send, and
+//    only the application knows how this client is seen from outside.
+//
+// The local addresses are compared by IP alone: a table pair's local carries
+// no port, and the candidate is a host address rather than an endpoint.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchableClientAddress(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* LocalAddress,
+    _In_ const QUIC_ADDR* RemoteAddress,
+    _Out_ QUIC_ADDR* ClientAddress
+    )
+{
+    CxPlatZeroMemory(ClientAddress, sizeof(*ClientAddress));
+
+    if (!Connection->State.StatelessPunchNegotiated) {
+        return FALSE;
+    }
+
+    BOOLEAN Advertised = FALSE;
+    for (uint8_t i = 0; i < Connection->AltAddrCount; ++i) {
+        if (QuicAddrCompare(&Connection->AltAddrs[i].Address, RemoteAddress)) {
+            Advertised = TRUE;
+            break;
+        }
+    }
+    if (!Advertised) {
+        return FALSE;
+    }
+
+    for (CXPLAT_LIST_ENTRY* Entry = Connection->CandidateAddresses.Flink;
+            Entry != &Connection->CandidateAddresses;
+            Entry = Entry->Flink) {
+        const QUIC_CANDIDATE_ADDRESS_LIST_ENTRY* Candidate =
+            CXPLAT_CONTAINING_RECORD(
+                Entry, QUIC_CANDIDATE_ADDRESS_LIST_ENTRY, Link);
+
+        if (!QuicAddrCompareIp(&Candidate->Address, LocalAddress)) {
+            continue;
+        }
+
+        //
+        // An observed address that is loopback, wildcard or portless is not
+        // somewhere a server on the internet can send to, and the server's own
+        // destination filter would refuse it anyway -- so the request is not
+        // worth the packet. The older PUNCH_ME_NOW writer drops loopback at
+        // write time for the same reason; deciding it here keeps a request
+        // that will never be sent from being queued at all.
+        //
+        if (IS_LOOPBACK(Candidate->ObservedAddress) ||
+            QuicAddrIsWildCard(&Candidate->ObservedAddress) ||
+            QuicAddrGetPort(&Candidate->ObservedAddress) == 0) {
+            continue;
+        }
+
+        //
+        // And it has to be the same family as the server address it will be
+        // paired with, because the frame type says which family both are.
+        //
+        if (QuicAddrGetFamily(&Candidate->ObservedAddress) !=
+                QuicAddrGetFamily(RemoteAddress)) {
+            continue;
+        }
+
+        *ClientAddress = Candidate->ObservedAddress;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+//
 // Without it only one local address is in use at a time, so a second path is a
 // validation candidate rather than somewhere traffic goes. One per remote
 // address is therefore the limit: a pair that differs from an existing path
@@ -11411,7 +11530,54 @@ QuicConnReconcileCreatePaths(
         // timer, but the connection-level flag is what gets the send loop to
         // look; without it the challenge waits for an unrelated send.
         //
-        if (NewPath != &Connection->Paths[0] && NewPath->DestCid != NULL) {
+        QUIC_ADDR PunchClientAddress;
+        if (QuicConnPunchableClientAddress(
+                Connection,
+                &Pair->LocalAddress,
+                &Pair->RemoteAddress,
+                &PunchClientAddress)) {
+            //
+            // Ask before probing. The server's binding for this pair does not
+            // exist yet, so a PATH_CHALLENGE sent now arrives at a NAT with no
+            // mapping for it and is dropped -- the attempt is spent for
+            // nothing. The request goes out on the validated path this
+            // connection is already using, and the probe waits for
+            // QUIC_CONN_TIMER_PROBE_AFTER_PUNCH.
+            //
+            // One smoothed RTT of the relayed path, which is what the draft
+            // recommends and what the older NAT-traversal code already did.
+            // Appendix C.4 asks whether that is the right choice at all, or
+            // whether probing immediately and leaning on PATH_CHALLENGE
+            // retransmission would do better; it is left as it is, with the
+            // trade written down: the validation clock starts when the path is
+            // created, so this delay is spent out of the validation budget
+            // rather than added to it.
+            //
+            // The request leaves on a validated path, which the draft
+            // requires and which this gets for free rather than by arranging
+            // it: the frame is written by QuicSendWriteFrames into the packet
+            // QuicConnChoosePath picked, and that is Paths[0] without
+            // multipath or an IsActive path with it. QuicPathInitialize zeroes
+            // the path it is handed, so the path being punched for is not
+            // IsActive and cannot be chosen until it validates. Worth stating
+            // because nothing here enforces it.
+            //
+            NewPath->PunchClientAddress = PunchClientAddress;
+            NewPath->SendStatelessPunch = TRUE;
+            NewPath->StatelessPunchAttempt = TRUE;
+            QuicSendSetSendFlag(
+                &Connection->Send, QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW);
+            if (NewPath->DestCid != NULL) {
+                QuicConnTimerSet(
+                    Connection,
+                    QUIC_CONN_TIMER_PROBE_AFTER_PUNCH,
+                    Connection->Paths[0].SmoothedRtt);
+            }
+            QuicTraceLogConnInfo(
+                PunchRequestQueued,
+                Connection,
+                "Queued a punch request for a table pair");
+        } else if (NewPath != &Connection->Paths[0] && NewPath->DestCid != NULL) {
             QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
         }
 
@@ -12340,6 +12506,8 @@ QuicConnSendStatelessPunch(
         1);
 
     QuicLibraryReleaseBinding(Binding);
+
+    Connection->PunchesSent++;
 
     QuicTraceLogConnInfo(
         PunchPacketSent,
@@ -14099,6 +14267,30 @@ QuicConnParamGet(
 
         *BufferLength = sizeof(BOOLEAN);
         *(BOOLEAN*)Buffer = Connection->State.StatelessPunchNegotiated;
+        Status = QUIC_STATUS_SUCCESS;
+        break;
+
+    case QUIC_PARAM_CONN_TEST_PUNCH_COUNTERS:
+
+        if (*BufferLength < sizeof(QUIC_TEST_PUNCH_COUNTERS)) {
+            *BufferLength = sizeof(QUIC_TEST_PUNCH_COUNTERS);
+            Status = QUIC_STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+        if (Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        *BufferLength = sizeof(QUIC_TEST_PUNCH_COUNTERS);
+        ((QUIC_TEST_PUNCH_COUNTERS*)Buffer)->RequestsSent =
+            Connection->PunchRequestsSent;
+        ((QUIC_TEST_PUNCH_COUNTERS*)Buffer)->RequestsReceived =
+            Connection->PunchRequestsReceived;
+        ((QUIC_TEST_PUNCH_COUNTERS*)Buffer)->PunchesSent =
+            Connection->PunchesSent;
+        ((QUIC_TEST_PUNCH_COUNTERS*)Buffer)->RequestsIgnoredPerPacket =
+            Connection->PunchRequestsIgnoredPerPacket;
         Status = QUIC_STATUS_SUCCESS;
         break;
 #endif

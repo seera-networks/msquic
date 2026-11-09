@@ -412,7 +412,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 BOOLEAN
 QuicSendSetSendFlag(
     _In_ QUIC_SEND* Send,
-    _In_ uint32_t SendFlags
+    _In_ uint64_t SendFlags
     )
 {
     QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
@@ -429,10 +429,15 @@ QuicSendSetSendFlag(
     }
 
     if (CanSetFlag && (Send->SendFlags & SendFlags) != SendFlags) {
+        //
+        // A new trace id rather than a widened ScheduleSendFlags: the sidecar
+        // holds a trace's encoding for the life of that id, so changing %x to
+        // %llx has to be a different trace.
+        //
         QuicTraceLogConnVerbose(
-            ScheduleSendFlags,
+            ScheduleSendFlags64,
             Connection,
-            "Adding send flags 0x%x (prev: 0x%x, new: 0x%x)",
+            "Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
             SendFlags,
             Send->SendFlags,
             Send->SendFlags | SendFlags);
@@ -454,7 +459,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 void
 QuicSendClearSendFlag(
     _In_ QUIC_SEND* Send,
-    _In_ uint32_t SendFlags
+    _In_ uint64_t SendFlags
     )
 {
     if (Send->SendFlags & SendFlags) {
@@ -609,6 +614,28 @@ QuicSendPathStatusPending(
     for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
         const QUIC_PATH* Path = &Connection->Paths[i];
         if (Path->SendStatus && (Path->IsActive != FALSE) == (Active != FALSE)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+//
+// Whether any path is still waiting for its stateless punch request. Needed
+// for the same reason QuicSendPathStatusPending is: the writer sends one
+// request per packet and leaves the flag up for the next one, so the flag has
+// to come down as soon as nothing is left or the next flush builds a packet it
+// then finds nothing to write for.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicSendStatelessPunchPending(
+    _In_ const QUIC_CONNECTION* Connection
+    )
+{
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].SendStatelessPunch) {
             return TRUE;
         }
     }
@@ -1178,6 +1205,68 @@ QuicSendWriteFrames(
 
             if (i == Connection->PathsCount) {
                 Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW;
+            }
+
+            if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
+                return TRUE;
+            }
+        }
+
+        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW) {
+
+            //
+            // One request per packet, and this one is a correctness
+            // requirement rather than the politeness the draft phrases it as:
+            // a server answers one punch per received packet, so a second
+            // request in the same packet is read and dropped. Section 5 says
+            // the client SHOULD separate them; our own server is what makes it
+            // a MUST in practice.
+            //
+            // So the loop writes at most one frame and stops, leaving the
+            // connection flag up for the next packet to carry the next one.
+            //
+            for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+                QUIC_PATH* TempPath = &Connection->Paths[i];
+                if (!TempPath->SendStatelessPunch) {
+                    continue;
+                }
+
+                QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+                CxPlatZeroMemory(&Frame, sizeof(Frame));
+                Frame.ClientAddress = TempPath->PunchClientAddress;
+                Frame.ServerAddress = TempPath->Route.RemoteAddress;
+
+                if (!QuicStatelessPunchMeNowFrameEncode(
+                        &Frame,
+                        &Builder->DatagramLength,
+                        AvailableBufferLength,
+                        Builder->Datagram->Buffer)) {
+                    RanOutOfRoom = TRUE;
+                    break;
+                }
+
+                TempPath->SendStatelessPunch = FALSE;
+                Connection->PunchRequestsSent++;
+                Builder->Metadata->Frames[
+                    Builder->Metadata->FrameCount].STATELESS_PUNCH_ME_NOW.PathId =
+                        TempPath->ID;
+                (void)QuicPacketBuilderAddFrame(
+                    Builder,
+                    QuicAddrGetFamily(&Frame.ClientAddress) == QUIC_ADDRESS_FAMILY_INET ?
+                        QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 :
+                        QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6,
+                    TRUE);
+                //
+                // Unconditionally, whether or not the packet is now full: the
+                // next request belongs in the next packet either way. The
+                // return value of QuicPacketBuilderAddFrame says "the packet is
+                // full", which is not the question here.
+                //
+                break;
+            }
+
+            if (!QuicSendStatelessPunchPending(Connection)) {
+                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW;
             }
 
             if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
@@ -2275,8 +2364,8 @@ QuicSendFlush(
 
 #if DEBUG
     uint32_t DeadlockDetection = 0;
-    uint32_t PrevSendFlags = UINT32_MAX;        // N-1
-    uint32_t PrevPrevSendFlags = UINT32_MAX;    // N-2
+    uint64_t PrevSendFlags = UINT64_MAX;        // N-1
+    uint64_t PrevPrevSendFlags = UINT64_MAX;    // N-2
 #endif
 
     QUIC_SEND_RESULT Result = QUIC_SEND_INCOMPLETE;
@@ -2293,7 +2382,7 @@ QuicSendFlush(
             break;
         }
 
-        uint32_t SendFlags = Send->SendFlags;
+        uint64_t SendFlags = Send->SendFlags;
         if (Connection->Crypto.TlsState.WriteKey < QUIC_PACKET_KEY_1_RTT) {
             SendFlags &= QUIC_CONN_SEND_FLAG_ALLOWED_HANDSHAKE;
         }
@@ -2459,9 +2548,9 @@ QuicSendFlush(
     }
 
     QuicTraceLogConnVerbose(
-        SendFlushComplete,
+        SendFlushComplete64,
         Connection,
-        "Flush complete flags=0x%x",
+        "Flush complete flags=0x%llx",
         Send->SendFlags);
 
     if (Result == QUIC_SEND_INCOMPLETE) {

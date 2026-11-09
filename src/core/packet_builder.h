@@ -195,7 +195,7 @@ BOOLEAN
 QuicPacketBuilderPrepareForControlFrames(
     _Inout_ QUIC_PACKET_BUILDER* Builder,
     _In_ BOOLEAN IsTailLossProbe,
-    _In_ uint32_t SendFlags
+    _In_ uint64_t SendFlags
     );
 
 //

@@ -1225,6 +1225,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathChallengeResend,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PunchAttemptCidRetired
+// [conn][%p] Path[%hhu] punch attempt failed; retired its destination CID
+// QuicTraceLogConnInfo(
+                PunchAttemptCidRetired,
+                Connection,
+                "Path[%hhu] punch attempt failed; retired its destination CID",
+                Connection->Paths[i].ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->Paths[i].ID = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchAttemptCidRetired,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdatePeerPacketTolerance
 // [conn][%p] Updating peer packet tolerance to %hhu
 // QuicTraceLogConnInfo(
@@ -1303,6 +1326,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileAddPathFailed,
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
         ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestQueued
+// [conn][%p] Queued a punch request for a table pair
+// QuicTraceLogConnInfo(
+                PunchRequestQueued,
+                Connection,
+                "Queued a punch request for a table pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchRequestQueued,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
     )
 )
 

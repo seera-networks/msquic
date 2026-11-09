@@ -1137,6 +1137,26 @@ tracepoint(CLOG_CONNECTION_C, PathChallengeResend , arg1, arg3, arg4, arg5);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PunchAttemptCidRetired
+// [conn][%p] Path[%hhu] punch attempt failed; retired its destination CID
+// QuicTraceLogConnInfo(
+                PunchAttemptCidRetired,
+                Connection,
+                "Path[%hhu] punch attempt failed; retired its destination CID",
+                Connection->Paths[i].ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->Paths[i].ID = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PunchAttemptCidRetired
+#define _clog_4_ARGS_TRACE_PunchAttemptCidRetired(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PunchAttemptCidRetired , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdatePeerPacketTolerance
 // [conn][%p] Updating peer packet tolerance to %hhu
 // QuicTraceLogConnInfo(
@@ -1206,6 +1226,24 @@ tracepoint(CLOG_CONNECTION_C, ReconcileRemovedPath , arg1);\
 #ifndef _clog_4_ARGS_TRACE_ReconcileAddPathFailed
 #define _clog_4_ARGS_TRACE_ReconcileAddPathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
 tracepoint(CLOG_CONNECTION_C, ReconcileAddPathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestQueued
+// [conn][%p] Queued a punch request for a table pair
+// QuicTraceLogConnInfo(
+                PunchRequestQueued,
+                Connection,
+                "Queued a punch request for a table pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchRequestQueued
+#define _clog_3_ARGS_TRACE_PunchRequestQueued(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchRequestQueued , arg1);\
 
 #endif
 

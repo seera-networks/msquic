@@ -509,7 +509,7 @@ _Success_(return != FALSE)
 BOOLEAN
 QuicPacketBuilderGetPacketTypeAndKeyForControlFrames(
     _In_ const QUIC_PACKET_BUILDER* Builder,
-    _In_ uint32_t SendFlags,
+    _In_ uint64_t SendFlags,
     _Out_ QUIC_PACKET_KEY_TYPE* PacketKeyType
     )
 {
@@ -633,7 +633,7 @@ BOOLEAN
 QuicPacketBuilderPrepareForControlFrames(
     _Inout_ QUIC_PACKET_BUILDER* Builder,
     _In_ BOOLEAN IsTailLossProbe,
-    _In_ uint32_t SendFlags
+    _In_ uint64_t SendFlags
     )
 {
     CXPLAT_DBG_ASSERT(!(SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD));
