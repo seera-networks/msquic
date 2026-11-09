@@ -66,7 +66,27 @@ include = [
     "/submodules/xdp-for-windows/published/external",
     "/scripts/build.rs",
     "/src/**/*.rs",
-    "/src/bin",
+    #
+    # Narrowed to leave out the profile-guided optimization databases under
+    # src/bin/*/pgo_*, which are 7MB of the repository and nothing the crate
+    # can use: QUIC_PGO defaults OFF and scripts/build.rs never turns it on, so
+    # CMakeLists only looks for a .pgd when a build this crate does not do asks
+    # for one.
+    #
+    # The crate was 16KB under the 10MB crates.io limit this workflow enforces,
+    # so the stage that added a few traces tipped it over -- the same way an
+    # earlier one did, which is what narrowed /src/core and /src/platform
+    # below. Dropping the PGO data gives back enough that the next change does
+    # not have to think about it.
+    #
+    "/src/bin/*.*",
+    "/src/bin/CMakeLists.txt",
+    "/src/bin/darwin",
+    "/src/bin/linux",
+    "/src/bin/static",
+    "/src/bin/winuser_fuzz",
+    "/src/bin/winuser/*.*",
+    "/src/bin/winkernel/*.*",
     #
     # Narrowed rather than naming the directories, so that the unit tests under
     # them stay out of the crate. QUIC_BUILD_TEST is OFF by default and
