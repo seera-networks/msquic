@@ -4726,10 +4726,29 @@ QuicTestStatelessPunchRequest(
     }
 
     //
+    // Reported together, because any one of these failing is only
+    // interpretable next to the others -- "fewer punches than requests" means
+    // something quite different from "fewer requests than expected", and the
+    // first version of this test said neither. The XDP runs are where that
+    // mattered: PunchesSent came up short and the log gave no way to tell
+    // whether a request had been dropped for sharing a packet, refused by the
+    // destination filter, or failed to send at all.
+    //
+    //
     // The server was asked for both pairs, and answered.
     //
-    TEST_TRUE(ServerCounters.RequestsReceived >= 2);
-    TEST_TRUE(ServerCounters.PunchesSent >= 2);
+    if (ServerCounters.RequestsReceived < 2 ||
+        ServerCounters.PunchesSent < 2 ||
+        ServerCounters.RequestsIgnoredPerPacket != 0) {
+        TEST_FAILURE(
+            "punch counters: client sent=%u, server recv=%u punched=%u ignored=%u "
+            "(wanted recv>=2, punched>=2, ignored==0)",
+            ClientCounters.RequestsSent,
+            ServerCounters.RequestsReceived,
+            ServerCounters.PunchesSent,
+            ServerCounters.RequestsIgnoredPerPacket);
+        return;
+    }
 
     //
     // No request was dropped for sharing a packet with another.
@@ -4748,7 +4767,8 @@ QuicTestStatelessPunchRequest(
     // yet standing up, so one-request-per-packet remains enforced by the
     // writer and by the server's own guard rather than by a test.
     //
-    TEST_EQUAL(0u, ServerCounters.RequestsIgnoredPerPacket);
+    // Checked in the block above, with the other two, so a failure reports all
+    // four numbers at once.
 
     //
     // Every request answered, which is the same statement from the other side
