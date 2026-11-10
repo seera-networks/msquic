@@ -2977,7 +2977,17 @@ QuicCryptoEncodeClientTicket(
         QUIC_TP_FLAG_ORIGINAL_DESTINATION_CONNECTION_ID |
         QUIC_TP_FLAG_PREFERRED_ADDRESS |
         QUIC_TP_FLAG_RETRY_SOURCE_CONNECTION_ID |
-        QUIC_TP_FLAG_STATELESS_RESET_TOKEN);
+        QUIC_TP_FLAG_STATELESS_RESET_TOKEN |
+        //
+        // draft-kozuka-quic-stateless-punch MUST NOT be remembered for 0-RTT,
+        // and this list is a deny-list -- unlike the server ticket's, which is
+        // an allow-list and would have excluded it by omission. Named here
+        // explicitly for a second reason: every other constant in this list
+        // fits in an int, so ~(...) is a negative int that sign-extends across
+        // the whole of the now 64-bit Flags, which means bit 32 would have
+        // survived the mask rather than being cleared by it.
+        //
+        QUIC_TP_FLAG_STATELESS_PUNCH);
 
     EncodedServerTP =
         QuicCryptoTlsEncodeTransportParameters(

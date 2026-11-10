@@ -2390,6 +2390,68 @@ TRACEPOINT_EVENT(CLOG_FRAME_C, FrameLogAlternativeAddressEntry,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for FrameLogStatelessPunchMeNowInvalid
+// [%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]
+// QuicTraceLogVerbose(
+            FrameLogStatelessPunchMeNowInvalid,
+            "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_FRAME_C, FrameLogStatelessPunchMeNowInvalid,
+    TP_ARGS(
+        unsigned char, arg2,
+        unsigned char, arg3,
+        unsigned long long, arg4), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(uint64_t, arg4, arg4)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogStatelessPunchMeNow
+// [%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s
+// QuicTraceLogVerbose(
+        FrameLogStatelessPunchMeNow,
+        "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s",
+        PtkConnPre(Connection),
+        PktRxPre(Rx),
+        PacketNumber,
+        ClientAddrStr.Address,
+        ServerAddrStr.Address);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+// arg5 = arg5 = ClientAddrStr.Address = arg5
+// arg6 = arg6 = ServerAddrStr.Address = arg6
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_FRAME_C, FrameLogStatelessPunchMeNow,
+    TP_ARGS(
+        unsigned char, arg2,
+        unsigned char, arg3,
+        unsigned long long, arg4,
+        const char *, arg5,
+        const char *, arg6), 
+    TP_FIELDS(
+        ctf_integer(unsigned char, arg2, arg2)
+        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(uint64_t, arg4, arg4)
+        ctf_string(arg5, arg5)
+        ctf_string(arg6, arg6)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for FrameLogRemoveAddressInvalid
 // [%c][%cX][%llu]   REMOVE_ADDRESS [Invalid]
 // QuicTraceLogVerbose(

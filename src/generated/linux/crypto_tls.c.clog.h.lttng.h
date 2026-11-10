@@ -776,6 +776,25 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPAlternativeAddress,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for EncodeTPStatelessPunch
+// [conn][%p] TP: Stateless Punch
+// QuicTraceLogConnVerbose(
+            EncodeTPStatelessPunch,
+            Connection,
+            "TP: Stateless Punch");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPStatelessPunch,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for EncodeTPInitMaxPathId
 // [conn][%p] TP: Max Path Id (%llu)
 // QuicTraceLogConnVerbose(
@@ -1502,6 +1521,25 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPServerMigration,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPAlternativeAddress,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for DecodeTPStatelessPunch
+// [conn][%p] TP: Stateless Punch
+// QuicTraceLogConnVerbose(
+                DecodeTPStatelessPunch,
+                Connection,
+                "TP: Stateless Punch");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPStatelessPunch,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(

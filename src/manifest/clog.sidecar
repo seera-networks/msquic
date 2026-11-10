@@ -4258,6 +4258,18 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "DecodeTPStatelessPunch": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] TP: Stateless Punch",
+      "UniqueId": "DecodeTPStatelessPunch",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "DecodeTPStatelessResetToken": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] TP: Stateless Reset Token (%s)",
@@ -4858,6 +4870,18 @@
         {
           "DefinationEncoding": "hhu",
           "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "EncodeTPStatelessPunch": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] TP: Stateless Punch",
+      "UniqueId": "EncodeTPStatelessPunch",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
         }
       ],
       "macroName": "QuicTraceLogConnVerbose"
@@ -6805,6 +6829,54 @@
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   RETIRE_CONN_ID [Invalid]",
       "UniqueId": "FrameLogRetireConnectionIDInvalid",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogStatelessPunchMeNow": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s",
+      "UniqueId": "FrameLogStatelessPunchMeNow",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "s",
+          "MacroVariableName": "arg5"
+        },
+        {
+          "DefinationEncoding": "s",
+          "MacroVariableName": "arg6"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogStatelessPunchMeNowInvalid": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]",
+      "UniqueId": "FrameLogStatelessPunchMeNowInvalid",
       "splitArgs": [
         {
           "DefinationEncoding": "c",
@@ -17069,6 +17141,11 @@
         "EncodingString": "[conn][%p] Decoding Transport Parameters (Server = %hhu) (%hu bytes)"
       },
       {
+        "UniquenessHash": "606d69c8-a270-59ca-6eb5-6665d1b5d038",
+        "TraceID": "DecodeTPStatelessPunch",
+        "EncodingString": "[conn][%p] TP: Stateless Punch"
+      },
+      {
         "UniquenessHash": "22774447-fb97-c333-ea55-96d7234b806f",
         "TraceID": "DecodeTPStatelessResetToken",
         "EncodingString": "[conn][%p] TP: Stateless Reset Token (%s)"
@@ -17267,6 +17344,11 @@
         "UniquenessHash": "0e57e530-870c-7ba0-5b7b-5da31f55dc03",
         "TraceID": "EncodeTPStart",
         "EncodingString": "[conn][%p] Encoding Transport Parameters (Server = %hhu)"
+      },
+      {
+        "UniquenessHash": "078c307a-268d-dc51-dd8b-d0278547760c",
+        "TraceID": "EncodeTPStatelessPunch",
+        "EncodingString": "[conn][%p] TP: Stateless Punch"
       },
       {
         "UniquenessHash": "c5a96b84-829e-1140-85af-18ab6924eb23",
@@ -17707,6 +17789,16 @@
         "UniquenessHash": "8524f407-db2b-201f-baed-6d6501147ee1",
         "TraceID": "FrameLogRetireConnectionIDInvalid",
         "EncodingString": "[%c][%cX][%llu]   RETIRE_CONN_ID [Invalid]"
+      },
+      {
+        "UniquenessHash": "4cb1e569-66ac-a3a6-2a51-0ee579b25115",
+        "TraceID": "FrameLogStatelessPunchMeNow",
+        "EncodingString": "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s"
+      },
+      {
+        "UniquenessHash": "5f052be7-5efe-9bf0-e24f-714cc7354ca3",
+        "TraceID": "FrameLogStatelessPunchMeNowInvalid",
+        "EncodingString": "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]"
       },
       {
         "UniquenessHash": "e4585b81-61e3-9b3b-5af6-cf17c4e95d81",
