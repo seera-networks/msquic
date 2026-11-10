@@ -102,6 +102,7 @@ QuicPacketBuilderInitialize(
     Builder->PacketBatchSent = FALSE;
     Builder->PacketBatchRetransmittable = FALSE;
     Builder->WrittenConnectionCloseFrame = FALSE;
+    Builder->WrittenStatelessPunchRequest = FALSE;
     Builder->Metadata = &Builder->MetadataStorage.Metadata;
     Builder->EncryptionOverhead = CXPLAT_ENCRYPTION_OVERHEAD;
     Builder->TotalDatagramsLength = 0;
@@ -1027,6 +1028,11 @@ QuicPacketBuilderFinalize(
         Builder->Metadata);
 
     Builder->Metadata->FrameCount = 0;
+    //
+    // A new packet may carry a punch request again. See the field's comment
+    // in packet_builder.h.
+    //
+    Builder->WrittenStatelessPunchRequest = FALSE;
 
     if (Builder->Metadata->Flags.IsAckEliciting) {
         Builder->PacketBatchRetransmittable = TRUE;

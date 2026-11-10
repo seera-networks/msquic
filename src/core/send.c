@@ -1215,7 +1215,8 @@ QuicSendWriteFrames(
             }
         }
 
-        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW) {
+        if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW) &&
+            !Builder->WrittenStatelessPunchRequest) {
 
             //
             // One request per packet, and this one is a correctness
@@ -1249,6 +1250,7 @@ QuicSendWriteFrames(
                 }
 
                 TempPath->SendStatelessPunch = FALSE;
+                Builder->WrittenStatelessPunchRequest = TRUE;
                 Connection->PunchRequestsSent++;
                 Builder->Metadata->Frames[
                     Builder->Metadata->FrameCount].STATELESS_PUNCH_ME_NOW.PathId =

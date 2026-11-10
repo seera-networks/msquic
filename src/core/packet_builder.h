@@ -84,6 +84,22 @@ typedef struct QUIC_PACKET_BUILDER {
     uint8_t WrittenConnectionCloseFrame : 1;
 
     //
+    // A draft-kozuka-quic-stateless-punch request has already gone into the
+    // packet being built. Reset per *packet*, in QuicPacketBuilderFinalize,
+    // unlike WrittenConnectionCloseFrame above which is reset per flush --
+    // because the rule being enforced is one request per packet, and a flush
+    // builds many.
+    //
+    // Needed because stopping after one frame inside QuicSendWriteFrames is
+    // not enough: the send loop calls that function again while the flag is
+    // still up, and QuicPacketBuilderPrepare only starts a new packet when the
+    // packet type changes. Two 1-RTT control writes in a row therefore land in
+    // the same packet, where a server reads the first request and drops the
+    // second.
+    //
+    uint8_t WrittenStatelessPunchRequest : 1;
+
+    //
     // Initial keys were discarded during this flush.
     //
     uint8_t InitialKeysDiscarded : 1;
