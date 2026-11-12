@@ -1215,8 +1215,7 @@ QuicSendWriteFrames(
             }
         }
 
-        if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW) &&
-            !Builder->WrittenStatelessPunchRequest) {
+        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW) {
 
             //
             // One request per packet, and this one is a correctness
@@ -1250,7 +1249,6 @@ QuicSendWriteFrames(
                 }
 
                 TempPath->SendStatelessPunch = FALSE;
-                Builder->WrittenStatelessPunchRequest = TRUE;
                 Connection->PunchRequestsSent++;
                 Builder->Metadata->Frames[
                     Builder->Metadata->FrameCount].STATELESS_PUNCH_ME_NOW.PathId =
@@ -1270,8 +1268,27 @@ QuicSendWriteFrames(
                 break;
             }
 
-            if (!QuicSendStatelessPunchPending(Connection)) {
-                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW;
+            //
+            // The flag comes down whether or not more paths are waiting, and
+            // that is what keeps one request per packet honest.
+            //
+            // Leaving it up does not work, and neither does declining to write
+            // a second one. The send loop calls this function again while the
+            // flag is set, and QuicPacketBuilderPrepare only starts a new
+            // packet when the packet type changes -- so a second 1-RTT control
+            // write lands in the same packet. Leaving it up therefore put two
+            // requests in one packet, where the server reads the first and
+            // drops the second. Declining to write instead framed nothing at
+            // all, which trips the assert at the end of this function.
+            //
+            // So at most one request leaves per flush. A flush ends by
+            // finalizing its packet, so the next one cannot share it. The
+            // queued flush below is what brings the remaining requests out,
+            // and QuicSendFlush raises the flag again for each.
+            //
+            Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW;
+            if (QuicSendStatelessPunchPending(Connection)) {
+                QuicSendQueueFlush(Send, REASON_CONNECTION_FLAGS);
             }
 
             if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
@@ -2196,6 +2213,17 @@ QuicSendFlush(
     )
 {
     QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
+
+    //
+    // Raised per flush rather than left up by the writer, because the writer
+    // takes it down after one request: see the comment where it does. A flush
+    // carries at most one, so a connection with several queued gets them one
+    // packet at a time.
+    //
+    if (QuicSendStatelessPunchPending(Connection)) {
+        Send->SendFlags |= QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW;
+    }
+
     QUIC_PATH* Path;
     if (Send->FlushForPacing) {
         Path = Send->PacingPath;
