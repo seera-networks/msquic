@@ -1337,6 +1337,18 @@ TEST(Basic, ModeNatTraversal) {
 #endif
 }
 
+TEST(Basic, StatelessPunchNegotiation) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestStatelessPunchNegotiation needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestStatelessPunchNegotiation is user-mode only.";
+    }
+    TestLogger Logger("QuicTestStatelessPunchNegotiation");
+    QuicTestStatelessPunchNegotiation();
+#endif
+}
+
 TEST(Basic, ServerLostAddressAbandonsPath) {
 #if !DEBUG
     GTEST_SKIP() << "QuicTestServerLostAddressAbandonsPath needs the debug-only address injection.";

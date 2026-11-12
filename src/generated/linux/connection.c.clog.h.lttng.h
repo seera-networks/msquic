@@ -1412,6 +1412,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, AlternativeAddressAddFailed,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PunchPacketSent
+// [conn][%p] Sent a punch packet of %hu bytes
+// QuicTraceLogConnInfo(
+        PunchPacketSent,
+        Connection,
+        "Sent a punch packet of %hu bytes",
+        Length);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Length = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchPacketSent,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned short, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned short, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdateShareBinding
 // [conn][%p] Updated ShareBinding = %hhu
 // QuicTraceLogConnInfo(
@@ -2231,6 +2254,63 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyObservedAddress,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PunchBeforeHandshakeConfirmed
+// [conn][%p] Ignoring a punch request before the handshake is confirmed
+// QuicTraceLogConnVerbose(
+                    PunchBeforeHandshakeConfirmed,
+                    Connection,
+                    "Ignoring a punch request before the handshake is confirmed");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchBeforeHandshakeConfirmed,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchAlreadySentForPacket
+// [conn][%p] Ignoring a second punch request in one packet
+// QuicTraceLogConnVerbose(
+                    PunchAlreadySentForPacket,
+                    Connection,
+                    "Ignoring a second punch request in one packet");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchAlreadySentForPacket,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestUnknownAddress
+// [conn][%p] Punch request named an address this server did not advertise
+// QuicTraceLogConnVerbose(
+                    PunchRequestUnknownAddress,
+                    Connection,
+                    "Punch request named an address this server did not advertise");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchRequestUnknownAddress,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for IndicatePeerAddrChanged
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED
 // QuicTraceLogConnVerbose(
@@ -2466,6 +2546,147 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressRemovedAlt,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressRemoved,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefused
+// [conn][%p] Refusing to punch towards an unspecified address
+// QuicTraceLogConnVerbose(
+            PunchDestinationRefused,
+            Connection,
+            "Refusing to punch towards an unspecified address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchDestinationRefused,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedScope
+// [conn][%p] Refusing to punch towards a multicast or broadcast address
+// QuicTraceLogConnVerbose(
+                PunchDestinationRefusedScope,
+                Connection,
+                "Refusing to punch towards a multicast or broadcast address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchDestinationRefusedScope,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedLocal
+// [conn][%p] Refusing to punch towards a loopback or link-local address
+// QuicTraceLogConnVerbose(
+            PunchDestinationRefusedLocal,
+            Connection,
+            "Refusing to punch towards a loopback or link-local address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchDestinationRefusedLocal,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedPort
+// [conn][%p] Refusing to punch towards a sensitive port (%hu)
+// QuicTraceLogConnVerbose(
+                PunchDestinationRefusedPort,
+                Connection,
+                "Refusing to punch towards a sensitive port (%hu)",
+                Port);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Port = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchDestinationRefusedPort,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned short, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned short, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRateLimited
+// [conn][%p] Punch rate limit reached, dropping the request
+// QuicTraceLogConnVerbose(
+            PunchRateLimited,
+            Connection,
+            "Punch rate limit reached, dropping the request");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchRateLimited,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestPacketTooSmall
+// [conn][%p] Punch request packet too small to answer within (%hu)
+// QuicTraceLogConnVerbose(
+            PunchRequestPacketTooSmall,
+            Connection,
+            "Punch request packet too small to answer within (%hu)",
+            RequestPacketLength);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RequestPacketLength = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchRequestPacketTooSmall,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned short, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned short, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchAddressFamilyMismatch
+// [conn][%p] Punch request address family does not match the bound address
+// QuicTraceLogConnVerbose(
+            PunchAddressFamilyMismatch,
+            Connection,
+            "Punch request address family does not match the bound address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchAddressFamilyMismatch,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(

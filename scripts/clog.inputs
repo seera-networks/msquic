@@ -131,6 +131,7 @@
 ../src/core/unittest/VersionNegExtTest.cpp
 ../src/core/unittest/PartitionTest.cpp
 ../src/core/unittest/PathIdStatsTest.cpp
+../src/core/unittest/StatelessPunchTest.cpp
 ../src/platform/unittest/TlsTest.cpp
 ../src/platform/unittest/PlatformTest.cpp
 ../src/platform/unittest/AddressMonitorTest.cpp

@@ -4160,30 +4160,25 @@ QuicConnGenerateLocalTransportParameters(
     }
 
     //
-    // draft-kozuka-quic-stateless-punch's transport parameter is deliberately
-    // NOT advertised yet.
+    // draft-kozuka-quic-stateless-punch's transport parameter, which says
+    // "send me PUNCH_ME_NOW and I will punch". True of us as of #171: the
+    // frame handler answers a request. We send no requests of our own until
+    // #172, which costs nothing -- a peer that asks us to punch gets a punch,
+    // and a peer waiting for us to ask is waiting for something the draft
+    // never promised it.
     //
-    // Negotiating it says "send me PUNCH_ME_NOW and I will punch", and this
-    // stage does neither: the frame is parsed and dropped. A peer that
-    // implements the draft -- a later stage of this work, or an interop
-    // partner -- would send requests and wait for packets that never come.
-    // Advertising support for something unimplemented is the one thing a
-    // wire-format-only stage must not do.
+    // Both endpoints advertise it, and a client must advertise
+    // alternative_address as well -- a server receiving it without that is
+    // required to fail the handshake, because the extension pairs the client's
+    // candidates against the addresses that frame carries. So the client's
+    // condition is "we offered alternative_address", which is the decision
+    // made just above rather than a restatement of it, and a server has no
+    // prerequisite at all.
     //
-    // #171 turns it on, when the server can answer. The condition it wants is
-    // already settled by the draft: both endpoints advertise it, and a client
-    // must advertise alternative_address as well -- a server receiving it
-    // without that is required to fail the handshake, because the extension
-    // pairs the client's candidates against the addresses that frame carries.
-    // So the client's condition is "we offered alternative_address", which is
-    // the decision made just above rather than a restatement of it, and a
-    // server has no prerequisite at all.
-    //
-    //  if (QuicConnIsServer(Connection) ||
-    //      (LocalTP->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS)) {
-    //      LocalTP->Flags |= QUIC_TP_FLAG_STATELESS_PUNCH;
-    //  }
-    //
+    if (QuicConnIsServer(Connection) ||
+        (LocalTP->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS)) {
+        LocalTP->Flags |= QUIC_TP_FLAG_STATELESS_PUNCH;
+    }
 
     if (QuicConnIsServer(Connection)) {
 
@@ -6305,6 +6300,23 @@ QuicConnRecvDecryptAndAuthenticate(
 }
 
 //
+// Declared here and defined beside QuicConnSendPunchProbe, which the receive
+// path reaches the same way: the punch send belongs with the other punch send,
+// and the frame handler below is its only caller. The two predicates it
+// consults are declared in connection.h instead, because they are the part
+// worth unit testing on its own.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnSendStatelessPunch(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound,
+    _In_ const QUIC_ADDR* ClientAddress,
+    _In_ uint16_t RequestPacketLength
+    );
+
+//
 // Reads the frames in a packet, and if everything is successful marks the
 // packet for acknowledgement and returns TRUE.
 //
@@ -6322,6 +6334,16 @@ QuicConnRecvFrames(
     BOOLEAN UpdatedFlowControl = FALSE;
     QUIC_ENCRYPT_LEVEL EncryptLevel = QuicKeyTypeToEncryptLevel(Packet->KeyType);
     BOOLEAN Closed = Connection->State.ClosedLocally || Connection->State.ClosedRemotely;
+
+    //
+    // draft-kozuka-quic-stateless-punch section 5.1: at most one punch packet
+    // in response to a single received packet, whatever the frame count. A
+    // per-packet local rather than connection state, because that is exactly
+    // the scope the rule is stated in -- and the allowance cannot be banked,
+    // since it goes out of scope with the packet.
+    //
+    BOOLEAN PunchSentForThisPacket = FALSE;
+
     const BOOLEAN ClosingState = Connection->State.ClosedLocally && !Connection->State.ClosedRemotely;
     const uint8_t* Payload = Packet->AvailBuffer + Packet->HeaderLength;
     uint16_t PayloadLength = Packet->PayloadLength;
@@ -7897,6 +7919,132 @@ QuicConnRecvFrames(
                 QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
                 return FALSE;
             }
+
+            //
+            // Not before the handshake is confirmed, which is a limit the
+            // draft does not set and this adds. The transport parameter is
+            // read out of the ClientHello, so the flag above can be set while
+            // 0-RTT is still being accepted -- and a 0-RTT packet arrives
+            // before the client's own address is validated and can be replayed
+            // from a spoofed source. Answering one would make the server send
+            // a packet to an address of the replayer's choosing. The draft's
+            // own limits hold it to one packet no larger than the request, so
+            // it is not an amplifier either way, but a legitimate client has
+            // no reason to ask this early: it learns the addresses it names
+            // from an ALTERNATIVE_ADDRESS frame, which is 1-RTT.
+            //
+            if (!Connection->State.HandshakeConfirmed) {
+                QuicTraceLogConnVerbose(
+                    PunchBeforeHandshakeConfirmed,
+                    Connection,
+                    "Ignoring a punch request before the handshake is confirmed");
+                break;
+            }
+
+            //
+            // One punch per received packet. The frames past the first are
+            // ignored, which section 5 says in so many words -- and the
+            // ignoring has to happen after the decode above, because the body
+            // still has to be consumed for the loop to reach the next frame.
+            //
+            if (PunchSentForThisPacket) {
+                QuicTraceLogConnVerbose(
+                    PunchAlreadySentForPacket,
+                    Connection,
+                    "Ignoring a second punch request in one packet");
+                break;
+            }
+
+            //
+            // Which of this server's advertised addresses the request is
+            // about. By address and port, which is what the frame carries and
+            // the whole reason this draft needs no per-attempt state: the
+            // older mechanism looked the entry up by a sequence number only
+            // the ADD_ADDRESS frames carried.
+            //
+            // No match is not an error. The server may have withdrawn the
+            // address, or never advertised it, and the draft asks only that
+            // the frame be ignored.
+            //
+            // Removing entries are skipped for the reason the older handler
+            // skipped them: QuicConnRemoveBoundAddress releases the binding
+            // and leaves the entry on the list until the withdrawal is
+            // acknowledged, so the binding is NULL in that window.
+            //
+            // The first match wins where several bound addresses share one
+            // observed address. Appendix C.2 leaves that open; picking the
+            // first makes the behaviour depend on list order, which is worth
+            // saying out loud rather than discovering. The alternative --
+            // preferring the base whose route to the client is best -- costs a
+            // route lookup inside frame processing, which is the thing this
+            // receive path must not do.
+            //
+            QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound = NULL;
+            for (CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
+                    Entry != &Connection->BoundAddresses;
+                    Entry = Entry->Flink) {
+                QUIC_BOUND_ADDRESS_LIST_ENTRY* Current =
+                    CXPLAT_CONTAINING_RECORD(
+                        Entry, QUIC_BOUND_ADDRESS_LIST_ENTRY, Link);
+                if (Current->ObservedAddressSet &&
+                    !Current->Removing &&
+                    Current->Binding != NULL &&
+                    QuicAddrCompare(&Current->ObservedAddress, &Frame.ServerAddress)) {
+                    Bound = Current;
+                    break;
+                }
+            }
+            if (Bound == NULL) {
+                QuicTraceLogConnVerbose(
+                    PunchRequestUnknownAddress,
+                    Connection,
+                    "Punch request named an address this server did not advertise");
+                break;
+            }
+
+            //
+            // The filter before the rate check, so a request to an address
+            // this server will never punch towards costs nothing but the
+            // comparison. The order the other way round would let a peer burn
+            // its own allowance on addresses that were never going to be
+            // answered.
+            //
+            // The allowance is spent on the attempt, not refunded if the send
+            // below declines -- a request in a packet too small to answer
+            // within, say. The peer is the only one who can lose by that, and
+            // bounding the work is the point.
+            //
+            if (!QuicConnPunchDestinationAllowed(Connection, &Frame.ClientAddress) ||
+                !QuicConnPunchRateAllows(Connection)) {
+                break;
+            }
+
+            //
+            // One packet, and then nothing is remembered. No path, no
+            // connection ID, no record of the attempt: the client learns the
+            // outcome only from whether its own validation succeeds, which is
+            // what makes the server's side of this stateless.
+            //
+            // The guard records whether a punch actually went out, not whether
+            // one was attempted. "At most one punch packet" is satisfied
+            // either way, and a request the send declined -- too small to
+            // answer within -- should not cost a later frame its chance.
+            //
+            PunchSentForThisPacket =
+                QuicConnSendStatelessPunch(
+                    Connection,
+                    Bound,
+                    &Frame.ClientAddress,
+                    //
+                    // The QUIC packet, not the datagram that carried it.
+                    // Section 5.1 bounds the punch by "the packet", and where
+                    // a datagram coalesces several the stricter reading is the
+                    // one that actually bounds amplification. For the 1-RTT
+                    // packet a punch request arrives in the two are the same
+                    // size anyway, since a short header's payload runs to the
+                    // end of the datagram.
+                    //
+                    (uint16_t)(Packet->HeaderLength + Packet->PayloadLength));
 
             break;
         }
@@ -11921,6 +12069,287 @@ QuicConnProcessRemoveAddressOper(
     }
 }
 
+//
+// Whether a punch packet may be sent to this address at all.
+//
+// draft-kozuka-quic-stateless-punch section 5.1. The client chooses this
+// address and the server sends an unauthenticated packet there, so it is the
+// one place the mechanism could be turned into a way of reaching something it
+// has no business reaching.
+//
+//  - MUST NOT: multicast, broadcast, unspecified. None of them is a peer.
+//  - SHOULD NOT: loopback, link-local, or otherwise internally reachable.
+//    Refused outright rather than made a policy knob, because a server with no
+//    reason to punch towards its own host has no reason to offer the option.
+//  - MAY refuse sensitive ports (RFC 9000 section 21.5.6). A short list of the
+//    ports that make good amplifiers, which is what that section is about.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchDestinationAllowed(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Address
+    )
+{
+    const uint16_t Port = QuicAddrGetPort(Address);
+    if (Port == 0 || QuicAddrIsWildCard(Address)) {
+        QuicTraceLogConnVerbose(
+            PunchDestinationRefused,
+            Connection,
+            "Refusing to punch towards an unspecified address");
+        return FALSE;
+    }
+
+    if (QuicAddrGetFamily(Address) == QUIC_ADDRESS_FAMILY_INET) {
+        //
+        // Read as bytes, which is how QuicCandidateAddressIsLoopback reads the
+        // same field and for the same reason: CxPlatByteSwapUint32 is an
+        // unconditional bswap rather than an ntohl, so it would turn an
+        // already-host-order address around on a big-endian host. The byte
+        // order of a four-byte array is the one thing that does not change.
+        //
+        uint8_t Bytes[4];
+        CxPlatCopyMemory(Bytes, &Address->Ipv4.sin_addr, sizeof(Bytes));
+        //
+        // 224/4 multicast, 255.255.255.255 broadcast, and 0/8 which names this
+        // network rather than a host on it.
+        //
+        if ((Bytes[0] & 0xF0) == 0xE0 ||
+            (Bytes[0] == 0xFF && Bytes[1] == 0xFF &&
+             Bytes[2] == 0xFF && Bytes[3] == 0xFF) ||
+            Bytes[0] == 0) {
+            QuicTraceLogConnVerbose(
+                PunchDestinationRefusedScope,
+                Connection,
+                "Refusing to punch towards a multicast or broadcast address");
+            return FALSE;
+        }
+    } else if (Address->Ipv6.sin6_addr.s6_addr[0] == 0xFF) {
+        QuicTraceLogConnVerbose(
+            PunchDestinationRefusedScope,
+            Connection,
+            "Refusing to punch towards a multicast or broadcast address");
+        return FALSE;
+    }
+
+    //
+    // Reusing the predicates from the candidate pair table, which read scope
+    // off the address rather than off a flag some platform set -- the same
+    // reason they were written that way for #159.
+    //
+    if (QuicCandidateAddressIsLoopback(Address) ||
+        QuicCandidateAddressIsLinkLocal(Address)) {
+        QuicTraceLogConnVerbose(
+            PunchDestinationRefusedLocal,
+            Connection,
+            "Refusing to punch towards a loopback or link-local address");
+        return FALSE;
+    }
+
+    //
+    // The ports RFC 9000 section 21.5.6 has in mind: ones where an unsolicited
+    // datagram provokes a larger reply from something that is not a QUIC peer.
+    // Not exhaustive and not meant to be -- it is a MAY, and the cost of the
+    // list being short is bounded by everything above.
+    //
+    static const uint16_t SensitivePorts[] = {
+        53,     // DNS
+        123,    // NTP
+        137,    // NetBIOS name service
+        161,    // SNMP
+        389,    // CLDAP
+        1900,   // SSDP
+        11211,  // memcached
+    };
+    for (uint32_t i = 0; i < ARRAYSIZE(SensitivePorts); ++i) {
+        if (Port == SensitivePorts[i]) {
+            QuicTraceLogConnVerbose(
+                PunchDestinationRefusedPort,
+                Connection,
+                "Refusing to punch towards a sensitive port (%hu)",
+                Port);
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+//
+// Whether this connection's punch allowance has anything left in it.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchRateAllows(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    const uint64_t Now = CxPlatTimeUs64();
+    if (Connection->PunchWindowStartUs == 0 ||
+        CxPlatTimeDiff64(Connection->PunchWindowStartUs, Now) >= QUIC_PUNCH_RATE_WINDOW_US) {
+        Connection->PunchWindowStartUs = Now;
+        Connection->PunchesInWindow = 0;
+    }
+    if (Connection->PunchesInWindow >= QUIC_PUNCH_RATE_LIMIT_PER_WINDOW) {
+        QuicTraceLogConnVerbose(
+            PunchRateLimited,
+            Connection,
+            "Punch rate limit reached, dropping the request");
+        return FALSE;
+    }
+    Connection->PunchesInWindow++;
+    return TRUE;
+}
+
+//
+// Sends one punch packet, per draft-kozuka-quic-stateless-punch section 6.
+//
+// Opaque bytes behind a short header, not a protected 1-RTT packet, and that
+// is the substantive choice here. The draft permits either -- "a single PING
+// frame in a protected 1-RTT packet, or random bytes" -- and the second avoids
+// a problem the first has in this implementation: QuicPacketBuilderFinalize
+// hands every packet it builds to QuicLossDetectionOnPacketSent, so the
+// existing QuicConnSendPunchProbe's packet is tracked for loss recovery and
+// congestion control and would be retransmitted. Section 6 says a punch packet
+// is none of those things and is never retransmitted. Random bytes have no
+// packet number to track, so they satisfy that by construction rather than by
+// unpicking the send path.
+//
+// To an observer the two are indistinguishable, which is the point of the short
+// header and the random connection ID: section 11 wants the packet to look like
+// ordinary traffic and to be uncorrelatable with the connection's other paths.
+//
+// Never larger than the packet that carried the request (section 5.1), so the
+// mechanism cannot amplify by bytes any more than it can by packets.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnSendStatelessPunch(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound,
+    _In_ const QUIC_ADDR* ClientAddress,
+    _In_ uint16_t RequestPacketLength
+    )
+{
+    //
+    // Big enough for a short header and a random connection ID with a few
+    // bytes after it, small enough never to exceed the request. A NAT needs a
+    // datagram, not a large one.
+    //
+    const uint16_t MinLength = (uint16_t)(1 + MsQuicLib.CidTotalLength + 4);
+    const uint16_t Cap = 64;
+    uint16_t Length = RequestPacketLength < Cap ? RequestPacketLength : Cap;
+    if (Length < MinLength) {
+        //
+        // The request arrived in a packet too small to answer within. Dropped
+        // rather than answered over-size: the size bound is a MUST, and a
+        // client that wants a punch can ask again in a larger packet.
+        //
+        QuicTraceLogConnVerbose(
+            PunchRequestPacketTooSmall,
+            Connection,
+            "Punch request packet too small to answer within (%hu)",
+            RequestPacketLength);
+        return FALSE;
+    }
+
+    //
+    // The frame's two addresses always share a family -- the frame type says
+    // which -- and the entry was matched on the server one, so the client
+    // address agrees with Bound->ObservedAddress. It need not agree with
+    // Bound->Address, which is where the socket actually is: nothing stops an
+    // application from reporting an observed address of the other family for a
+    // bound address, and handing the datapath a local and remote of different
+    // families is a platform-level failure rather than a QUIC-level one.
+    //
+    if (QuicAddrGetFamily(&Bound->Address) != QuicAddrGetFamily(ClientAddress)) {
+        QuicTraceLogConnVerbose(
+            PunchAddressFamilyMismatch,
+            Connection,
+            "Punch request address family does not match the bound address");
+        return FALSE;
+    }
+
+    if (!QuicLibraryTryAddRefBinding(Bound->Binding)) {
+        return FALSE;
+    }
+    QUIC_BINDING* Binding = Bound->Binding;
+
+    CXPLAT_ROUTE Route = { 0 };
+    CxPlatCopyMemory(&Route.LocalAddress, &Bound->Address, sizeof(QUIC_ADDR));
+    CxPlatCopyMemory(&Route.RemoteAddress, ClientAddress, sizeof(QUIC_ADDR));
+
+    //
+    // The ordinary socket, named rather than left to the default. A zeroed
+    // route is CXPLAT_DATAPATH_TYPE_UNKNOWN, and on a host where the raw
+    // datapath is available CxPlatSendDataAlloc would choose it -- then
+    // RawSocketSend asserts the route is resolved, which a route to an address
+    // nothing has ever spoken to is not. Resolving it means neighbor discovery,
+    // which pends, and a pended send has to be resumed from somewhere: state,
+    // which is the one thing a stateless punch does not get to keep. The kernel
+    // resolves this for us on the way out and forgets it afterwards, which is
+    // the same bargain.
+    //
+    Route.DatapathType = CXPLAT_DATAPATH_TYPE_NORMAL;
+    Route.State = RouteResolved;
+
+    CXPLAT_SEND_CONFIG SendConfig = {
+        &Route, Length, CXPLAT_ECN_NON_ECT, 0, CXPLAT_DSCP_CS0
+    };
+    CXPLAT_SEND_DATA* SendData = CxPlatSendDataAlloc(Binding->Socket, &SendConfig);
+    if (SendData == NULL) {
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "punch packet",
+            Length);
+        QuicLibraryReleaseBinding(Binding);
+        return FALSE;
+    }
+
+    QUIC_BUFFER* Datagram = CxPlatSendDataAllocBuffer(SendData, Length);
+    if (Datagram == NULL) {
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "punch packet buffer",
+            Length);
+        CxPlatSendDataFree(SendData);
+        QuicLibraryReleaseBinding(Binding);
+        return FALSE;
+    }
+
+    //
+    // Random throughout, then the first byte forced into the shape of a short
+    // header: the long-header bit clear and the fixed bit set, so a middlebox
+    // treats it as ordinary 1-RTT traffic. Everything after it -- the
+    // connection ID included, which section 11 requires be unrelated to any
+    // this connection uses -- stays random, which is what makes the packet
+    // opaque.
+    //
+    CxPlatRandom(Length, Datagram->Buffer);
+    Datagram->Buffer[0] = (uint8_t)((Datagram->Buffer[0] & 0x3F) | 0x40);
+
+    QuicBindingSend(
+        Binding,
+        Connection->Partition,
+        &Route,
+        SendData,
+        Length,
+        1);
+
+    QuicLibraryReleaseBinding(Binding);
+
+    QuicTraceLogConnInfo(
+        PunchPacketSent,
+        Connection,
+        "Sent a punch packet of %hu bytes",
+        Length);
+
+    return TRUE;
+}
+
 // Sends a punch probe to the specified remote address using the specified bound address.
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
@@ -13655,6 +14084,23 @@ QuicConnParamGet(
         Status = QUIC_STATUS_SUCCESS;
         break;
     }
+
+    case QUIC_PARAM_CONN_TEST_STATELESS_PUNCH_NEGOTIATED:
+
+        if (*BufferLength < sizeof(BOOLEAN)) {
+            *BufferLength = sizeof(BOOLEAN);
+            Status = QUIC_STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+        if (Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        *BufferLength = sizeof(BOOLEAN);
+        *(BOOLEAN*)Buffer = Connection->State.StatelessPunchNegotiated;
+        Status = QUIC_STATUS_SUCCESS;
+        break;
 #endif
 
     case QUIC_PARAM_CONN_CLOSE_ASYNC:

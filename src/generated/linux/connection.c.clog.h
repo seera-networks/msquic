@@ -1307,6 +1307,26 @@ tracepoint(CLOG_CONNECTION_C, AlternativeAddressAddFailed , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PunchPacketSent
+// [conn][%p] Sent a punch packet of %hu bytes
+// QuicTraceLogConnInfo(
+        PunchPacketSent,
+        Connection,
+        "Sent a punch packet of %hu bytes",
+        Length);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Length = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PunchPacketSent
+#define _clog_4_ARGS_TRACE_PunchPacketSent(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PunchPacketSent , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdateShareBinding
 // [conn][%p] Updated ShareBinding = %hhu
 // QuicTraceLogConnInfo(
@@ -2015,6 +2035,60 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyObservedAddress , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PunchBeforeHandshakeConfirmed
+// [conn][%p] Ignoring a punch request before the handshake is confirmed
+// QuicTraceLogConnVerbose(
+                    PunchBeforeHandshakeConfirmed,
+                    Connection,
+                    "Ignoring a punch request before the handshake is confirmed");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchBeforeHandshakeConfirmed
+#define _clog_3_ARGS_TRACE_PunchBeforeHandshakeConfirmed(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchBeforeHandshakeConfirmed , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchAlreadySentForPacket
+// [conn][%p] Ignoring a second punch request in one packet
+// QuicTraceLogConnVerbose(
+                    PunchAlreadySentForPacket,
+                    Connection,
+                    "Ignoring a second punch request in one packet");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchAlreadySentForPacket
+#define _clog_3_ARGS_TRACE_PunchAlreadySentForPacket(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchAlreadySentForPacket , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestUnknownAddress
+// [conn][%p] Punch request named an address this server did not advertise
+// QuicTraceLogConnVerbose(
+                    PunchRequestUnknownAddress,
+                    Connection,
+                    "Punch request named an address this server did not advertise");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchRequestUnknownAddress
+#define _clog_3_ARGS_TRACE_PunchRequestUnknownAddress(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchRequestUnknownAddress , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for IndicatePeerAddrChanged
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED
 // QuicTraceLogConnVerbose(
@@ -2224,6 +2298,136 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressRemovedAlt , arg1);\
 #ifndef _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressRemoved
 #define _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressRemoved(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressRemoved , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefused
+// [conn][%p] Refusing to punch towards an unspecified address
+// QuicTraceLogConnVerbose(
+            PunchDestinationRefused,
+            Connection,
+            "Refusing to punch towards an unspecified address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchDestinationRefused
+#define _clog_3_ARGS_TRACE_PunchDestinationRefused(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchDestinationRefused , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedScope
+// [conn][%p] Refusing to punch towards a multicast or broadcast address
+// QuicTraceLogConnVerbose(
+                PunchDestinationRefusedScope,
+                Connection,
+                "Refusing to punch towards a multicast or broadcast address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchDestinationRefusedScope
+#define _clog_3_ARGS_TRACE_PunchDestinationRefusedScope(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchDestinationRefusedScope , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedLocal
+// [conn][%p] Refusing to punch towards a loopback or link-local address
+// QuicTraceLogConnVerbose(
+            PunchDestinationRefusedLocal,
+            Connection,
+            "Refusing to punch towards a loopback or link-local address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchDestinationRefusedLocal
+#define _clog_3_ARGS_TRACE_PunchDestinationRefusedLocal(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchDestinationRefusedLocal , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedPort
+// [conn][%p] Refusing to punch towards a sensitive port (%hu)
+// QuicTraceLogConnVerbose(
+                PunchDestinationRefusedPort,
+                Connection,
+                "Refusing to punch towards a sensitive port (%hu)",
+                Port);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Port = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PunchDestinationRefusedPort
+#define _clog_4_ARGS_TRACE_PunchDestinationRefusedPort(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PunchDestinationRefusedPort , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRateLimited
+// [conn][%p] Punch rate limit reached, dropping the request
+// QuicTraceLogConnVerbose(
+            PunchRateLimited,
+            Connection,
+            "Punch rate limit reached, dropping the request");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchRateLimited
+#define _clog_3_ARGS_TRACE_PunchRateLimited(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchRateLimited , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestPacketTooSmall
+// [conn][%p] Punch request packet too small to answer within (%hu)
+// QuicTraceLogConnVerbose(
+            PunchRequestPacketTooSmall,
+            Connection,
+            "Punch request packet too small to answer within (%hu)",
+            RequestPacketLength);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RequestPacketLength = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PunchRequestPacketTooSmall
+#define _clog_4_ARGS_TRACE_PunchRequestPacketTooSmall(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PunchRequestPacketTooSmall , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchAddressFamilyMismatch
+// [conn][%p] Punch request address family does not match the bound address
+// QuicTraceLogConnVerbose(
+            PunchAddressFamilyMismatch,
+            Connection,
+            "Punch request address family does not match the bound address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchAddressFamilyMismatch
+#define _clog_3_ARGS_TRACE_PunchAddressFamilyMismatch(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchAddressFamilyMismatch , arg1);\
 
 #endif
 
