@@ -2030,12 +2030,39 @@ QuicSendPathChallenges(
 
         QUIC_PACKET_BUILDER Builder = { 0 };
         if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
+            //
+            // Kept rather than dropped, the same way the route case above
+            // does it: the flag was cleared by the caller before this ran, so
+            // a bare continue abandons a challenge the path is still waiting
+            // on and the only evidence is the validation timeout three
+            // attempts later. Re-raising the flag without QuicSendSetSendFlag
+            // arms the next flush without scheduling one, so this cannot spin.
+            //
+            // #196 was exactly this: a path ID with no source CID fails to
+            // initialize here, and the challenge went missing with nothing
+            // said. The cause is fixed in QuicConnOpenNewPath, but a silently
+            // discarded path challenge is worth not having either way.
+            //
+            QuicTraceLogConnWarning(
+                PathChallengeBuilderFailed,
+                Connection,
+                "Path[%hhu] could not start a packet for its challenge",
+                Path->ID);
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_PATH_CHALLENGE;
             continue;
         }
         _Analysis_assume_(Builder.Metadata != NULL);
 
         if (!QuicPacketBuilderPrepareForControlFrames(
                 &Builder, FALSE, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE)) {
+            //
+            // Same reasoning. QuicPacketBuilderPrepareForControlFrames takes
+            // the flag so that it can put it back itself when it declines for
+            // want of room, but it returns FALSE for reasons that do not --
+            // no key for the packet type it chose, for one -- so the flag is
+            // re-raised here rather than assumed.
+            //
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_PATH_CHALLENGE;
             continue;
         }
 

@@ -10446,6 +10446,22 @@
       ],
       "macroName": "QuicTraceEvent"
     },
+    "PathChallengeBuilderFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] could not start a packet for its challenge",
+      "UniqueId": "PathChallengeBuilderFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "PathChallengeResend": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
@@ -19474,6 +19490,11 @@
         "UniquenessHash": "327a7afe-ed73-6a7f-9a19-c69fcb4b2e0a",
         "TraceID": "PathBbr",
         "EncodingString": "[conn][%p][pathid][%hhu] BBR: State=%u RState=%u CongestionWindow=%u BytesInFlight=%u BytesInFlightMax=%u MinRttEst=%lu EstBw=%lu AppLimited=%u"
+      },
+      {
+        "UniquenessHash": "56360bc8-5a1f-0bfa-3b0a-90bdf87ac489",
+        "TraceID": "PathChallengeBuilderFailed",
+        "EncodingString": "[conn][%p] Path[%hhu] could not start a packet for its challenge"
       },
       {
         "UniquenessHash": "95ff69a6-fa4b-062d-a323-d8e079e8341a",

@@ -61,11 +61,11 @@ trap this whole environment exists to avoid.
 | Case | Configuration | Expectation |
 | --- | --- | --- |
 | `direct` | EIM, address-dependent filtering | A direct path validates; the server sees the client's public mapping |
-| `strict` | EIM, address-and-port-dependent filtering | Traversal fails, connection survives (see *Findings*) |
+| `strict` | EIM, plain conntrack filtering | The probe leaves from the advertised port (#198) |
 | `edm` | Endpoint-dependent mapping | Traversal fails as the draft says it should, without stalling |
 | `droppunch` | `direct`, punch dropped on the wire | Exactly one punch packet leaves; no retransmission; validation fails |
 | `multiaddr-cross` | Two local addresses, two remotes, no NAT | Four paths — the full cross product |
-| `multiaddr-return` | A local address removed and restored | The path is recreated (see *Findings*) |
+| `multiaddr-return` | A local address removed and restored | The path is recreated and validates (see *Findings*) |
 
 `droppunch` measures the one-packet rule on the wire rather than from a
 counter: the `DROP` rule's own packet count says how many punches actually
@@ -76,44 +76,67 @@ on a single-interface host.
 
 ## Findings
 
-**The client probes from a mapping it did not advertise.** The reconciler opens
-a path with `QuicAddrSetPort(&Local, 0)` (`connection.c`), so the direct path
-uses a fresh socket, and under endpoint-independent mapping a fresh socket gets
-a fresh public port. The client advertises the mapping of the socket its
-relayed connection uses, the server punches towards that, and the probe then
-arrives from a different port.
+**The client probes from the mapping it advertised** — which it did not always
+do. The reconciler opened the path with `QuicAddrSetPort(&Local, 0)`, so the
+probe left from a fresh socket and, under endpoint-independent mapping, a fresh
+public port; the peer had punched towards the mapping of the socket the relayed
+connection uses. Behind a NAT that filters on address *and* port — what
+conntrack does — every `PATH_CHALLENGE` was dropped. That was #198, reported
+from a real testbed, and the reconciler now binds the path to the port the
+candidate registered. The `strict` case asserts it.
 
-So traversal needs the server's NAT to filter on address rather than on address
-and port. That is a documented NAT behaviour and RFC 4787's REQ-8 recommends
-the looser end of it, so the `direct` case is realistic — but it is a real
-constraint, and `strict` pins it: with the filtering plain conntrack gives, the
-punch is sent, answered, and cannot help. Making the two coincide would mean
-carrying the candidate's port into the path, which is a design change rather
-than a fix.
+Three things a NAT-traversal client must do for that to work, none of them
+obvious and all of them now in `quicpunch`:
+
+- **Share its UDP binding.** The direct path has to leave from the port that
+  already carries the relayed path, so the two paths share one socket. Without
+  sharing, `QuicLibraryGetBinding` finds the port in use, declines to share,
+  and the path cannot be opened at all -- the reconciler then never queues the
+  punch request and the mechanism is silently inert.
+- **Use an unconnected socket** (`QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET`). A
+  connected socket has a remote of its own and can carry only that peer, so the
+  direct path cannot ride the punched port.
+- **Name a specific local address.** An unconnected socket has no remote to
+  take one from, and `QuicConnOpenNewPath` refuses a wildcard.
 
 `direct` emulates address-dependent filtering with `xt_recent`: the punch
 records its destination on the way out and only recorded addresses are
 forwarded in. The binding therefore still exists *only because the punch
 created it*, which is the property under test.
 
-**A path recreated for a returned local address often does not validate**
-(#196). In `multiaddr-return` the reconciler does recreate the path — a binding
-appears on the restored address and the peer issues connection IDs for the new
-path id — but no `PATH_CHALLENGE` frame reaches the wire: the connection-level
-flag is armed and cleared by each flush while the peer's receive log stays
-empty. Validation times out after three attempts and both ends abandon the path
-id. Plain traffic from the restored address works immediately, so the
-environment is not what loses them.
+`strict` leaves plain conntrack in place and asserts the 5-tuple rather than the
+validation: this emulation does not yet get the client's NAT to reuse its
+mapping for a second destination, so end-to-end traversal there is still
+unproven. The part #198 was about -- which port the probe leaves from -- is what
+it checks, and it fails if that regresses.
 
-It is **intermittent**: 7 of 11 single-cycle runs failed when this was written.
-The case therefore runs the remove/restore cycle three times and reports how
-many validated — but those are not independent trials. Consecutive runs have
-come out 0, 3 and 1 validated, so whatever decides it is established once per
-connection and then holds for that connection's lifetime. **A green
-`multiaddr-return` is not proof of a fix**; check #196 before concluding one.
+**A path recreated for a returned local address could not send its
+`PATH_CHALLENGE`** (#196). Found here, and the cause is fixed: a path ID taken
+from the unused set carried the destination CIDs the peer had issued for it and
+none of its own, because with a shared binding — which multipath requires —
+`QuicConnOpenNewPath` registered the CIDs that already existed and generated
+new ones only when that registration failed. `QuicPacketBuilderInitialize`
+refuses a path whose path ID has no source CID, so the challenge the reconciler
+had just armed was dropped with nothing said, and validation timed out three
+attempts later.
 
-The assertion is left **failing** rather than relaxed. A harness that reported
-this green would be worse than no harness.
+It looked intermittent because it depended on whether some unrelated event —
+a `MAX_PATH_ID`, a key update — happened to run
+`QuicPathIDSetGenerateNewSourceCids` over every path ID before the validation
+budget ran out, and whether it did was settled early in a connection and then
+held. `QuicConnOpenNewPath` now generates the CIDs when the path is opened, and
+`QuicSendPathChallenges` re-arms the send flag and traces when it cannot start
+a packet, so a dropped challenge is no longer silent.
+
+**A residual remains.** The fix moved the rate a long way but did not close it:
+**7 of 11 runs failed before, 2 of 15 after** — one of those inside the full
+suite, one standalone — always one cycle short of validating rather than the
+wholesale failure seen before. It is not the same defect: the skip that
+produced #196 no longer occurs, and an instrumented build has never reproduced
+the remainder in 9 runs, which points at either a second and rarer path or this
+case racing the stack. The assertion is therefore left in place — it fails
+loudly if the main defect returns, and the per-cycle counts it prints say which
+cycle fell short.
 
 ## Reading a run
 

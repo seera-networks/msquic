@@ -9997,6 +9997,37 @@ QuicConnOpenNewPath(
         }
     }
 
+    //
+    // A path ID taken from the unused set carries the destination CIDs the peer
+    // issued for it and none of its own, and nothing above generates them. With
+    // a shared binding -- which multipath requires -- the branch just above
+    // registers the CIDs that already exist and generates new ones only when
+    // that registration fails; and when the binding is inherited from another
+    // path, the whole block is skipped. So a path opened for a fresh path ID
+    // could not send at all: QuicPacketBuilderInitialize refuses a path whose
+    // path ID has no source CID ("No src CID to send with"), which silently
+    // dropped the PATH_CHALLENGE the caller had just armed and left validation
+    // to time out.
+    //
+    // That was #196, and it looked intermittent because it depended on whether
+    // some unrelated event -- a MAX_PATH_ID, a key update -- happened to run
+    // QuicPathIDSetGenerateNewSourceCids over every path ID before the
+    // validation budget ran out. Whether it did was settled early in the
+    // connection and then held, which is why repeating the attempt never
+    // changed the outcome within one connection.
+    //
+    // Generated here rather than inside the branch above so the CIDs are new
+    // to every binding QuicPathIDGenerateNewSourceCid registers them with,
+    // this path's included; doing it earlier would have
+    // QuicBindingAddAllSourceConnectionIDs add them a second time. The guard
+    // keeps it to the case that needs it -- without multipath the path shares
+    // Paths[0]'s path ID, which already has its CIDs, and without a shared
+    // binding the generator is a no-op by design.
+    //
+    if (Path->PathID->SourceCids.Next == NULL) {
+        QuicPathIDGenerateNewSourceCids(Path->PathID, FALSE);
+    }
+
     QuicTraceEvent(
         ConnLocalAddrAdded,
         "[conn][%p] New Local IP: %!ADDR!",
@@ -11814,10 +11845,14 @@ QuicConnPunchableClientAddress(
     _In_ QUIC_CONNECTION* Connection,
     _In_ const QUIC_ADDR* LocalAddress,
     _In_ const QUIC_ADDR* RemoteAddress,
-    _Out_ QUIC_ADDR* ClientAddress
+    _Out_ QUIC_ADDR* ClientAddress,
+    _Out_opt_ uint16_t* CandidateLocalPort
     )
 {
     CxPlatZeroMemory(ClientAddress, sizeof(*ClientAddress));
+    if (CandidateLocalPort != NULL) {
+        *CandidateLocalPort = 0;
+    }
 
     if (!Connection->State.StatelessPunchNegotiated) {
         return FALSE;
@@ -11869,6 +11904,21 @@ QuicConnPunchableClientAddress(
         }
 
         *ClientAddress = Candidate->ObservedAddress;
+        //
+        // And the port the application registered this candidate's local
+        // address with, which is the port a path probing for this pair has to
+        // leave from: the peer punches towards the observed address above, and
+        // a mapping is of a (local address, local port) pair. Probing from any
+        // other port lands on a mapping nobody punched, which is #198.
+        //
+        // Carried out of here rather than looked up again by the caller
+        // because this is the candidate that decided the question; a second
+        // search by local IP would pick a different one where an application
+        // registered several.
+        //
+        if (CandidateLocalPort != NULL) {
+            *CandidateLocalPort = QuicAddrGetPort(&Candidate->Address);
+        }
         return TRUE;
     }
 
@@ -11957,12 +12007,14 @@ QuicConnReconcileCreatePaths(
         }
 
         QUIC_ADDR PunchClientAddress;
+        uint16_t CandidateLocalPort = 0;
         const BOOLEAN Punchable =
             QuicConnPunchableClientAddress(
                 Connection,
                 &Pair->LocalAddress,
                 &Pair->RemoteAddress,
-                &PunchClientAddress);
+                &PunchClientAddress,
+                &CandidateLocalPort);
 
         //
         // NAT traversal is this one rule on top of AUTO: a pair becomes a path
@@ -11988,8 +12040,39 @@ QuicConnReconcileCreatePaths(
             continue;
         }
 
+        //
+        // The port the candidate registered, where there is one, rather than
+        // an ephemeral one.
+        //
+        // A pair's local address comes from the host address snapshot and so
+        // carries no port, and zeroing it is what this used to do
+        // unconditionally. That opens a fresh binding --
+        // QuicLibraryGetBinding skips its "does one already exist" lookup when
+        // the port is unspecified -- and under endpoint-independent mapping a
+        // fresh socket is seen as a fresh public port, while the peer punches
+        // towards the mapping of the socket the candidate named. Behind a NAT
+        // or firewall that filters on address *and* port, which is what
+        // conntrack does and what every failing scenario in #198 had, the
+        // probe lands on a mapping nobody punched and is dropped.
+        //
+        // So the probe leaves from the port whose mapping the request named.
+        // That port already carries the path the request went out on, so the
+        // two share a binding -- which is why a NAT-traversal client has to
+        // have asked for a shared, unconnected socket.
+        //
+        // Only with a shared binding, which is the same condition
+        // QuicConnAutoMigrate applies two sites above for the same reason: a
+        // shared binding is keyed on the port, and an unshared one cannot be
+        // handed out twice. Without the test, a client that never asked to
+        // share would have QuicLibraryGetBinding try to bind a port its own
+        // connected socket already holds, fail EADDRINUSE, and take
+        // QuicConnAddPath down with it -- so no path and no punch request at
+        // all, which is worse than probing from the wrong port.
+        //
         QUIC_ADDR Local = Pair->LocalAddress;
-        QuicAddrSetPort(&Local, 0);
+        QuicAddrSetPort(
+            &Local,
+            Punchable && Connection->State.ShareBinding ? CandidateLocalPort : 0);
         QUIC_ADDR Remote = Pair->RemoteAddress;
         QUIC_PATH_PARAM Param = { &Local, &Remote };
 

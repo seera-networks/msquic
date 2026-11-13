@@ -771,18 +771,77 @@ RunClient(
         return 1;
     }
 
-    if (Multipath != 0) {
+    //
+    // Unconditional, for two separate reasons.
+    //
+    // Multipath requires it: a client keeps its binding to itself by default,
+    // which gets it a zero-length source connection id, and a server that then
+    // sees initial_max_path_id closes the connection with PROTOCOL_VIOLATION
+    // ("Multipath requires non-zero length connection IDs" in crypto_tls.c).
+    // Every multipath test in PathTest.cpp calls this for the same reason.
+    //
+    // NAT traversal requires it too, which is less obvious: the direct path
+    // has to leave from the port whose mapping the peer punched, and that port
+    // already carries the relayed path -- so the two paths share one socket.
+    // Without sharing, QuicLibraryGetBinding finds the port in use, declines
+    // to share it, and the path cannot be opened at all; the reconciler then
+    // never queues the punch request and the whole mechanism is silently
+    // inert.
+    //
+    if (QUIC_FAILED(Connection.SetShareUdpBinding())) {
+        printf("SetShareUdpBinding failed\n");
+        return 1;
+    }
+
+    //
+    // And the socket has to be unconnected, which is the other half of sharing
+    // one port between the relayed path and the direct one. A connected socket
+    // has a remote address of its own and can only carry that one peer, so the
+    // direct path cannot ride the port whose mapping was punched -- which is
+    // what the deployment in #198 means by adding its relay leg's
+    // "unconnected UDP binding". Set before Start and after sharing, both of
+    // which the parameter requires.
+    //
+    //
+    // An unconnected socket also needs a local address of its own: it has no
+    // remote to take one from, and the first packet goes out before anything
+    // has been learned from the peer, so QuicConnOpenNewPath refuses a
+    // wildcard. Named here rather than left to the kernel.
+    //
+    const char* LocalArg = GetValue(argc, argv, "local");
+    if (LocalArg != nullptr) {
+        QUIC_ADDR Bind;
+        if (!ParseAddr(LocalArg, &Bind)) {
+            printf("-local could not be parsed\n");
+            return 1;
+        }
+        const QUIC_STATUS Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_LOCAL_ADDRESS, sizeof(Bind), &Bind);
+        if (QUIC_FAILED(Status)) {
+            printf("LOCAL_ADDRESS failed, 0x%x\n", Status);
+            return 1;
+        }
+        EmitAddr("client_local_requested", &Bind);
+    }
+
+    uint8_t Unconnected = 1;
+    TryGetValue(argc, argv, "unconnected", &Unconnected);
+    if (Unconnected != 0 && LocalArg == nullptr) {
         //
-        // Required, and the failure without it is not self-explanatory: a
-        // client keeps its binding to itself by default, which gets it a
-        // zero-length source connection id, and a server that then sees
-        // initial_max_path_id closes the connection with PROTOCOL_VIOLATION
-        // ("Multipath requires non-zero length connection IDs" in
-        // crypto_tls.c). Sharing the binding is what makes the id non-zero.
-        // Every multipath test in PathTest.cpp calls this for the same reason.
+        // Said rather than silently skipped: without -local the parameter
+        // cannot be set, and the run would then fail to traverse for a reason
+        // nothing in its output explains.
         //
-        if (QUIC_FAILED(Connection.SetShareUdpBinding())) {
-            printf("SetShareUdpBinding failed\n");
+        Emit("client_unconnected=skipped,no -local given");
+    }
+    if (Unconnected != 0 && LocalArg != nullptr) {
+        const uint8_t On = TRUE;
+        const QUIC_STATUS Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET, sizeof(On), &On);
+        if (QUIC_FAILED(Status)) {
+            printf("UNCONNECTED_UDP_SOCKET failed, 0x%x\n", Status);
             return 1;
         }
     }
@@ -916,6 +975,7 @@ int QUIC_MAIN_EXPORT main(int argc, char **argv) {
             "                         [-mode:nat|auto|manual] [-multipath:0|1]\n"
             "                         [-poll:<seconds>] [-time:<seconds>]\n"
             "                         [-keepalive:<ms>] [-idle:<ms>] [-pathevent:0|1]\n"
+            "                         [-local:<ip[:port]>] [-unconnected:0|1]\n"
             "\n"
             "Exit codes: 0 a direct path validated, 2 relay only, 1 error.\n");
         return 1;

@@ -75,6 +75,29 @@ TRACEPOINT_EVENT(CLOG_SEND_C, AlternativeAddressTruncated,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathChallengeBuilderFailed
+// [conn][%p] Path[%hhu] could not start a packet for its challenge
+// QuicTraceLogConnWarning(
+                PathChallengeBuilderFailed,
+                Connection,
+                "Path[%hhu] could not start a packet for its challenge",
+                Path->ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SEND_C, PathChallengeBuilderFailed,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for MtuProbeTruncated
 // [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
 // QuicTraceLogConnInfo(

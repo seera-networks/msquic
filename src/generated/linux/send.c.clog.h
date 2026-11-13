@@ -100,6 +100,26 @@ tracepoint(CLOG_SEND_C, AlternativeAddressTruncated , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathChallengeBuilderFailed
+// [conn][%p] Path[%hhu] could not start a packet for its challenge
+// QuicTraceLogConnWarning(
+                PathChallengeBuilderFailed,
+                Connection,
+                "Path[%hhu] could not start a packet for its challenge",
+                Path->ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Path->ID = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PathChallengeBuilderFailed
+#define _clog_4_ARGS_TRACE_PathChallengeBuilderFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_SEND_C, PathChallengeBuilderFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for MtuProbeTruncated
 // [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
 // QuicTraceLogConnInfo(
