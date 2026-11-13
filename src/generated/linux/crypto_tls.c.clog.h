@@ -640,44 +640,6 @@ tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPObservedAddress , arg1, arg3);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for EncodeTPNatTraverseServer
-// [conn][%p] TP: NAT Traverse (%llu)
-// QuicTraceLogConnVerbose(
-                EncodeTPNatTraverseServer,
-                Connection,
-                "TP: NAT Traverse (%llu)",
-                TransportParams->NatTraverseConcurrencyLimit);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = TransportParams->NatTraverseConcurrencyLimit = arg3
-----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_EncodeTPNatTraverseServer
-#define _clog_4_ARGS_TRACE_EncodeTPNatTraverseServer(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPNatTraverseServer , arg1, arg3);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for EncodeTPNatTraverseClient
-// [conn][%p] TP: NAT Traverse
-// QuicTraceLogConnVerbose(
-                EncodeTPNatTraverseClient,
-                Connection,
-                "TP: NAT Traverse");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_EncodeTPNatTraverseClient
-#define _clog_3_ARGS_TRACE_EncodeTPNatTraverseClient(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPNatTraverseClient , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for EncodeTPServerMigration
 // [conn][%p] TP: Server Migration
 // QuicTraceLogConnVerbose(
@@ -689,6 +651,42 @@ tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPNatTraverseClient , arg1);\
 #ifndef _clog_3_ARGS_TRACE_EncodeTPServerMigration
 #define _clog_3_ARGS_TRACE_EncodeTPServerMigration(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPServerMigration , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for EncodeTPAlternativeAddress
+// [conn][%p] TP: Alternative Address
+// QuicTraceLogConnVerbose(
+            EncodeTPAlternativeAddress,
+            Connection,
+            "TP: Alternative Address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_EncodeTPAlternativeAddress
+#define _clog_3_ARGS_TRACE_EncodeTPAlternativeAddress(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPAlternativeAddress , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for EncodeTPStatelessPunch
+// [conn][%p] TP: Stateless Punch
+// QuicTraceLogConnVerbose(
+            EncodeTPStatelessPunch,
+            Connection,
+            "TP: Stateless Punch");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_EncodeTPStatelessPunch
+#define _clog_3_ARGS_TRACE_EncodeTPStatelessPunch(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CRYPTO_TLS_C, EncodeTPStatelessPunch , arg1);\
 
 #endif
 
@@ -1346,17 +1344,17 @@ tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPServerMigration , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for DecodeTPNatTraverseServer
-// [conn][%p] TP: NAT Traverse
+// Decoder Ring for DecodeTPAlternativeAddress
+// [conn][%p] TP: Alternative Address
 // QuicTraceLogConnVerbose(
-                    DecodeTPNatTraverseServer,
-                    Connection,
-                    "TP: NAT Traverse");
+                DecodeTPAlternativeAddress,
+                Connection,
+                "TP: Alternative Address");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_DecodeTPNatTraverseServer
-#define _clog_3_ARGS_TRACE_DecodeTPNatTraverseServer(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseServer , arg1);\
+#ifndef _clog_3_ARGS_TRACE_DecodeTPAlternativeAddress
+#define _clog_3_ARGS_TRACE_DecodeTPAlternativeAddress(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPAlternativeAddress , arg1);\
 
 #endif
 
@@ -1364,19 +1362,17 @@ tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseServer , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for DecodeTPNatTraverseClient
-// [conn][%p] TP: NAT Traverse (%llu)
+// Decoder Ring for DecodeTPStatelessPunch
+// [conn][%p] TP: Stateless Punch
 // QuicTraceLogConnVerbose(
-                    DecodeTPNatTraverseClient,
-                    Connection,
-                    "TP: NAT Traverse (%llu)",
-                    value);
+                DecodeTPStatelessPunch,
+                Connection,
+                "TP: Stateless Punch");
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = value = arg3
 ----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_DecodeTPNatTraverseClient
-#define _clog_4_ARGS_TRACE_DecodeTPNatTraverseClient(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseClient , arg1, arg3);\
+#ifndef _clog_3_ARGS_TRACE_DecodeTPStatelessPunch
+#define _clog_3_ARGS_TRACE_DecodeTPStatelessPunch(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CRYPTO_TLS_C, DecodeTPStatelessPunch , arg1);\
 
 #endif
 

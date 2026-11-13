@@ -432,8 +432,13 @@ QuicSendSetSendFlag(
     }
 
     if (CanSetFlag && (Send->SendFlags & SendFlags) != SendFlags) {
+        //
+        // A new trace id rather than a widened ScheduleSendFlags: the sidecar
+        // holds a trace's encoding for the life of that id, so changing %x to
+        // %llx has to be a different trace.
+        //
         QuicTraceLogConnVerbose(
-            ScheduleSendFlags,
+            ScheduleSendFlags64,
             Connection,
             "Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
             SendFlags,
@@ -461,8 +466,11 @@ QuicSendClearSendFlag(
     )
 {
     if (Send->SendFlags & SendFlags) {
+        //
+        // A new id for the widened value, as with ScheduleSendFlags64 above.
+        //
         QuicTraceLogConnVerbose(
-            RemoveSendFlagsMsg,
+            RemoveSendFlagsMsg64,
             QuicSendGetConnection(Send),
             "Removing flags %llx",
             (SendFlags & Send->SendFlags));
@@ -612,6 +620,28 @@ QuicSendPathStatusPending(
     for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
         const QUIC_PATH* Path = &Connection->Paths[i];
         if (Path->SendStatus && (Path->IsActive != FALSE) == (Active != FALSE)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+//
+// Whether any path is still waiting for its stateless punch request. Needed
+// for the same reason QuicSendPathStatusPending is: the writer sends one
+// request per packet and leaves the flag up for the next one, so the flag has
+// to come down as soon as nothing is left or the next flush builds a packet it
+// then finds nothing to write for.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicSendStatelessPunchPending(
+    _In_ const QUIC_CONNECTION* Connection
+    )
+{
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].SendStatelessPunch) {
             return TRUE;
         }
     }
@@ -997,6 +1027,105 @@ QuicSendWriteFrames(
         }
 
         if (!QuicConnIsQMux(Connection) &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS)) {
+
+            //
+            // One frame carrying the server's whole advertised set, per
+            // draft-munizaga-quic-alternative-server-address. Unlike
+            // ADD_ADDRESS below there is nothing per-address to track: a newer
+            // frame replaces the older set outright, so the only thing that
+            // can be stale is the frame itself.
+            //
+            QUIC_ALTERNATIVE_ADDRESS_EX Frame;
+            CxPlatZeroMemory(&Frame, sizeof(Frame));
+
+            for (CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
+                    Entry != &Connection->BoundAddresses;
+                    Entry = Entry->Flink) {
+                QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound =
+                    CXPLAT_CONTAINING_RECORD(
+                        Entry,
+                        QUIC_BOUND_ADDRESS_LIST_ENTRY,
+                        Link);
+
+                //
+                // An address on its way out is not advertised, which is how a
+                // withdrawal happens here: it simply stops appearing.
+                //
+                if (Bound->Removing || !Bound->ObservedAddressSet) {
+                    continue;
+                }
+                if (IS_LOOPBACK(Bound->ObservedAddress)) {
+                    continue;
+                }
+                if (Frame.AddressCount == QUIC_MAX_ALTERNATIVE_ADDRESSES) {
+                    //
+                    // Traced, because the truncation is silent otherwise and
+                    // which addresses survive it depends on list order: a
+                    // connection may hold far more bound addresses than one
+                    // frame advertises, and the ones past the cap are simply
+                    // never offered to the peer.
+                    //
+                    QuicTraceLogConnWarning(
+                        AlternativeAddressTruncated,
+                        Connection,
+                        "ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+                        QUIC_MAX_ALTERNATIVE_ADDRESSES);
+                    break;
+                }
+
+                //
+                // A backup with a priority hint of zero unless the
+                // application has said otherwise. The server is offering
+                // places the client could go, not claiming any of them beats
+                // the path in use -- and the draft makes the hints advisory,
+                // with the client deciding what to probe. Asserting a
+                // preference the application has not expressed is not the
+                // writer's call, which is why the flag exists and why it is
+                // off by default.
+                //
+                Frame.Addresses[Frame.AddressCount].Address = Bound->ObservedAddress;
+                Frame.Addresses[Frame.AddressCount].PriorityHint = 0;
+                Frame.Addresses[Frame.AddressCount].PreferredToCurrentPath =
+                    Bound->PreferredToCurrentPath;
+                Frame.AddressCount++;
+            }
+
+            //
+            // Numbered at encode time, so a frame rebuilt after loss carries a
+            // newer number than the one it replaces. The receiver keeps the
+            // highest it has seen, and the content is the current set either
+            // way, so a retransmission and a genuine change are the same thing
+            // here -- which is what lets the loss handler simply re-arm the
+            // flag without remembering what was in flight.
+            //
+            Frame.SequenceNumber = Connection->AltAddrNextSequenceNumber;
+
+            if (QuicAlternativeAddressFrameEncode(
+                    &Frame,
+                    &Builder->DatagramLength,
+                    AvailableBufferLength,
+                    Builder->Datagram->Buffer)) {
+
+                Connection->AltAddrNextSequenceNumber++;
+                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS;
+                Builder->Metadata->Frames[
+                    Builder->Metadata->FrameCount].ALTERNATIVE_ADDRESS.Sequence =
+                        Frame.SequenceNumber;
+                if (QuicPacketBuilderAddFrame(
+                        Builder, QUIC_FRAME_ALTERNATIVE_ADDRESS, TRUE)) {
+                    return TRUE;
+                }
+            } else {
+                RanOutOfRoom = TRUE;
+            }
+
+            if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
+                return TRUE;
+            }
+        }
+
+        if (!QuicConnIsQMux(Connection) &&
             (Send->SendFlags & QUIC_CONN_SEND_FLAG_ADD_ADDRESS)) {
 
             CXPLAT_LIST_ENTRY* Entry;
@@ -1105,76 +1234,80 @@ QuicSendWriteFrames(
         }
 
         if (!QuicConnIsQMux(Connection) &&
-            (Send->SendFlags & QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW)) {
-            uint8_t i;
-            for (i = 0; i < Connection->PathsCount; ++i) {
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW)) {
+
+            //
+            // One request per packet, and this one is a correctness
+            // requirement rather than the politeness the draft phrases it as:
+            // a server answers one punch per received packet, so a second
+            // request in the same packet is read and dropped. Section 5 says
+            // the client SHOULD separate them; our own server is what makes it
+            // a MUST in practice.
+            //
+            // So the loop writes at most one frame and stops, leaving the
+            // connection flag up for the next packet to carry the next one.
+            //
+            for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
                 QUIC_PATH* TempPath = &Connection->Paths[i];
-                if (!TempPath->SendPunchMeNow) {
+                if (!TempPath->SendStatelessPunch) {
                     continue;
                 }
 
-                CXPLAT_DBG_ASSERT(TempPath->NatTraversal &&
-                    TempPath->RemoteAddressSequenceNumberValid);
+                QUIC_STATELESS_PUNCH_ME_NOW_EX Frame;
+                CxPlatZeroMemory(&Frame, sizeof(Frame));
+                Frame.ClientAddress = TempPath->PunchClientAddress;
+                Frame.ServerAddress = TempPath->Route.RemoteAddress;
 
-                QUIC_CANDIDATE_ADDRESS_LIST_ENTRY* Candidate = NULL;
-                for (CXPLAT_LIST_ENTRY* Entry = Connection->CandidateAddresses.Flink;
-                        Entry != &Connection->CandidateAddresses;
-                        Entry = Entry->Flink) {
-                    Candidate = CXPLAT_CONTAINING_RECORD(
-                        Entry,
-                        QUIC_CANDIDATE_ADDRESS_LIST_ENTRY,
-                        Link);
-                    if (QuicAddrCompare(&Candidate->Address, &TempPath->Route.LocalAddress)) {
-                        break;
-                    }
-                    Candidate = NULL;
-                }
-
-                if (Candidate == NULL) {
-                    TempPath->SendPunchMeNow = FALSE;
-                    continue;
-                }
-
-                if (IS_LOOPBACK(Candidate->ObservedAddress)) {
-                    //
-                    // Don't send PUNCH_ME_NOW frames for loopback addresses.
-                    //
-                    TempPath->SendPunchMeNow = FALSE;
-                    continue;
-                }
-
-                QUIC_PUNCH_ME_NOW_EX Frame = { 0 };
-                Frame.Round = Connection->PunchMeNowSequenceNumber++;
-                Frame.PairedSequenceNumber = TempPath->RemoteAddressSequenceNumber;
-                Frame.Address = Candidate->ObservedAddress;
-
-                if (QuicPunchMeNowFrameEncode(
+                if (!QuicStatelessPunchMeNowFrameEncode(
                         &Frame,
                         &Builder->DatagramLength,
                         AvailableBufferLength,
                         Builder->Datagram->Buffer)) {
-
-                    TempPath->PunchMeNowRound = Frame.Round;
-                    TempPath->PunchMeNowRoundValid = TRUE;
-                    TempPath->SendPunchMeNow = FALSE;
-                    Builder->Metadata->Frames[
-                        Builder->Metadata->FrameCount].PUNCH_ME_NOW.Round =
-                            Frame.Round;
-                    if (QuicPacketBuilderAddFrame(
-                            Builder,
-                            QuicAddrGetFamily(&TempPath->Route.LocalAddress) == QUIC_ADDRESS_FAMILY_INET ?
-                                QUIC_FRAME_PUNCH_ME_NOW_V4 : QUIC_FRAME_PUNCH_ME_NOW_V6,
-                            TRUE)) {
-                        return TRUE;
-                    }
-                } else {
                     RanOutOfRoom = TRUE;
                     break;
                 }
+
+                TempPath->SendStatelessPunch = FALSE;
+                Connection->PunchRequestsSent++;
+                Builder->Metadata->Frames[
+                    Builder->Metadata->FrameCount].STATELESS_PUNCH_ME_NOW.PathId =
+                        TempPath->ID;
+                (void)QuicPacketBuilderAddFrame(
+                    Builder,
+                    QuicAddrGetFamily(&Frame.ClientAddress) == QUIC_ADDRESS_FAMILY_INET ?
+                        QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 :
+                        QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6,
+                    TRUE);
+                //
+                // Unconditionally, whether or not the packet is now full: the
+                // next request belongs in the next packet either way. The
+                // return value of QuicPacketBuilderAddFrame says "the packet is
+                // full", which is not the question here.
+                //
+                break;
             }
 
-            if (i == Connection->PathsCount) {
-                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW;
+            //
+            // The flag comes down whether or not more paths are waiting, and
+            // that is what keeps one request per packet honest.
+            //
+            // Leaving it up does not work, and neither does declining to write
+            // a second one. The send loop calls this function again while the
+            // flag is set, and QuicPacketBuilderPrepare only starts a new
+            // packet when the packet type changes -- so a second 1-RTT control
+            // write lands in the same packet. Leaving it up therefore put two
+            // requests in one packet, where the server reads the first and
+            // drops the second. Declining to write instead framed nothing at
+            // all, which trips the assert at the end of this function.
+            //
+            // So at most one request leaves per flush. A flush ends by
+            // finalizing its packet, so the next one cannot share it. The
+            // queued flush below is what brings the remaining requests out,
+            // and QuicSendFlush raises the flag again for each.
+            //
+            Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW;
+            if (QuicSendStatelessPunchPending(Connection)) {
+                QuicSendQueueFlush(Send, REASON_CONNECTION_FLAGS);
             }
 
             if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
@@ -2101,6 +2234,17 @@ QuicSendFlush(
     )
 {
     QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
+
+    //
+    // Raised per flush rather than left up by the writer, because the writer
+    // takes it down after one request: see the comment where it does. A flush
+    // carries at most one, so a connection with several queued gets them one
+    // packet at a time.
+    //
+    if (QuicSendStatelessPunchPending(Connection)) {
+        Send->SendFlags |= QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW;
+    }
+
     QUIC_PATH* Path;
     if (Send->FlushForPacing) {
         Path = Send->PacingPath;
@@ -2475,7 +2619,7 @@ QuicSendFlush(
     }
 
     QuicTraceLogConnVerbose(
-        SendFlushComplete,
+        SendFlushComplete64,
         Connection,
         "Flush complete flags=0x%llx",
         Send->SendFlags);

@@ -129,6 +129,86 @@
       ],
       "macroName": "QuicTraceEvent"
     },
+    "AlternativeAddressAddFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
+      "UniqueId": "AlternativeAddressAddFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "AlternativeAddressFull": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked",
+      "UniqueId": "AlternativeAddressFull",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AlternativeAddressStale": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)",
+      "UniqueId": "AlternativeAddressStale",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "AlternativeAddressTruncated": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+      "UniqueId": "AlternativeAddressTruncated",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AlternativeAddressWithdrawn": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)",
+      "UniqueId": "AlternativeAddressWithdrawn",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "AmplificationProtectionBlocked": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Cannot send any more because of amplification protection",
@@ -283,6 +363,18 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "AutoFollowedTable": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] AUTO migrated onto the candidate pair table's preferred pair",
+      "UniqueId": "AutoFollowedTable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "AutoFollowRouteAddedPath": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] AUTO opened a path to follow a route change",
@@ -403,6 +495,18 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated",
       "UniqueId": "AutoMigrationUnavailable",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "AutoMigrationUnavailableMode": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated",
+      "UniqueId": "AutoMigrationUnavailableMode",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -698,6 +802,30 @@
         }
       ],
       "macroName": "QuicTraceLogConnInfo"
+    },
+    "CandidatePairsRebuilt": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs",
+      "UniqueId": "CandidatePairsRebuilt",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
     },
     "CertCapiFormattedChain": {
       "ModuleProperites": {},
@@ -2383,26 +2511,6 @@
       ],
       "macroName": "QuicTraceEvent"
     },
-    "ConnReceiveTcpData": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Recv %u TCP data, %u bytes",
-      "UniqueId": "ConnReceiveTcpData",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg4"
-        }
-      ],
-      "macroName": "QuicTraceEvent"
-    },
     "ConnRecoveryExit": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Recovery complete",
@@ -2455,26 +2563,6 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Recv %u UDP datagrams, %u bytes",
       "UniqueId": "ConnRecvUdpDatagrams",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg4"
-        }
-      ],
-      "macroName": "QuicTraceEvent"
-    },
-    "ConnRefLeak": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Ref leak detected: Type=%u, Count=%u",
-      "UniqueId": "ConnRefLeak",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -3778,6 +3866,18 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "DecodeTPAlternativeAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] TP: Alternative Address",
+      "UniqueId": "DecodeTPAlternativeAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "DecodeTPCibirEncoding": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] TP: CIBIR Encoding (%llu length, %llu offset)",
@@ -4226,6 +4326,18 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "DecodeTPStatelessPunch": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] TP: Stateless Punch",
+      "UniqueId": "DecodeTPStatelessPunch",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "DecodeTPStatelessResetToken": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] TP: Stateless Reset Token (%s)",
@@ -4406,6 +4518,18 @@
         {
           "DefinationEncoding": "llu",
           "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "EncodeTPAlternativeAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] TP: Alternative Address",
+      "UniqueId": "EncodeTPAlternativeAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
         }
       ],
       "macroName": "QuicTraceLogConnVerbose"
@@ -4830,6 +4954,18 @@
         {
           "DefinationEncoding": "hhu",
           "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "EncodeTPStatelessPunch": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] TP: Stateless Punch",
+      "UniqueId": "EncodeTPStatelessPunch",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
         }
       ],
       "macroName": "QuicTraceLogConnVerbose"
@@ -5341,6 +5477,86 @@
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   ADD_ADDRESS [Invalid]",
       "UniqueId": "FrameLogAddAddressInvalid",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogAlternativeAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)",
+      "UniqueId": "FrameLogAlternativeAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg5"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg6"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogAlternativeAddressEntry": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]     %s prio=%llu preferred=%hhu",
+      "UniqueId": "FrameLogAlternativeAddressEntry",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "s",
+          "MacroVariableName": "arg5"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg6"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg7"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogAlternativeAddressInvalid": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]",
+      "UniqueId": "FrameLogAlternativeAddressInvalid",
       "splitArgs": [
         {
           "DefinationEncoding": "c",
@@ -6801,6 +7017,54 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
+    "FrameLogStatelessPunchMeNow": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s",
+      "UniqueId": "FrameLogStatelessPunchMeNow",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "s",
+          "MacroVariableName": "arg5"
+        },
+        {
+          "DefinationEncoding": "s",
+          "MacroVariableName": "arg6"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
+    "FrameLogStatelessPunchMeNowInvalid": {
+      "ModuleProperites": {},
+      "TraceString": "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]",
+      "UniqueId": "FrameLogStatelessPunchMeNowInvalid",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "c",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogVerbose"
+    },
     "FrameLogStopSending": {
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   STOP_SENDING ID:%llu Error:0x%llX",
@@ -7073,46 +7337,6 @@
       ],
       "macroName": "QuicTraceLogVerbose"
     },
-    "FrameLogTransportParameters": {
-      "ModuleProperites": {},
-      "TraceString": "[%c][%cX][%llu]   TRANSPORT_PARAMETERS",
-      "UniqueId": "FrameLogTransportParameters",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        }
-      ],
-      "macroName": "QuicTraceLogVerbose"
-    },
-    "FrameLogTransportParametersInvalid": {
-      "ModuleProperites": {},
-      "TraceString": "[%c][%cX][%llu]   TRANSPORT_PARAMETERS [Invalid]",
-      "UniqueId": "FrameLogTransportParametersInvalid",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "c",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "llu",
-          "MacroVariableName": "arg4"
-        }
-      ],
-      "macroName": "QuicTraceLogVerbose"
-    },
     "FrameLogUnknownType": {
       "ModuleProperites": {},
       "TraceString": "[%c][%cX][%llu]   unknown frame (%llu)",
@@ -7139,8 +7363,24 @@
     },
     "GetPacketTypeFailure": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Failed to get packet type for control frames, 0x%llx",
+      "TraceString": "[conn][%p] Failed to get packet type for control frames, 0x%x",
       "UniqueId": "GetPacketTypeFailure",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "GetPacketTypeFailure64": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Failed to get packet type for control frames, 0x%llx",
+      "UniqueId": "GetPacketTypeFailure64",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -7513,6 +7753,18 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED",
       "UniqueId": "IndicateNotifyRemoteAddressRemoved",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "IndicateNotifyRemoteAddressRemovedAlt": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED",
+      "UniqueId": "IndicateNotifyRemoteAddressRemovedAlt",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -9676,22 +9928,6 @@
       ],
       "macroName": "QuicTraceEvent"
     },
-    "PacketBuilderQMuxSend": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Sending %hu bytes",
-      "UniqueId": "PacketBuilderQMuxSend",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        },
-        {
-          "DefinationEncoding": "hu",
-          "MacroVariableName": "arg3"
-        }
-      ],
-      "macroName": "QuicTraceLogConnVerbose"
-    },
     "PacketBuilderQMuxSendBatch": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Sending batch. %hu datagrams %u bytes",
@@ -11392,45 +11628,181 @@
       ],
       "macroName": "QuicTraceLogInfo"
     },
-    "QMuxRecvPacket": {
+    "PunchAddressFamilyMismatch": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p][RX] %hu bytes",
-      "UniqueId": "QMuxRecvPacket",
+      "TraceString": "[conn][%p] Punch request address family does not match the bound address",
+      "UniqueId": "PunchAddressFamilyMismatch",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
-          "MacroVariableName": "arg2"
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchAlreadySentForPacket": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Ignoring a second punch request in one packet",
+      "UniqueId": "PunchAlreadySentForPacket",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchAttemptCidRetired": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Path[%hhu] punch attempt failed; retired its destination CID",
+      "UniqueId": "PunchAttemptCidRetired",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "PunchBeforeHandshakeConfirmed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Ignoring a punch request before the handshake is confirmed",
+      "UniqueId": "PunchBeforeHandshakeConfirmed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchDestinationRefused": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Refusing to punch towards an unspecified address",
+      "UniqueId": "PunchDestinationRefused",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchDestinationRefusedLocal": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Refusing to punch towards a loopback or link-local address",
+      "UniqueId": "PunchDestinationRefusedLocal",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchDestinationRefusedPort": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Refusing to punch towards a sensitive port (%hu)",
+      "UniqueId": "PunchDestinationRefusedPort",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
         },
         {
           "DefinationEncoding": "hu",
           "MacroVariableName": "arg3"
         }
       ],
-      "macroName": "QuicTraceEvent"
+      "macroName": "QuicTraceLogConnVerbose"
     },
-    "QMuxRecvTcpData": {
+    "PunchDestinationRefusedScope": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Recv %u TCP data, %u bytes",
-      "UniqueId": "QMuxRecvTcpData",
+      "TraceString": "[conn][%p] Refusing to punch towards a multicast or broadcast address",
+      "UniqueId": "PunchDestinationRefusedScope",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg4"
+          "MacroVariableName": "arg1"
         }
       ],
-      "macroName": "QuicTraceEvent"
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchPacketSent": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Sent a punch packet of %hu bytes",
+      "UniqueId": "PunchPacketSent",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "PunchRateLimited": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Punch rate limit reached, dropping the request",
+      "UniqueId": "PunchRateLimited",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchRequestPacketTooSmall": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Punch request packet too small to answer within (%hu)",
+      "UniqueId": "PunchRequestPacketTooSmall",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "PunchRequestQueued": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Queued a punch request for a table pair",
+      "UniqueId": "PunchRequestQueued",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "PunchRequestUnknownAddress": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Punch request named an address this server did not advertise",
+      "UniqueId": "PunchRequestUnknownAddress",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
     },
     "QueueDatagrams": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Queuing %u TCP data",
+      "TraceString": "[conn][%p] Queuing %u UDP datagrams",
       "UniqueId": "QueueDatagrams",
       "splitArgs": [
         {
@@ -11563,6 +11935,154 @@
         }
       ],
       "macroName": "QuicTraceLogStreamWarning"
+    },
+    "ReconcileAddedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler opened a path for a table pair",
+      "UniqueId": "ReconcileAddedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ReconcileAddPathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler could not open a path, status=0x%x",
+      "UniqueId": "ReconcileAddPathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ReconcileCreateHeldDown": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler held down opening paths",
+      "UniqueId": "ReconcileCreateHeldDown",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ReconcileCreateHeldDownFor": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler held down opening paths for %llu us",
+      "UniqueId": "ReconcileCreateHeldDownFor",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ReconcileMigrateAbandoned": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler lost the path it was migrating onto",
+      "UniqueId": "ReconcileMigrateAbandoned",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ReconcileMigrateHeldDown": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler held down migrating for %llu us",
+      "UniqueId": "ReconcileMigrateHeldDown",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ReconcileMigrateNoPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler has no path yet for the pair it wants to migrate to",
+      "UniqueId": "ReconcileMigrateNoPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ReconcileMigrateStarted": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler started a migration onto the table's preferred pair",
+      "UniqueId": "ReconcileMigrateStarted",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ReconcileRemovedPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler removed a path whose pair left the table",
+      "UniqueId": "ReconcileRemovedPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ReconcileRemovePathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler failed to remove a path, status=0x%x",
+      "UniqueId": "ReconcileRemovePathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
+    "ReconcileSkippedUnpunchablePair": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] NAT traversal skipped a pair with no configured candidate",
+      "UniqueId": "ReconcileSkippedUnpunchablePair",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
     },
     "RecoverCrypto": {
       "ModuleProperites": {},
@@ -11826,8 +12346,24 @@
     },
     "RemoveSendFlagsMsg": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Removing flags %llx",
+      "TraceString": "[conn][%p] Removing flags %x",
       "UniqueId": "RemoveSendFlagsMsg",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "RemoveSendFlagsMsg64": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Removing flags %llx",
+      "UniqueId": "RemoveSendFlagsMsg64",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -12275,8 +12811,32 @@
     },
     "ScheduleSendFlags": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
+      "TraceString": "[conn][%p] Adding send flags 0x%x (prev: 0x%x, new: 0x%x)",
       "UniqueId": "ScheduleSendFlags",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ScheduleSendFlags64": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
+      "UniqueId": "ScheduleSendFlags64",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -12383,8 +12943,24 @@
     },
     "SendFlushComplete": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Flush complete flags=0x%llx",
+      "TraceString": "[conn][%p] Flush complete flags=0x%x",
       "UniqueId": "SendFlushComplete",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "SendFlushComplete64": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Flush complete flags=0x%llx",
+      "UniqueId": "SendFlushComplete64",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -12436,6 +13012,34 @@
         }
       ],
       "macroName": "QuicTraceLogStreamVerbose"
+    },
+    "ServerAbandonedLostPath": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Server abandoned a path whose local address was lost",
+      "UniqueId": "ServerAbandonedLostPath",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "ServerAbandonLostPathFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Server failed to abandon a path whose address was lost, status=0x%x",
+      "UniqueId": "ServerAbandonLostPathFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "x",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
     },
     "ServerResumptionTicketDecodeFailAlpnLengthEncodedWrong": {
       "ModuleProperites": {},
@@ -13924,30 +14528,6 @@
       ],
       "macroName": "QuicTraceEvent"
     },
-    "StreamRefLeak": {
-      "ModuleProperites": {},
-      "TraceString": "[strm][%p] ID:%lu Ref leak detected: Type=%u, Count=%u",
-      "UniqueId": "StreamRefLeak",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg2"
-        },
-        {
-          "DefinationEncoding": "lu",
-          "MacroVariableName": "arg3"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg4"
-        },
-        {
-          "DefinationEncoding": "u",
-          "MacroVariableName": "arg5"
-        }
-      ],
-      "macroName": "QuicTraceEvent"
-    },
     "StreamRundown": {
       "ModuleProperites": {},
       "TraceString": "[strm][%p] Rundown, Conn=%p ID=%llu IsLocal=%hhu",
@@ -14008,18 +14588,6 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] TCP connected",
       "UniqueId": "TcpConnected",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        }
-      ],
-      "macroName": "QuicTraceLogConnInfo"
-    },
-    "TcpConnectFailed": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] TCP connect failed",
-      "UniqueId": "TcpConnectFailed",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -15918,6 +16486,31 @@
         "EncodingString": "Allocation of '%s' failed. (%llu bytes)"
       },
       {
+        "UniquenessHash": "0d14efc2-7e84-9627-e2f4-1748d1fae77b",
+        "TraceID": "AlternativeAddressAddFailed",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x"
+      },
+      {
+        "UniquenessHash": "4c2e170f-b95b-27ab-9752-7e021c07a74e",
+        "TraceID": "AlternativeAddressFull",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked"
+      },
+      {
+        "UniquenessHash": "453ceadb-d0c5-96e8-e716-09f49eeed5cb",
+        "TraceID": "AlternativeAddressStale",
+        "EncodingString": "[conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)"
+      },
+      {
+        "UniquenessHash": "bc5e748b-19f6-45e8-a973-c00de9e17f30",
+        "TraceID": "AlternativeAddressTruncated",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u"
+      },
+      {
+        "UniquenessHash": "93c44140-2347-1aad-0412-6dd793c147aa",
+        "TraceID": "AlternativeAddressWithdrawn",
+        "EncodingString": "[conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)"
+      },
+      {
         "UniquenessHash": "908d186e-4adc-6428-393d-cb3f4a90bdb3",
         "TraceID": "AmplificationProtectionBlocked",
         "EncodingString": "[conn][%p] Cannot send any more because of amplification protection"
@@ -15978,6 +16571,11 @@
         "EncodingString": "[conn][%p] AUTO followed a route change onto a validated path"
       },
       {
+        "UniquenessHash": "d1eb2091-d686-d4c6-3d3a-75f8e62928da",
+        "TraceID": "AutoFollowedTable",
+        "EncodingString": "[conn][%p] AUTO migrated onto the candidate pair table's preferred pair"
+      },
+      {
         "UniquenessHash": "a6f11b77-6f51-999c-ccbb-c10ead34f3ba",
         "TraceID": "AutoFollowRouteAddedPath",
         "EncodingString": "[conn][%p] AUTO opened a path to follow a route change"
@@ -16026,6 +16624,11 @@
         "UniquenessHash": "230a914f-39d3-e420-8615-8238b841d79e",
         "TraceID": "AutoMigrationUnavailable",
         "EncodingString": "[conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated"
+      },
+      {
+        "UniquenessHash": "10e68970-7f31-9ad2-6dc9-9f8451ca676f",
+        "TraceID": "AutoMigrationUnavailableMode",
+        "EncodingString": "[conn][%p] QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated"
       },
       {
         "UniquenessHash": "0ac0c49e-31b3-c3d9-d969-d9916e3206b5",
@@ -16111,6 +16714,11 @@
         "UniquenessHash": "6c1e8d47-86a1-ba49-405a-000c6a3f1bff",
         "TraceID": "BoundAddressWildcardForQtip",
         "EncodingString": "[conn][%p] Binding a bound address on the wildcard, as QTIP requires"
+      },
+      {
+        "UniquenessHash": "310aaae3-93b1-6592-bf2b-37e09a696639",
+        "TraceID": "CandidatePairsRebuilt",
+        "EncodingString": "[conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs"
       },
       {
         "UniquenessHash": "bc118133-e7f5-68c2-fd22-5dba9202e2eb",
@@ -16583,11 +17191,6 @@
         "EncodingString": "[conn][%p] Read Key Updated, %hhu."
       },
       {
-        "UniquenessHash": "ea996997-be29-898f-197a-5382d3390ed6",
-        "TraceID": "ConnReceiveTcpData",
-        "EncodingString": "[conn][%p] Recv %u TCP data, %u bytes"
-      },
-      {
         "UniquenessHash": "5eef16d4-a574-2e5c-62c1-d561f0040322",
         "TraceID": "ConnRecoveryExit",
         "EncodingString": "[conn][%p] Recovery complete"
@@ -16606,11 +17209,6 @@
         "UniquenessHash": "acc96e76-ae1e-91d0-d525-216dedbaf2f0",
         "TraceID": "ConnRecvUdpDatagrams",
         "EncodingString": "[conn][%p] Recv %u UDP datagrams, %u bytes"
-      },
-      {
-        "UniquenessHash": "1c0688bf-e92f-d93d-6a2f-e2e7bf153b8b",
-        "TraceID": "ConnRefLeak",
-        "EncodingString": "[conn][%p] Ref leak detected: Type=%u, Count=%u"
       },
       {
         "UniquenessHash": "60a38bc0-4218-963b-507a-5d7cb5c08596",
@@ -17013,6 +17611,11 @@
         "EncodingString": "[conn][%p] TP: ACK Delay Exponent (%llu)"
       },
       {
+        "UniquenessHash": "4013b9bd-cf0b-31b1-c89d-10288dfc3f44",
+        "TraceID": "DecodeTPAlternativeAddress",
+        "EncodingString": "[conn][%p] TP: Alternative Address"
+      },
+      {
         "UniquenessHash": "bcca8105-4c4b-0733-5277-ca216bcd792b",
         "TraceID": "DecodeTPCibirEncoding",
         "EncodingString": "[conn][%p] TP: CIBIR Encoding (%llu length, %llu offset)"
@@ -17158,6 +17761,11 @@
         "EncodingString": "[conn][%p] Decoding Transport Parameters (Server = %hhu) (%hu bytes)"
       },
       {
+        "UniquenessHash": "606d69c8-a270-59ca-6eb5-6665d1b5d038",
+        "TraceID": "DecodeTPStatelessPunch",
+        "EncodingString": "[conn][%p] TP: Stateless Punch"
+      },
+      {
         "UniquenessHash": "22774447-fb97-c333-ea55-96d7234b806f",
         "TraceID": "DecodeTPStatelessResetToken",
         "EncodingString": "[conn][%p] TP: Stateless Reset Token (%s)"
@@ -17216,6 +17824,11 @@
         "UniquenessHash": "0101cc93-9665-3cc3-b1ea-2a6be959530b",
         "TraceID": "EncodeTPAckDelayExponent",
         "EncodingString": "[conn][%p] TP: ACK Delay Exponent (%llu)"
+      },
+      {
+        "UniquenessHash": "b0f26b43-2829-075c-5490-a1e406443f68",
+        "TraceID": "EncodeTPAlternativeAddress",
+        "EncodingString": "[conn][%p] TP: Alternative Address"
       },
       {
         "UniquenessHash": "aaf030f3-46be-72b4-807a-08aea8ec0362",
@@ -17358,6 +17971,11 @@
         "EncodingString": "[conn][%p] Encoding Transport Parameters (Server = %hhu)"
       },
       {
+        "UniquenessHash": "078c307a-268d-dc51-dd8b-d0278547760c",
+        "TraceID": "EncodeTPStatelessPunch",
+        "EncodingString": "[conn][%p] TP: Stateless Punch"
+      },
+      {
         "UniquenessHash": "c5a96b84-829e-1140-85af-18ab6924eb23",
         "TraceID": "EncodeTPStatelessResetToken",
         "EncodingString": "[conn][%p] TP: Stateless Reset Token (%s)"
@@ -17496,6 +18114,21 @@
         "UniquenessHash": "1b80f8cb-e5e7-5753-a786-6e0887adfa1b",
         "TraceID": "FrameLogAddAddressInvalid",
         "EncodingString": "[%c][%cX][%llu]   ADD_ADDRESS [Invalid]"
+      },
+      {
+        "UniquenessHash": "d5072518-f072-49c5-b46e-e452fc6d78b5",
+        "TraceID": "FrameLogAlternativeAddress",
+        "EncodingString": "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)"
+      },
+      {
+        "UniquenessHash": "f68ad6e6-6a1a-7370-8371-74c6864043b8",
+        "TraceID": "FrameLogAlternativeAddressEntry",
+        "EncodingString": "[%c][%cX][%llu]     %s prio=%llu preferred=%hhu"
+      },
+      {
+        "UniquenessHash": "d5126c66-fda0-0739-8537-89b7d7c47fc1",
+        "TraceID": "FrameLogAlternativeAddressInvalid",
+        "EncodingString": "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]"
       },
       {
         "UniquenessHash": "39592ea2-35f5-d3d5-efb2-d330fb4c400b",
@@ -17803,6 +18436,16 @@
         "EncodingString": "[%c][%cX][%llu]   RETIRE_CONN_ID [Invalid]"
       },
       {
+        "UniquenessHash": "4cb1e569-66ac-a3a6-2a51-0ee579b25115",
+        "TraceID": "FrameLogStatelessPunchMeNow",
+        "EncodingString": "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s"
+      },
+      {
+        "UniquenessHash": "5f052be7-5efe-9bf0-e24f-714cc7354ca3",
+        "TraceID": "FrameLogStatelessPunchMeNowInvalid",
+        "EncodingString": "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]"
+      },
+      {
         "UniquenessHash": "e4585b81-61e3-9b3b-5af6-cf17c4e95d81",
         "TraceID": "FrameLogStopSending",
         "EncodingString": "[%c][%cX][%llu]   STOP_SENDING ID:%llu Error:0x%llX"
@@ -17858,23 +18501,18 @@
         "EncodingString": "[%c][%cX][%llu]   TIMESTAMP [Invalid]"
       },
       {
-        "UniquenessHash": "a2bd8600-8021-3472-4ea2-a7defacb1502",
-        "TraceID": "FrameLogTransportParameters",
-        "EncodingString": "[%c][%cX][%llu]   TRANSPORT_PARAMETERS"
-      },
-      {
-        "UniquenessHash": "af714637-3d07-a34f-76d0-c6044f4849b7",
-        "TraceID": "FrameLogTransportParametersInvalid",
-        "EncodingString": "[%c][%cX][%llu]   TRANSPORT_PARAMETERS [Invalid]"
-      },
-      {
         "UniquenessHash": "0663ac49-e402-40ea-b23a-851ef032e5d5",
         "TraceID": "FrameLogUnknownType",
         "EncodingString": "[%c][%cX][%llu]   unknown frame (%llu)"
       },
       {
-        "UniquenessHash": "7135e141-5146-448d-e4c0-f3ecca7c8f24",
+        "UniquenessHash": "03e79f57-89b7-b2d2-b13f-cb2f995b47cd",
         "TraceID": "GetPacketTypeFailure",
+        "EncodingString": "[conn][%p] Failed to get packet type for control frames, 0x%x"
+      },
+      {
+        "UniquenessHash": "a7fa2830-ef70-a4ad-9f36-a4d19970b084",
+        "TraceID": "GetPacketTypeFailure64",
         "EncodingString": "[conn][%p] Failed to get packet type for control frames, 0x%llx"
       },
       {
@@ -17990,6 +18628,11 @@
       {
         "UniquenessHash": "bdbec039-5ae3-5e4c-78a1-a9ccb45482fe",
         "TraceID": "IndicateNotifyRemoteAddressRemoved",
+        "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED"
+      },
+      {
+        "UniquenessHash": "78f06339-50c9-3138-b830-43456d7dd62e",
+        "TraceID": "IndicateNotifyRemoteAddressRemovedAlt",
         "EncodingString": "[conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED"
       },
       {
@@ -18683,11 +19326,6 @@
         "EncodingString": "[pack][%llu] Batch sent"
       },
       {
-        "UniquenessHash": "01f7a1ec-36fa-0fe8-7608-ce2f801e8d90",
-        "TraceID": "PacketBuilderQMuxSend",
-        "EncodingString": "[conn][%p] Sending %hu bytes"
-      },
-      {
         "UniquenessHash": "fe35b780-889d-bcdf-b43c-7ae63c262234",
         "TraceID": "PacketBuilderQMuxSendBatch",
         "EncodingString": "[conn][%p] Sending batch. %hu datagrams %u bytes"
@@ -19193,19 +19831,69 @@
         "EncodingString": "[ nmr][%p] Client detached"
       },
       {
-        "UniquenessHash": "d14c152d-8718-3d9c-e7b6-bc64ee534bbf",
-        "TraceID": "QMuxRecvPacket",
-        "EncodingString": "[conn][%p][RX] %hu bytes"
+        "UniquenessHash": "508ef51e-7ce3-8e62-0660-127bdeb32d90",
+        "TraceID": "PunchAddressFamilyMismatch",
+        "EncodingString": "[conn][%p] Punch request address family does not match the bound address"
       },
       {
-        "UniquenessHash": "0f9b2a6c-1982-68d5-f02b-4c7e6d9b1498",
-        "TraceID": "QMuxRecvTcpData",
-        "EncodingString": "[conn][%p] Recv %u TCP data, %u bytes"
+        "UniquenessHash": "05d7067c-e15f-611e-de7a-2bcb664a7747",
+        "TraceID": "PunchAlreadySentForPacket",
+        "EncodingString": "[conn][%p] Ignoring a second punch request in one packet"
       },
       {
-        "UniquenessHash": "27044228-9730-d443-fd93-bee18dc7c248",
-        "TraceID": "QMuxRecvTcpData",
-        "EncodingString": "[conn][%p] Recv %u TCP data, %u bytes"
+        "UniquenessHash": "460ecd4b-2c37-8fc5-8a10-7f1c6d51ff6e",
+        "TraceID": "PunchAttemptCidRetired",
+        "EncodingString": "[conn][%p] Path[%hhu] punch attempt failed; retired its destination CID"
+      },
+      {
+        "UniquenessHash": "7752ab7d-ac45-024e-c096-3a6663acc4d9",
+        "TraceID": "PunchBeforeHandshakeConfirmed",
+        "EncodingString": "[conn][%p] Ignoring a punch request before the handshake is confirmed"
+      },
+      {
+        "UniquenessHash": "410e9620-6a49-251a-5213-f8aacbaa55cd",
+        "TraceID": "PunchDestinationRefused",
+        "EncodingString": "[conn][%p] Refusing to punch towards an unspecified address"
+      },
+      {
+        "UniquenessHash": "fc381412-1f3b-3f8e-3af7-4e4a5789309f",
+        "TraceID": "PunchDestinationRefusedLocal",
+        "EncodingString": "[conn][%p] Refusing to punch towards a loopback or link-local address"
+      },
+      {
+        "UniquenessHash": "4524c90b-feb5-fe3e-5e8e-5c52e422082b",
+        "TraceID": "PunchDestinationRefusedPort",
+        "EncodingString": "[conn][%p] Refusing to punch towards a sensitive port (%hu)"
+      },
+      {
+        "UniquenessHash": "fada28fd-bdb4-c4e7-4206-7ea5d8d0bd62",
+        "TraceID": "PunchDestinationRefusedScope",
+        "EncodingString": "[conn][%p] Refusing to punch towards a multicast or broadcast address"
+      },
+      {
+        "UniquenessHash": "23f5c717-fd6e-971f-58ed-049899a8fe23",
+        "TraceID": "PunchPacketSent",
+        "EncodingString": "[conn][%p] Sent a punch packet of %hu bytes"
+      },
+      {
+        "UniquenessHash": "41cf0d3c-0af0-43bc-1c8c-a557ce488381",
+        "TraceID": "PunchRateLimited",
+        "EncodingString": "[conn][%p] Punch rate limit reached, dropping the request"
+      },
+      {
+        "UniquenessHash": "df47f75f-4079-4b2b-83a2-2e60810773e2",
+        "TraceID": "PunchRequestPacketTooSmall",
+        "EncodingString": "[conn][%p] Punch request packet too small to answer within (%hu)"
+      },
+      {
+        "UniquenessHash": "bf0cd043-8f62-0f58-26cc-92002385a93a",
+        "TraceID": "PunchRequestQueued",
+        "EncodingString": "[conn][%p] Queued a punch request for a table pair"
+      },
+      {
+        "UniquenessHash": "8930afbc-80f9-850d-27b8-65fb41330383",
+        "TraceID": "PunchRequestUnknownAddress",
+        "EncodingString": "[conn][%p] Punch request named an address this server did not advertise"
       },
       {
         "UniquenessHash": "18ef147d-5376-d7f2-f624-3b27af96dd05",
@@ -19246,6 +19934,61 @@
         "UniquenessHash": "933b832f-9c45-2489-6266-de2ff7e2ac21",
         "TraceID": "ReceiveTooBig",
         "EncodingString": "[strm][%p] Tried to write beyond end of buffer!"
+      },
+      {
+        "UniquenessHash": "fd6cb018-7495-0d87-e197-27fd82eb98c3",
+        "TraceID": "ReconcileAddedPath",
+        "EncodingString": "[conn][%p] Reconciler opened a path for a table pair"
+      },
+      {
+        "UniquenessHash": "f76439a8-3ebe-fc40-006f-9333ff3aca61",
+        "TraceID": "ReconcileAddPathFailed",
+        "EncodingString": "[conn][%p] Reconciler could not open a path, status=0x%x"
+      },
+      {
+        "UniquenessHash": "e59c1235-3ec2-fc7f-3ae1-15001c2ee2ac",
+        "TraceID": "ReconcileCreateHeldDown",
+        "EncodingString": "[conn][%p] Reconciler held down opening paths"
+      },
+      {
+        "UniquenessHash": "6c84760e-697e-511a-7eeb-14ea7d78d4c2",
+        "TraceID": "ReconcileCreateHeldDownFor",
+        "EncodingString": "[conn][%p] Reconciler held down opening paths for %llu us"
+      },
+      {
+        "UniquenessHash": "4e629e20-48c1-7e50-e8e0-623b9071339d",
+        "TraceID": "ReconcileMigrateAbandoned",
+        "EncodingString": "[conn][%p] Reconciler lost the path it was migrating onto"
+      },
+      {
+        "UniquenessHash": "ae69a99a-c459-c37a-8ef6-42771f06a25c",
+        "TraceID": "ReconcileMigrateHeldDown",
+        "EncodingString": "[conn][%p] Reconciler held down migrating for %llu us"
+      },
+      {
+        "UniquenessHash": "6a12bf2e-3536-4a83-e7b8-b1815ee256fa",
+        "TraceID": "ReconcileMigrateNoPath",
+        "EncodingString": "[conn][%p] Reconciler has no path yet for the pair it wants to migrate to"
+      },
+      {
+        "UniquenessHash": "bc000d4b-c7a8-7598-0a60-2f10ff33c63d",
+        "TraceID": "ReconcileMigrateStarted",
+        "EncodingString": "[conn][%p] Reconciler started a migration onto the table's preferred pair"
+      },
+      {
+        "UniquenessHash": "3255a2b2-6aef-4629-0ad0-7b66a950e3f1",
+        "TraceID": "ReconcileRemovedPath",
+        "EncodingString": "[conn][%p] Reconciler removed a path whose pair left the table"
+      },
+      {
+        "UniquenessHash": "07290e82-054a-9026-6abe-7f36a5b99f16",
+        "TraceID": "ReconcileRemovePathFailed",
+        "EncodingString": "[conn][%p] Reconciler failed to remove a path, status=0x%x"
+      },
+      {
+        "UniquenessHash": "0e6c370e-a937-5374-2817-63cf4eaf35e0",
+        "TraceID": "ReconcileSkippedUnpunchablePair",
+        "EncodingString": "[conn][%p] NAT traversal skipped a pair with no configured candidate"
       },
       {
         "UniquenessHash": "94b619d7-6b5a-e1b4-d3ee-1b66a383ebbc",
@@ -19333,8 +20076,13 @@
         "EncodingString": "[strm][%p] Closed remotely (reset)"
       },
       {
-        "UniquenessHash": "faee67e6-cc05-fb43-dbcd-12203dee53e2",
+        "UniquenessHash": "b4aa5fad-d1de-466c-0214-1bbda4b9eb95",
         "TraceID": "RemoveSendFlagsMsg",
+        "EncodingString": "[conn][%p] Removing flags %x"
+      },
+      {
+        "UniquenessHash": "9ed3b4ea-a45c-7455-62c1-3783ebee0b75",
+        "TraceID": "RemoveSendFlagsMsg64",
         "EncodingString": "[conn][%p] Removing flags %llx"
       },
       {
@@ -19473,8 +20221,13 @@
         "EncodingString": "[conn][%p] probe round %hu"
       },
       {
-        "UniquenessHash": "a00a0d8f-db57-1c2d-5f89-16f0e406796c",
+        "UniquenessHash": "746a4e23-1021-bda2-7be8-ba33a1221656",
         "TraceID": "ScheduleSendFlags",
+        "EncodingString": "[conn][%p] Adding send flags 0x%x (prev: 0x%x, new: 0x%x)"
+      },
+      {
+        "UniquenessHash": "82e5a7b5-b682-43fd-1512-1055c01e6d22",
+        "TraceID": "ScheduleSendFlags64",
         "EncodingString": "[conn][%p] Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)"
       },
       {
@@ -19493,8 +20246,13 @@
         "EncodingString": "[strm][%p]   unACKed: [%llu, %llu]"
       },
       {
-        "UniquenessHash": "21f6a5b2-170e-bd44-8778-a070c5118454",
+        "UniquenessHash": "6068f77b-96f9-706f-e3c0-02193c9c1c2a",
         "TraceID": "SendFlushComplete",
+        "EncodingString": "[conn][%p] Flush complete flags=0x%x"
+      },
+      {
+        "UniquenessHash": "bcfb2df0-14ed-6d6f-b8fe-af02fa0d94c2",
+        "TraceID": "SendFlushComplete64",
         "EncodingString": "[conn][%p] Flush complete flags=0x%llx"
       },
       {
@@ -19506,6 +20264,16 @@
         "UniquenessHash": "bd391397-df8d-a396-230b-c7846fcbda3b",
         "TraceID": "SendQueueDrained",
         "EncodingString": "[strm][%p] Send queue completely drained"
+      },
+      {
+        "UniquenessHash": "3914a8c1-e88f-43db-edd1-c08f12528762",
+        "TraceID": "ServerAbandonedLostPath",
+        "EncodingString": "[conn][%p] Server abandoned a path whose local address was lost"
+      },
+      {
+        "UniquenessHash": "4bf12526-2fae-13f5-a5ca-20766a3fb1d1",
+        "TraceID": "ServerAbandonLostPathFailed",
+        "EncodingString": "[conn][%p] Server failed to abandon a path whose address was lost, status=0x%x"
       },
       {
         "UniquenessHash": "10a2af3e-b6e9-d046-42b5-49a1f96ef4f2",
@@ -20048,11 +20816,6 @@
         "EncodingString": "[strm][%p] Recv State: %hhu"
       },
       {
-        "UniquenessHash": "d7e23b39-7b45-95e8-822e-8c372ad074c6",
-        "TraceID": "StreamRefLeak",
-        "EncodingString": "[strm][%p] ID:%lu Ref leak detected: Type=%u, Count=%u"
-      },
-      {
         "UniquenessHash": "c91c925c-07e9-3204-5459-5d3b19d137d8",
         "TraceID": "StreamRundown",
         "EncodingString": "[strm][%p] Rundown, Conn=%p ID=%llu IsLocal=%hhu"
@@ -20071,11 +20834,6 @@
         "UniquenessHash": "ea812011-b593-6288-c838-f58a92f10cc1",
         "TraceID": "TcpConnected",
         "EncodingString": "[conn][%p] TCP connected"
-      },
-      {
-        "UniquenessHash": "53de14af-210d-3ec7-101c-01e2e6126e57",
-        "TraceID": "TcpConnectFailed",
-        "EncodingString": "[conn][%p] TCP connect failed"
       },
       {
         "UniquenessHash": "781051db-9374-94f7-eacf-4102d1e9feb7",

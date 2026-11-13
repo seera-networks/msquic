@@ -6,14 +6,17 @@ set(SOURCES
     AllowanceTest.cpp
     BbrTest.cpp
     CubicTest.cpp
+    CandidateTest.cpp
     FrameTest.cpp
     PacketNumberTest.cpp
     PartitionTest.cpp
+    PathIdStatsTest.cpp
     RangeTest.cpp
     RecvBufferTest.cpp
     SettingsTest.cpp
     SlidingWindowExtremumTest.cpp
     SpinFrame.cpp
+    StatelessPunchTest.cpp
     TicketTest.cpp
     TransportParamTest.cpp
     VarIntTest.cpp

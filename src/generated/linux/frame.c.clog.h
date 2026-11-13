@@ -1740,11 +1740,11 @@ tracepoint(CLOG_FRAME_C, FrameLogAddAddress , arg2, arg3, arg4, arg5, arg6);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for FrameLogPunchMeNowInvalid
-// [%c][%cX][%llu]   PUNCH_ME_NOW [Invalid]
+// Decoder Ring for FrameLogAlternativeAddressInvalid
+// [%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]
 // QuicTraceLogVerbose(
-            FrameLogPunchMeNowInvalid,
-            "[%c][%cX][%llu]   PUNCH_ME_NOW [Invalid]",
+            FrameLogAlternativeAddressInvalid,
+            "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]",
             PtkConnPre(Connection),
             PktRxPre(Rx),
             PacketNumber);
@@ -1752,9 +1752,9 @@ tracepoint(CLOG_FRAME_C, FrameLogAddAddress , arg2, arg3, arg4, arg5, arg6);\
 // arg3 = arg3 = PktRxPre(Rx) = arg3
 // arg4 = arg4 = PacketNumber = arg4
 ----------------------------------------------------------*/
-#ifndef _clog_5_ARGS_TRACE_FrameLogPunchMeNowInvalid
-#define _clog_5_ARGS_TRACE_FrameLogPunchMeNowInvalid(uniqueId, encoded_arg_string, arg2, arg3, arg4)\
-tracepoint(CLOG_FRAME_C, FrameLogPunchMeNowInvalid , arg2, arg3, arg4);\
+#ifndef _clog_5_ARGS_TRACE_FrameLogAlternativeAddressInvalid
+#define _clog_5_ARGS_TRACE_FrameLogAlternativeAddressInvalid(uniqueId, encoded_arg_string, arg2, arg3, arg4)\
+tracepoint(CLOG_FRAME_C, FrameLogAlternativeAddressInvalid , arg2, arg3, arg4);\
 
 #endif
 
@@ -1762,27 +1762,101 @@ tracepoint(CLOG_FRAME_C, FrameLogPunchMeNowInvalid , arg2, arg3, arg4);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for FrameLogPunchMeNow
-// [%c][%cX][%llu]   PUNCH_ME_NOW %llu %llu %s
+// Decoder Ring for FrameLogAlternativeAddress
+// [%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)
 // QuicTraceLogVerbose(
-        FrameLogPunchMeNow,
-        "[%c][%cX][%llu]   PUNCH_ME_NOW %llu %llu %s",
+        FrameLogAlternativeAddress,
+        "[%c][%cX][%llu]   ALTERNATIVE_ADDRESS %llu (%hhu addrs)",
         PtkConnPre(Connection),
         PktRxPre(Rx),
         PacketNumber,
-        Frame.Round,
-        Frame.PairedSequenceNumber,
-        PunchedAddrStr.Address);
+        Frame.SequenceNumber,
+        Frame.AddressCount);
 // arg2 = arg2 = PtkConnPre(Connection) = arg2
 // arg3 = arg3 = PktRxPre(Rx) = arg3
 // arg4 = arg4 = PacketNumber = arg4
-// arg5 = arg5 = Frame.Round = arg5
-// arg6 = arg6 = Frame.PairedSequenceNumber = arg6
-// arg7 = arg7 = PunchedAddrStr.Address = arg7
+// arg5 = arg5 = Frame.SequenceNumber = arg5
+// arg6 = arg6 = Frame.AddressCount = arg6
 ----------------------------------------------------------*/
-#ifndef _clog_8_ARGS_TRACE_FrameLogPunchMeNow
-#define _clog_8_ARGS_TRACE_FrameLogPunchMeNow(uniqueId, encoded_arg_string, arg2, arg3, arg4, arg5, arg6, arg7)\
-tracepoint(CLOG_FRAME_C, FrameLogPunchMeNow , arg2, arg3, arg4, arg5, arg6, arg7);\
+#ifndef _clog_7_ARGS_TRACE_FrameLogAlternativeAddress
+#define _clog_7_ARGS_TRACE_FrameLogAlternativeAddress(uniqueId, encoded_arg_string, arg2, arg3, arg4, arg5, arg6)\
+tracepoint(CLOG_FRAME_C, FrameLogAlternativeAddress , arg2, arg3, arg4, arg5, arg6);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogAlternativeAddressEntry
+// [%c][%cX][%llu]     %s prio=%llu preferred=%hhu
+// QuicTraceLogVerbose(
+            FrameLogAlternativeAddressEntry,
+            "[%c][%cX][%llu]     %s prio=%llu preferred=%hhu",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber,
+            AddrStr.Address,
+            Frame.Addresses[i].PriorityHint,
+            Frame.Addresses[i].PreferredToCurrentPath);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+// arg5 = arg5 = AddrStr.Address = arg5
+// arg6 = arg6 = Frame.Addresses[i].PriorityHint = arg6
+// arg7 = arg7 = Frame.Addresses[i].PreferredToCurrentPath = arg7
+----------------------------------------------------------*/
+#ifndef _clog_8_ARGS_TRACE_FrameLogAlternativeAddressEntry
+#define _clog_8_ARGS_TRACE_FrameLogAlternativeAddressEntry(uniqueId, encoded_arg_string, arg2, arg3, arg4, arg5, arg6, arg7)\
+tracepoint(CLOG_FRAME_C, FrameLogAlternativeAddressEntry , arg2, arg3, arg4, arg5, arg6, arg7);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogStatelessPunchMeNowInvalid
+// [%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]
+// QuicTraceLogVerbose(
+            FrameLogStatelessPunchMeNowInvalid,
+            "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW [Invalid]",
+            PtkConnPre(Connection),
+            PktRxPre(Rx),
+            PacketNumber);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_FrameLogStatelessPunchMeNowInvalid
+#define _clog_5_ARGS_TRACE_FrameLogStatelessPunchMeNowInvalid(uniqueId, encoded_arg_string, arg2, arg3, arg4)\
+tracepoint(CLOG_FRAME_C, FrameLogStatelessPunchMeNowInvalid , arg2, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for FrameLogStatelessPunchMeNow
+// [%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s
+// QuicTraceLogVerbose(
+        FrameLogStatelessPunchMeNow,
+        "[%c][%cX][%llu]   STATELESS_PUNCH_ME_NOW Client:%s Server:%s",
+        PtkConnPre(Connection),
+        PktRxPre(Rx),
+        PacketNumber,
+        ClientAddrStr.Address,
+        ServerAddrStr.Address);
+// arg2 = arg2 = PtkConnPre(Connection) = arg2
+// arg3 = arg3 = PktRxPre(Rx) = arg3
+// arg4 = arg4 = PacketNumber = arg4
+// arg5 = arg5 = ClientAddrStr.Address = arg5
+// arg6 = arg6 = ServerAddrStr.Address = arg6
+----------------------------------------------------------*/
+#ifndef _clog_7_ARGS_TRACE_FrameLogStatelessPunchMeNow
+#define _clog_7_ARGS_TRACE_FrameLogStatelessPunchMeNow(uniqueId, encoded_arg_string, arg2, arg3, arg4, arg5, arg6)\
+tracepoint(CLOG_FRAME_C, FrameLogStatelessPunchMeNow , arg2, arg3, arg4, arg5, arg6);\
 
 #endif
 

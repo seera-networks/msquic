@@ -95,39 +95,65 @@ typedef enum QUIC_LOAD_BALANCING_MODE {
                                                 // MUST BE LAST
 } QUIC_LOAD_BALANCING_MODE;
 
+//
+// How a connection handles dynamic addresses -- both the peer's and the host's
+// own. This is the single switch for all of it.
+//
+// IMPORTANT, and a change in behaviour: this setting now governs the host's own
+// addresses as well as the peer's, and it defaults to AUTO. A connection
+// therefore watches the host's addresses and manages its paths by itself unless
+// told otherwise, where previously that needed LocalAddressChangeMode to be set
+// and was off by default. If an application wants neither -- no address
+// monitoring, no automatic path management -- it must set MANUAL and ignore the
+// events.
+//
+// The modes:
+//
+//   AUTO           The connection decides. It tracks the host's addresses and
+//                  the peer's advertised ones, pairs them, opens and closes
+//                  paths to match, and migrates when the peer says it would
+//                  rather be reached elsewhere. Do not call the path
+//                  parameters from the connection callback in this mode.
+//
+//   MANUAL         The application decides. Both kinds of change are reported
+//                  -- LOCAL_ADDRESSES_CHANGED for the host's,
+//                  NOTIFY_REMOTE_ADDRESS_ADDED and _REMOVED for the peer's --
+//                  and the application acts through
+//                  QUIC_PARAM_CONN_ADD_PATH, _ACTIVATE_PATH and _REMOVE_PATH.
+//                  Nothing happens to a path unless the application asks.
+//
+//   NAT_TRAVERSAL  Like AUTO, except a path is only opened where the
+//                  application has configured a candidate with
+//                  QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS, and opening one
+//                  sends PUNCH_ME_NOW before probing it.
+//
+//
+// A note for MANUAL, where an application acts on these events itself:
+// SetParam runs inline from a connection callback, so calling ADD_PATH or
+// ACTIVATE_PATH from inside one raises LOCAL_ADDRESS_CHANGED before the call
+// returns, re-entering the handler. Do not hold a non-recursive lock across a
+// handler that calls the path parameters.
+//
 typedef enum QUIC_ADD_ADDRESS_MODE {
-    QUIC_ADD_ADDRESS_AUTO,                      // Automatically create path for the address
-    QUIC_ADD_ADDRESS_MANUAL,                    // Indicate to app that address is being added
-    QUIC_ADD_ADDRESS_NAT_TRAVERSAL,             // Automatically send Punch Me Now for the address 
+    QUIC_ADD_ADDRESS_AUTO,                      // Default. The connection manages its own paths.
+    QUIC_ADD_ADDRESS_MANUAL,                    // Report every change; the application acts.
+    QUIC_ADD_ADDRESS_NAT_TRAVERSAL,             // As AUTO, but punch first and only where a candidate is set.
     QUIC_ADD_ADDRESS_COUNT,                     // The number of supported handling add adddress modes
                                                 // MUST BE LAST
 } QUIC_ADD_ADDRESS_MODE;
 
 //
-// How a connection reacts to the host's own addresses changing. The monitoring
-// that feeds this is only started once some connection asks for it, so leaving
-// this at the default costs nothing.
-//
-//
-// What a connection does when the set of addresses the host has changes.
-//
-// N.B. The two active modes differ in who owns the paths, and an application
-// cannot treat them alike. Under NOTIFY it is the application's job to act,
-// from the LOCAL_ADDRESSES_CHANGED callback, using ADD_PATH / ACTIVATE_PATH /
-// REMOVE_PATH. Under AUTO the connection owns that decision, and an
-// application calling those from the callback races the policy -- there, the
-// events are informational only.
-//
-// N.B. SetParam runs inline when called from a connection callback, so
-// ACTIVATE_PATH from inside one raises LOCAL_ADDRESS_CHANGED before the call
-// returns, re-entering the handler. Do not hold a non-recursive lock across a
-// handler that calls the path parameters.
+// DEPRECATED. Setting QUIC_SETTINGS.LocalAddressChangeMode has no effect; it is
+// accepted and ignored. QUIC_ADD_ADDRESS_MODE governs the host's own addresses
+// as well as the peer's -- AUTO behaves as this setting's AUTO did, MANUAL as
+// its NOTIFY. The field and this enum are kept only so that an application
+// built against an earlier header still compiles and links, and will be removed
+// in a future version.
 //
 typedef enum QUIC_LOCAL_ADDRESS_CHANGE_MODE {
-    QUIC_LOCAL_ADDRESS_CHANGE_DISABLED,  // Default. The behaviour before this existed.
-    QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY,    // Indicate the change; the app decides and acts.
-    QUIC_LOCAL_ADDRESS_CHANGE_AUTO,      // The connection migrates and manages paths itself.
-                                         // Do not call the path parameters from the callback.
+    QUIC_LOCAL_ADDRESS_CHANGE_DISABLED,  // Deprecated and ignored. See QUIC_ADD_ADDRESS_MODE.
+    QUIC_LOCAL_ADDRESS_CHANGE_NOTIFY,    // Deprecated and ignored. Use QUIC_ADD_ADDRESS_MANUAL.
+    QUIC_LOCAL_ADDRESS_CHANGE_AUTO,      // Deprecated and ignored. Use QUIC_ADD_ADDRESS_AUTO.
     QUIC_LOCAL_ADDRESS_CHANGE_COUNT
 } QUIC_LOCAL_ADDRESS_CHANGE_MODE;
 
@@ -975,7 +1001,7 @@ typedef struct QUIC_SETTINGS {
     // moving an existing one leaves sizeof(QUIC_SETTINGS) unchanged and makes
     // an older application silently read the wrong offset.
     //
-    uint8_t LocalAddressChangeMode;             // QUIC_LOCAL_ADDRESS_CHANGE_MODE
+    uint8_t LocalAddressChangeMode;             // DEPRECATED and ignored. See QUIC_ADD_ADDRESS_MODE.
     uint32_t AutoMigrationHoldDownMs;
 
 } QUIC_SETTINGS;
@@ -1487,7 +1513,7 @@ typedef enum QUIC_CONNECTION_EVENT_TYPE {
     QUIC_CONNECTION_EVENT_PATH_ADDED                        = 23,   // Only indicated if QUIC_SETTINGS.MultipathEnabled is TRUE.
     QUIC_CONNECTION_EVENT_PATH_REMOVED                      = 24,   // Only indicated if QUIC_SETTINGS.MultipathEnabled is TRUE.
     QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED               = 25,   // Only indicated if QUIC_SETTINGS.MultipathEnabled is TRUE.
-    QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED           = 26,   // Only indicated if QUIC_SETTINGS.LocalAddressChangeMode is not DISABLED.
+    QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED           = 26,   // Only indicated if QUIC_SETTINGS.AddAddressMode is MANUAL
 #endif
 } QUIC_CONNECTION_EVENT_TYPE;
 

@@ -400,17 +400,17 @@ tracepoint(CLOG_CONNECTION_C, AutoRemoveOldRoutePathFailed , arg1, arg3);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for AutoMigrationUnavailable
-// [conn][%p] QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated
+// Decoder Ring for AutoMigrationUnavailableMode
+// [conn][%p] QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated
 // QuicTraceLogConnWarning(
-                AutoMigrationUnavailable,
+                AutoMigrationUnavailableMode,
                 Connection,
-                "QUIC_LOCAL_ADDRESS_CHANGE_AUTO does nothing with server migration negotiated");
+                "QUIC_ADD_ADDRESS_AUTO does nothing with server migration negotiated");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_AutoMigrationUnavailable
-#define _clog_3_ARGS_TRACE_AutoMigrationUnavailable(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, AutoMigrationUnavailable , arg1);\
+#ifndef _clog_3_ARGS_TRACE_AutoMigrationUnavailableMode
+#define _clog_3_ARGS_TRACE_AutoMigrationUnavailableMode(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoMigrationUnavailableMode , arg1);\
 
 #endif
 
@@ -531,6 +531,44 @@ tracepoint(CLOG_CONNECTION_C, UnreachableInvalid , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileRemovePathFailed
+// [conn][%p] Reconciler failed to remove a path, status=0x%x
+// QuicTraceLogConnWarning(
+                ReconcileRemovePathFailed,
+                Connection,
+                "Reconciler failed to remove a path, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileRemovePathFailed
+#define _clog_4_ARGS_TRACE_ReconcileRemovePathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileRemovePathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressFull
+// [conn][%p] ALTERNATIVE_ADDRESS advertised more addresses than tracked
+// QuicTraceLogConnWarning(
+                AlternativeAddressFull,
+                Connection,
+                "ALTERNATIVE_ADDRESS advertised more addresses than tracked");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AlternativeAddressFull
+#define _clog_3_ARGS_TRACE_AlternativeAddressFull(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AlternativeAddressFull , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ExportKeyingMaterialInvalidState
 // [conn][%p] Cannot export keying material [Connected=%hhu, HandshakeComplete=%hhu, HasTls=%hhu]
 // QuicTraceLogConnWarning(
@@ -609,55 +647,35 @@ tracepoint(CLOG_CONNECTION_C, AutoMigrateMultipathActivate , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for AutoAddPathFailed
-// [conn][%p] AUTO could not open a path on a new address, status=0x%x
-// QuicTraceLogConnInfo(
-                    AutoAddPathFailed,
-                    Connection,
-                    "AUTO could not open a path on a new address, status=0x%x",
-                    Status);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Status = arg3
-----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_AutoAddPathFailed
-#define _clog_4_ARGS_TRACE_AutoAddPathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_CONNECTION_C, AutoAddPathFailed , arg1, arg3);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for AutoAddedPath
-// [conn][%p] AUTO opened a path on a new local address
-// QuicTraceLogConnInfo(
-                AutoAddedPath,
-                Connection,
-                "AUTO opened a path on a new local address");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_AutoAddedPath
-#define _clog_3_ARGS_TRACE_AutoAddedPath(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, AutoAddedPath , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for AutoFollowedRoute
 // [conn][%p] AUTO followed a route change onto a validated path
 // QuicTraceLogConnInfo(
-        AutoFollowedRoute,
-        Connection,
-        "AUTO followed a route change onto a validated path");
+            AutoFollowedRoute,
+            Connection,
+            "AUTO followed a route change onto a validated path");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 #ifndef _clog_3_ARGS_TRACE_AutoFollowedRoute
 #define _clog_3_ARGS_TRACE_AutoFollowedRoute(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, AutoFollowedRoute , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AutoFollowedTable
+// [conn][%p] AUTO migrated onto the candidate pair table's preferred pair
+// QuicTraceLogConnInfo(
+            AutoFollowedTable,
+            Connection,
+            "AUTO migrated onto the candidate pair table's preferred pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_AutoFollowedTable
+#define _clog_3_ARGS_TRACE_AutoFollowedTable(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, AutoFollowedTable , arg1);\
 
 #endif
 
@@ -732,6 +750,24 @@ tracepoint(CLOG_CONNECTION_C, AutoFollowRouteAddPathFailed , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_AutoFollowRouteAddedPath
 #define _clog_3_ARGS_TRACE_AutoFollowRouteAddedPath(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, AutoFollowRouteAddedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ServerAbandonedLostPath
+// [conn][%p] Server abandoned a path whose local address was lost
+// QuicTraceLogConnInfo(
+            ServerAbandonedLostPath,
+            Connection,
+            "Server abandoned a path whose local address was lost");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ServerAbandonedLostPath
+#define _clog_3_ARGS_TRACE_ServerAbandonedLostPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ServerAbandonedLostPath , arg1);\
 
 #endif
 
@@ -1101,6 +1137,26 @@ tracepoint(CLOG_CONNECTION_C, PathChallengeResend , arg1, arg3, arg4, arg5);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PunchAttemptCidRetired
+// [conn][%p] Path[%hhu] punch attempt failed; retired its destination CID
+// QuicTraceLogConnInfo(
+                PunchAttemptCidRetired,
+                Connection,
+                "Path[%hhu] punch attempt failed; retired its destination CID",
+                Connection->Paths[i].ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->Paths[i].ID = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PunchAttemptCidRetired
+#define _clog_4_ARGS_TRACE_PunchAttemptCidRetired(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PunchAttemptCidRetired , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for UpdatePeerPacketTolerance
 // [conn][%p] Updating peer packet tolerance to %hhu
 // QuicTraceLogConnInfo(
@@ -1132,6 +1188,176 @@ tracepoint(CLOG_CONNECTION_C, UpdatePeerPacketTolerance , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_BoundAddressWildcardForQtip
 #define _clog_3_ARGS_TRACE_BoundAddressWildcardForQtip(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileRemovedPath
+// [conn][%p] Reconciler removed a path whose pair left the table
+// QuicTraceLogConnInfo(
+            ReconcileRemovedPath,
+            Connection,
+            "Reconciler removed a path whose pair left the table");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileRemovedPath
+#define _clog_3_ARGS_TRACE_ReconcileRemovedPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileRemovedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileAddPathFailed
+// [conn][%p] Reconciler could not open a path, status=0x%x
+// QuicTraceLogConnInfo(
+                ReconcileAddPathFailed,
+                Connection,
+                "Reconciler could not open a path, status=0x%x",
+                Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileAddPathFailed
+#define _clog_4_ARGS_TRACE_ReconcileAddPathFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileAddPathFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestQueued
+// [conn][%p] Queued a punch request for a table pair
+// QuicTraceLogConnInfo(
+                PunchRequestQueued,
+                Connection,
+                "Queued a punch request for a table pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchRequestQueued
+#define _clog_3_ARGS_TRACE_PunchRequestQueued(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchRequestQueued , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileAddedPath
+// [conn][%p] Reconciler opened a path for a table pair
+// QuicTraceLogConnInfo(
+            ReconcileAddedPath,
+            Connection,
+            "Reconciler opened a path for a table pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileAddedPath
+#define _clog_3_ARGS_TRACE_ReconcileAddedPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileAddedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateAbandoned
+// [conn][%p] Reconciler lost the path it was migrating onto
+// QuicTraceLogConnInfo(
+            ReconcileMigrateAbandoned,
+            Connection,
+            "Reconciler lost the path it was migrating onto");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileMigrateAbandoned
+#define _clog_3_ARGS_TRACE_ReconcileMigrateAbandoned(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileMigrateAbandoned , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateStarted
+// [conn][%p] Reconciler started a migration onto the table's preferred pair
+// QuicTraceLogConnInfo(
+        ReconcileMigrateStarted,
+        Connection,
+        "Reconciler started a migration onto the table's preferred pair");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileMigrateStarted
+#define _clog_3_ARGS_TRACE_ReconcileMigrateStarted(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileMigrateStarted , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressWithdrawn
+// [conn][%p] ALTERNATIVE_ADDRESS withdrew an address (seq %llu)
+// QuicTraceLogConnInfo(
+            AlternativeAddressWithdrawn,
+            Connection,
+            "ALTERNATIVE_ADDRESS withdrew an address (seq %llu)",
+            Connection->AltAddrs[i].SequenceNumber);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->AltAddrs[i].SequenceNumber = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AlternativeAddressWithdrawn
+#define _clog_4_ARGS_TRACE_AlternativeAddressWithdrawn(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AlternativeAddressWithdrawn , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressAddFailed
+// [conn][%p] ALTERNATIVE_ADDRESS could not use an address, status=0x%x
+// QuicTraceLogConnInfo(
+                    AlternativeAddressAddFailed,
+                    Connection,
+                    "ALTERNATIVE_ADDRESS could not use an address, status=0x%x",
+                    Status);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Status = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AlternativeAddressAddFailed
+#define _clog_4_ARGS_TRACE_AlternativeAddressAddFailed(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, AlternativeAddressAddFailed , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchPacketSent
+// [conn][%p] Sent a punch packet of %hu bytes
+// QuicTraceLogConnInfo(
+        PunchPacketSent,
+        Connection,
+        "Sent a punch packet of %hu bytes",
+        Length);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Length = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PunchPacketSent
+#define _clog_4_ARGS_TRACE_PunchPacketSent(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PunchPacketSent , arg1, arg3);\
 
 #endif
 
@@ -1316,24 +1542,6 @@ tracepoint(CLOG_CONNECTION_C, RouteLocalAddressUnavailable , arg1, arg3);\
 #ifndef _clog_3_ARGS_TRACE_IndicateLocalAddressChanged
 #define _clog_3_ARGS_TRACE_IndicateLocalAddressChanged(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, IndicateLocalAddressChanged , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for AutoAddPathHeldDown
-// [conn][%p] AUTO held down opening a path on a new address
-// QuicTraceLogConnVerbose(
-            AutoAddPathHeldDown,
-            Connection,
-            "AUTO held down opening a path on a new address");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_AutoAddPathHeldDown
-#define _clog_3_ARGS_TRACE_AutoAddPathHeldDown(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, AutoAddPathHeldDown , arg1);\
 
 #endif
 
@@ -1865,6 +2073,60 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyObservedAddress , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PunchBeforeHandshakeConfirmed
+// [conn][%p] Ignoring a punch request before the handshake is confirmed
+// QuicTraceLogConnVerbose(
+                    PunchBeforeHandshakeConfirmed,
+                    Connection,
+                    "Ignoring a punch request before the handshake is confirmed");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchBeforeHandshakeConfirmed
+#define _clog_3_ARGS_TRACE_PunchBeforeHandshakeConfirmed(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchBeforeHandshakeConfirmed , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchAlreadySentForPacket
+// [conn][%p] Ignoring a second punch request in one packet
+// QuicTraceLogConnVerbose(
+                    PunchAlreadySentForPacket,
+                    Connection,
+                    "Ignoring a second punch request in one packet");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchAlreadySentForPacket
+#define _clog_3_ARGS_TRACE_PunchAlreadySentForPacket(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchAlreadySentForPacket , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestUnknownAddress
+// [conn][%p] Punch request named an address this server did not advertise
+// QuicTraceLogConnVerbose(
+                    PunchRequestUnknownAddress,
+                    Connection,
+                    "Punch request named an address this server did not advertise");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchRequestUnknownAddress
+#define _clog_3_ARGS_TRACE_PunchRequestUnknownAddress(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchRequestUnknownAddress , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for IndicatePeerAddrChanged
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED
 // QuicTraceLogConnVerbose(
@@ -1941,6 +2203,146 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for CandidatePairsRebuilt
+// [conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs
+// QuicTraceLogConnVerbose(
+        CandidatePairsRebuilt,
+        Connection,
+        "Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs",
+        LocalCount,
+        RemoteCount,
+        Connection->CandidatePairs->Count);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = LocalCount = arg3
+// arg4 = arg4 = RemoteCount = arg4
+// arg5 = arg5 = Connection->CandidatePairs->Count = arg5
+----------------------------------------------------------*/
+#ifndef _clog_6_ARGS_TRACE_CandidatePairsRebuilt
+#define _clog_6_ARGS_TRACE_CandidatePairsRebuilt(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_CONNECTION_C, CandidatePairsRebuilt , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileCreateHeldDownFor
+// [conn][%p] Reconciler held down opening paths for %llu us
+// QuicTraceLogConnVerbose(
+            ReconcileCreateHeldDownFor,
+            Connection,
+            "Reconciler held down opening paths for %llu us",
+            RemainingUs);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemainingUs = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileCreateHeldDownFor
+#define _clog_4_ARGS_TRACE_ReconcileCreateHeldDownFor(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileSkippedUnpunchablePair
+// [conn][%p] NAT traversal skipped a pair with no configured candidate
+// QuicTraceLogConnVerbose(
+                ReconcileSkippedUnpunchablePair,
+                Connection,
+                "NAT traversal skipped a pair with no configured candidate");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileSkippedUnpunchablePair
+#define _clog_3_ARGS_TRACE_ReconcileSkippedUnpunchablePair(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileSkippedUnpunchablePair , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateHeldDown
+// [conn][%p] Reconciler held down migrating for %llu us
+// QuicTraceLogConnVerbose(
+            ReconcileMigrateHeldDown,
+            Connection,
+            "Reconciler held down migrating for %llu us",
+            RemainingUs);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RemainingUs = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_ReconcileMigrateHeldDown
+#define _clog_4_ARGS_TRACE_ReconcileMigrateHeldDown(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, ReconcileMigrateHeldDown , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileMigrateNoPath
+// [conn][%p] Reconciler has no path yet for the pair it wants to migrate to
+// QuicTraceLogConnVerbose(
+            ReconcileMigrateNoPath,
+            Connection,
+            "Reconciler has no path yet for the pair it wants to migrate to");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileMigrateNoPath
+#define _clog_3_ARGS_TRACE_ReconcileMigrateNoPath(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileMigrateNoPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressStale
+// [conn][%p] Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)
+// QuicTraceLogConnVerbose(
+            AlternativeAddressStale,
+            Connection,
+            "Ignoring stale ALTERNATIVE_ADDRESS %llu (have %llu)",
+            Frame->SequenceNumber,
+            Connection->AltAddrPeerSequenceNumber);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Frame->SequenceNumber = arg3
+// arg4 = arg4 = Connection->AltAddrPeerSequenceNumber = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_AlternativeAddressStale
+#define _clog_5_ARGS_TRACE_AlternativeAddressStale(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_CONNECTION_C, AlternativeAddressStale , arg1, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for IndicateNotifyRemoteAddressRemovedAlt
+// [conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED
+// QuicTraceLogConnVerbose(
+                IndicateNotifyRemoteAddressRemovedAlt,
+                Connection,
+                "Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressRemovedAlt
+#define _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressRemovedAlt(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressRemovedAlt , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for IndicateNotifyRemoteAddressRemoved
 // [conn][%p] Indicating QUIC_CONNECTION_EVENT_NOTIFY_REMOTE_ADDRESS_REMOVED
 // QuicTraceLogConnVerbose(
@@ -1952,6 +2354,136 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
 #ifndef _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressRemoved
 #define _clog_3_ARGS_TRACE_IndicateNotifyRemoteAddressRemoved(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressRemoved , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefused
+// [conn][%p] Refusing to punch towards an unspecified address
+// QuicTraceLogConnVerbose(
+            PunchDestinationRefused,
+            Connection,
+            "Refusing to punch towards an unspecified address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchDestinationRefused
+#define _clog_3_ARGS_TRACE_PunchDestinationRefused(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchDestinationRefused , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedScope
+// [conn][%p] Refusing to punch towards a multicast or broadcast address
+// QuicTraceLogConnVerbose(
+                PunchDestinationRefusedScope,
+                Connection,
+                "Refusing to punch towards a multicast or broadcast address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchDestinationRefusedScope
+#define _clog_3_ARGS_TRACE_PunchDestinationRefusedScope(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchDestinationRefusedScope , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedLocal
+// [conn][%p] Refusing to punch towards a loopback or link-local address
+// QuicTraceLogConnVerbose(
+            PunchDestinationRefusedLocal,
+            Connection,
+            "Refusing to punch towards a loopback or link-local address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchDestinationRefusedLocal
+#define _clog_3_ARGS_TRACE_PunchDestinationRefusedLocal(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchDestinationRefusedLocal , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchDestinationRefusedPort
+// [conn][%p] Refusing to punch towards a sensitive port (%hu)
+// QuicTraceLogConnVerbose(
+                PunchDestinationRefusedPort,
+                Connection,
+                "Refusing to punch towards a sensitive port (%hu)",
+                Port);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Port = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PunchDestinationRefusedPort
+#define _clog_4_ARGS_TRACE_PunchDestinationRefusedPort(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PunchDestinationRefusedPort , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRateLimited
+// [conn][%p] Punch rate limit reached, dropping the request
+// QuicTraceLogConnVerbose(
+            PunchRateLimited,
+            Connection,
+            "Punch rate limit reached, dropping the request");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchRateLimited
+#define _clog_3_ARGS_TRACE_PunchRateLimited(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchRateLimited , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchRequestPacketTooSmall
+// [conn][%p] Punch request packet too small to answer within (%hu)
+// QuicTraceLogConnVerbose(
+            PunchRequestPacketTooSmall,
+            Connection,
+            "Punch request packet too small to answer within (%hu)",
+            RequestPacketLength);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = RequestPacketLength = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PunchRequestPacketTooSmall
+#define _clog_4_ARGS_TRACE_PunchRequestPacketTooSmall(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PunchRequestPacketTooSmall , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for PunchAddressFamilyMismatch
+// [conn][%p] Punch request address family does not match the bound address
+// QuicTraceLogConnVerbose(
+            PunchAddressFamilyMismatch,
+            Connection,
+            "Punch request address family does not match the bound address");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_PunchAddressFamilyMismatch
+#define _clog_3_ARGS_TRACE_PunchAddressFamilyMismatch(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, PunchAddressFamilyMismatch , arg1);\
 
 #endif
 

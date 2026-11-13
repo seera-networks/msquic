@@ -242,7 +242,23 @@ typedef union QUIC_CONNECTION_STATE {
 #endif
         BOOLEAN ServerMigrationNegotiated : 1;
 
-        BOOLEAN NatTraverseNegotiated : 1;
+        //
+        // The peer negotiated draft-munizaga-quic-alternative-server-address.
+        // Client-sent, so on a server this means the client asked for the
+        // extension and ALTERNATIVE_ADDRESS frames may be sent; on a client it
+        // means our own parameter went out and such frames may be received.
+        //
+        BOOLEAN AlternativeAddressNegotiated : 1;
+
+        //
+        // Both endpoints advertised draft-kozuka-quic-stateless-punch's
+        // transport parameter, so PUNCH_ME_NOW may be sent and acted on.
+        // Symmetric, unlike AlternativeAddressNegotiated: that parameter is
+        // client-only and a server is forbidden to echo it, while this one is
+        // sent by both.
+        //
+        BOOLEAN StatelessPunchNegotiated : 1;
+
 
     };
 } QUIC_CONNECTION_STATE;
@@ -354,6 +370,77 @@ typedef struct QUIC_CONN_STATS {
 //   N.B. In general, all variables should only be written on the QUIC worker
 //        thread.
 //
+//
+// Why a make-before-break migration is in flight.
+//
+//
+// Stage 5 of #157: AddAddressMode is the single switch for dynamic address
+// handling, and LocalAddressChangeMode is ignored. These three say what each
+// mode means, so that the policy lives in one place rather than in a dozen
+// comparisons.
+//
+//   AUTO           the connection manages its own paths: table, reconciler,
+//                  migration.
+//   MANUAL         the application manages them. It gets the four events and
+//                  acts through ADD_PATH / ACTIVATE_PATH / REMOVE_PATH, and
+//                  there is no table at all.
+//   NAT_TRAVERSAL  the connection manages its paths, but from the older
+//                  ADD_ADDRESS frames rather than from the table, because
+//                  PUNCH_ME_NOW names the server's address by a sequence
+//                  number only those frames carry. #173 is what moves it onto
+//                  the table.
+//
+// Reports go to MANUAL alone, because there the events are the whole
+// interface.
+//
+#define QuicConnWantsAddressReports(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_MANUAL)
+
+//
+// Whether the connection acts on the host's own addresses rather than
+// reporting them -- migrating off an address that went away, following the
+// route when it moves. True of NAT_TRAVERSAL as well as AUTO: that mode is
+// "like AUTO" as far as the host's addresses go, and leaving it out stranded a
+// NAT-traversal connection on a dead path with nothing to tell the
+// application, which is worse than either alternative.
+//
+#define QuicConnManagesPathsAutomatically(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO || \
+     (Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL)
+
+//
+// Whether paths follow the candidate pair table. AUTO and, as of #173,
+// NAT_TRAVERSAL -- which is now exactly this with one extra rule: a pair
+// becomes a path only where a candidate is configured for its local address.
+// Until #173 the mode had its own machinery and the table would have held
+// pairs it could not punch for; the stateless punch names a pair by address,
+// so it can.
+//
+// MANUAL is still out, and that is the whole of what the modes differ by here:
+// the application opens paths itself and a table it never reads would cost a
+// route lookup per remote address for nothing.
+//
+#define QuicConnWantsCandidateTable(Conn) \
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO || \
+     (Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL)
+
+typedef enum QUIC_MIGRATION_REASON {
+
+    //
+    // The host changed which interface it sends this peer's traffic from
+    // (#134 phase 5). Gated on AddAddressMode since #157 stage 5.
+    //
+    QUIC_MIGRATION_REASON_ROUTE,
+
+    //
+    // The server advertised an address it would rather be reached at, and the
+    // candidate pair table ranks that pair above the one in use (#157 stage
+    // 4). Gated on AddAddressMode.
+    //
+    QUIC_MIGRATION_REASON_TABLE,
+
+} QUIC_MIGRATION_REASON;
+
 typedef struct QUIC_CONNECTION {
 
 #ifdef __cplusplus
@@ -545,7 +632,6 @@ typedef struct QUIC_CONNECTION {
     //
     // The concurrency limit of nat traverse attempts.
     //
-    QUIC_VAR_INT NatTraverseConcurrencyLimit;
 
     //
     // The sequence number to use for sending an add address.
@@ -553,9 +639,109 @@ typedef struct QUIC_CONNECTION {
     QUIC_VAR_INT AddAddressSequenceNumber;
 
     //
+    // The sequence number to put on the next ALTERNATIVE_ADDRESS frame we
+    // send, and the highest one we have accepted from the peer.
+    //
+    // The draft has the receiver ignore any frame whose sequence number does
+    // not exceed the last one processed, which is what makes a reordered frame
+    // harmless: a newer frame replaces the advertised set wholesale, so acting
+    // on an older one would resurrect addresses the peer had withdrawn.
+    //
+    QUIC_VAR_INT AltAddrNextSequenceNumber;
+    QUIC_VAR_INT AltAddrPeerSequenceNumber;
+    BOOLEAN AltAddrPeerSequenceNumberValid;
+
+    //
+    // The set of addresses the peer most recently advertised, kept so the next
+    // frame can be diffed against it. The draft sends the whole set every
+    // time and withdraws by omission, while everything downstream here is
+    // built around "this address appeared" and "this address went away" -- so
+    // the diff is what bridges the two, and it is the only reason this copy
+    // exists.
+    //
+    // Each entry carries the sequence number this connection assigned it, not
+    // one the peer sent: the draft has no per-address sequence numbers, and
+    // the path machinery identifies a peer address by one. Assigning them
+    // locally keeps QuicConnProcessAddAddress and the REMOVE_ADDRESS operation
+    // usable unchanged.
+    //
+    uint8_t AltAddrCount;
+    struct {
+        QUIC_ADDR Address;
+        QUIC_VAR_INT SequenceNumber;
+        //
+        // What the frame said about this address, kept because the candidate
+        // pair table ranks on it. #155 decoded both and then dropped them,
+        // since nothing downstream could use a priority it had no pair to
+        // apply it to.
+        //
+        QUIC_VAR_INT PriorityHint;
+        BOOLEAN PreferredToCurrentPath;
+    } AltAddrs[QUIC_MAX_ALTERNATIVE_ADDRESSES];
+
+    //
+    // Every (local address, remote address) combination this connection could
+    // carry a path on, ordered best first. See candidate.h.
+    //
+    // Allocated on first use rather than inline: it is over a kilobyte, and a
+    // connection that never turns on dynamic address handling should not pay
+    // for it. Nothing reads it yet -- stage 3 of #157 is what makes paths
+    // follow it.
+    //
+    QUIC_CANDIDATE_SET* CandidatePairs;
+
+    //
+    // A rebuild is already queued, so another change need not queue a second.
+    // The rebuild reads the current state rather than anything carried on the
+    // operation, so one pending pass covers every change that arrives before
+    // it runs.
+    //
+    BOOLEAN CandidatePairsRebuildQueued;
+
+    //
+    // The candidate pair table was built without enough information to say
+    // that a pair is absent rather than unknown -- no address snapshot and no
+    // route lookup. Paths may be created from it but not removed against it.
+    //
+    BOOLEAN CandidatePairsApproximate;
+
+    //
+    // Whether the opening "here are your addresses" pass has been queued, so
+    // that it happens once for a connection that never changes mode and again
+    // whenever one is set.
+    //
+    BOOLEAN AddressChangePassQueued;
+
+    //
+    // When the current punch rate-limiting window opened, and how many punch
+    // packets have gone out inside it. Zero until the first request arrives.
+    // QUIC_PUNCH_RATE_LIMIT_PER_WINDOW and QUIC_PUNCH_RATE_WINDOW_US are the
+    // bound and the width, and say why they are those.
+    //
+    uint64_t PunchWindowStartUs;
+    uint16_t PunchesInWindow;
+
+    //
+    // Counters for the stateless punch exchange, read back by a debug-only
+    // parameter. They exist because the exchange is otherwise invisible: the
+    // punch packet is unacknowledged and leaves no state, and the request is
+    // one frame among many in an ordinary packet, so a test has nothing to
+    // observe without them.
+    //
+    // RequestsIgnoredPerPacket is the one that earns its keep. It counts
+    // requests a second-or-later in their packet, which the server reads and
+    // drops -- so a client that batches requests shows up here, and the
+    // one-per-packet rule becomes something a test can check rather than
+    // something only the code says.
+    //
+    uint32_t PunchRequestsSent;
+    uint32_t PunchRequestsReceived;
+    uint32_t PunchesSent;
+    uint32_t PunchRequestsIgnoredPerPacket;
+
+    //
     // The sequence number to use for sending an punch me now.
     //
-    QUIC_VAR_INT PunchMeNowSequenceNumber;
 
     //
     // The most recent Retire Prior To field received in a NEW_CONNECTION_ID
@@ -641,8 +827,61 @@ typedef struct QUIC_CONNECTION {
     // addresses already in use -- and does not get recycled the way a path ID
     // slot can.
     //
-    BOOLEAN RouteMigrationPending;
-    QUIC_ADDR RouteMigrationLocal;
+    BOOLEAN MigrationPending;
+    QUIC_ADDR MigrationLocal;
+
+    //
+    // And its remote address, because stage 4 of #157 migrates between remote
+    // addresses rather than between local ones: a route change keeps the peer
+    // and swaps the interface, while a server saying it would rather be
+    // reached somewhere else keeps the interface and swaps the peer. The pair
+    // is what identifies the path either way, so both migrations wait on the
+    // same markers -- which also makes them mutually exclusive, and they have
+    // to be: two make-before-break attempts in flight would fight over which
+    // path ends up active.
+    //
+    QUIC_ADDR MigrationRemote;
+
+    //
+    // Which of the two started it. Only used to say so in the traces and to
+    // pick the mode that has to still be AUTO for it to complete; the
+    // mechanism is identical.
+    //
+    QUIC_MIGRATION_REASON MigrationReason;
+
+    //
+    // The ALTERNATIVE_ADDRESS sequence number whose preference was last acted
+    // on, so that one advertisement produces at most one migration.
+    //
+    // The draft's sentinel says the server would rather be reached at these
+    // addresses than on the path the frame arrived on. That is a statement
+    // about a particular path, so once the connection has moved it is spent.
+    //
+    // Without this, one advertisement authorises a migration on every
+    // reconciliation pass that follows it, and with two addresses marked the
+    // moves alternate: move to the first, and the second is still ranked above
+    // the path now in use, so the next pass moves there, where the first is
+    // above it again. Not self-sustaining -- a pass needs a trigger -- but
+    // every local address change, route change and later frame becomes one, so
+    // on a connection that sees any churn the server's single statement keeps
+    // moving it. One advertisement, at most one migration.
+    //
+    QUIC_VAR_INT MigratedAtAltSequenceNumber;
+    BOOLEAN MigratedAtAltSequenceNumberValid;
+
+    //
+    // The remote address the last table migration moved away from, so the
+    // connection does not come straight back to it on the strength of the same
+    // advertised set.
+    //
+    // The sequence number above does not cover this on its own: the frame
+    // writer numbers at encode time and the loss handler re-arms the flag, so
+    // a retransmission of an unchanged set arrives with a higher number and
+    // reads as a new statement. One step of history is what a two-address
+    // oscillation needs.
+    //
+    QUIC_ADDR MigratedFromRemote;
+    BOOLEAN MigratedFromRemoteValid;
 
     //
     // The path above has finished validating and the migration onto it is
@@ -652,7 +891,7 @@ typedef struct QUIC_CONNECTION {
     // and completing the migration swaps the path array and removes an entry,
     // which left that pointer naming a path that had just been taken away.
     //
-    BOOLEAN RouteMigrationReady;
+    BOOLEAN MigrationReady;
 
     CXPLAT_LIST_ENTRY BoundAddresses;
 
@@ -829,8 +1068,25 @@ typedef struct QUIC_BOUND_ADDRESS_LIST_ENTRY {
     QUIC_ADDR ObservedAddress;
     QUIC_BINDING* Binding;
     QUIC_VAR_INT SequenceNumber;
+    //
+    // The ALTERNATIVE_ADDRESS sequence number of the first frame that will
+    // leave this address out, set when it is marked Removing. Withdrawal in
+    // that draft is by omission, so the entry can only be freed once a frame
+    // at least this new has been acknowledged -- an older frame still in
+    // flight when the address was withdrawn carried it, and treating its
+    // acknowledgement as proof of withdrawal would drop the entry before the
+    // peer had been told.
+    //
+    QUIC_VAR_INT WithdrawnAtAltSequenceNumber;
     BOOLEAN SequenceNumberValid : 1;
     BOOLEAN ObservedAddressSet : 1;
+    //
+    // Advertise this address before the draft's CURRENT_PATH sentinel, which
+    // is the server saying it would rather be reached here than on the path
+    // the frame goes out on. Off by default: the writer has no basis for
+    // asserting a preference the application has not expressed.
+    //
+    BOOLEAN PreferredToCurrentPath : 1;
     BOOLEAN SendAddAddress : 1;
     BOOLEAN SendRemoveAddress : 1;
     BOOLEAN Removing : 1;
@@ -1876,12 +2132,118 @@ QuicConnProcessAddAddress(
     _In_ QUIC_ADD_ADDRESS_EX* Frame
     );
 
+//
+// Rebuilds the candidate pair table from the host's local addresses and the
+// remote addresses this connection knows about.
+//
+// Must run on the connection's worker: the per-remote route lookup can block.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnRebuildCandidatePairs(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// The reconciler: rebuilds the table, removes the paths it no longer holds a
+// pair for, then opens paths for the best pairs that have none -- in that
+// order, which is the reason it is one function and not three callers.
+//
+// Must run on the connection's worker, and never from frame processing.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnReconcilePaths(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Takes the address-monitor reference if this connection wants it, and runs the
+// opening local-address pass. Called when settings are applied and at handshake
+// confirmation; does nothing before the latter.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnUpdateAddressMonitorRef(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ BOOLEAN ModeWasSet
+    );
+
+//
+// Asks for a reconciliation on the connection's worker. Safe to call from frame
+// processing, which the reconciliation itself is not.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicConnQueueReconcile(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Processes an ALTERNATIVE_ADDRESS frame: the peer's whole advertised set.
+// Diffs it against the stored copy and drives the same add and remove paths
+// the per-address frames do.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+QuicConnProcessAlternativeAddress(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ALTERNATIVE_ADDRESS_EX* Frame
+    );
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 QuicConnProcessRemoveAddress(
     _In_ QUIC_CONNECTION* Connection,
     _In_ QUIC_REMOVE_ADDRESS_EX* Frame
     );
+
+//
+// Whether a punch packet may be sent to this address at all, and whether this
+// connection's punch allowance has anything left in it. Exposed because they
+// are the policy half of draft-kozuka-quic-stateless-punch and are worth
+// testing without a peer: the send they guard produces nothing a test can
+// see, since the whole point is that no state is kept.
+//
+// Linkage spelled out because the rest of this header does not, and the unit
+// test is C++ -- the same reason candidate.h wraps itself whole.
+//
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchDestinationAllowed(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Address
+    );
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchRateAllows(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
+//
+// Whether a candidate pair is one this client can ask the server to punch
+// for, and the address the request should name. Exposed for the same reason
+// the two above are: it is the decision that selects which pair gets a
+// request, and it is a pure function of the connection's advertised set and
+// configured candidates.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicConnPunchableClientAddress(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* LocalAddress,
+    _In_ const QUIC_ADDR* RemoteAddress,
+    _Out_ QUIC_ADDR* ClientAddress
+    );
+
+#if defined(__cplusplus)
+}
+#endif
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void

@@ -84,11 +84,24 @@ typedef struct QUIC_SENT_FRAME_METADATA {
             QUIC_VAR_INT Sequence;
         } ADD_ADDRESS;
         struct {
-            QUIC_VAR_INT Round;
-        } PUNCH_ME_NOW;
+            //
+            // Which path asked, so a lost request can be re-queued on it. The
+            // frame carries no identifier of its own -- it is two addresses --
+            // and the path's id is what the rest of the path machinery uses.
+            //
+            uint8_t PathId;
+        } STATELESS_PUNCH_ME_NOW;
         struct {
             QUIC_VAR_INT Sequence;
         } REMOVE_ADDRESS;
+        struct {
+            //
+            // Which advertised set this frame carried. Needed on acknowledgement
+            // to tell whether it was new enough to have omitted an address that
+            // is being withdrawn.
+            //
+            QUIC_VAR_INT Sequence;
+        } ALTERNATIVE_ADDRESS;
 
     };
     //

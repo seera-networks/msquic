@@ -70,8 +70,9 @@ typedef enum eSniNameType {
 #define QUIC_TP_ID_ENABLE_TIMESTAMP                         0x7158          // varint
 #define QUIC_TP_ID_OBSERVED_ADDRESS                         0x9f81a176      // varint
 #define QUIC_TP_ID_SERVER_MIGRATION                         0x3e764478      // N/A
-#define QUIC_TP_ID_NAT_TRAVERSE                             0x3d7e9f0bca12fea6 // varint
 #define QUIC_TP_ID_INITIAL_MAX_PATH_ID                      0x3e // varint (draft-ietf-quic-multipath-21, suggested)
+#define QUIC_TP_ID_ALTERNATIVE_ADDRESS                      0xff0969d85cULL // varint[] (draft-munizaga-quic-alternative-server-address-02)
+#define QUIC_TP_ID_STATELESS_PUNCH                          0x5eea9e7aULL   // empty (draft-kozuka-quic-stateless-punch, provisional)
 #define QX_TP_ID_MAX_RECORD_SIZE                            0x0571c59429cd0845 // varint
 
 BOOLEAN
@@ -915,23 +916,32 @@ QuicCryptoTlsEncodeTransportParameters(
                 QUIC_TP_ID_OBSERVED_ADDRESS,
                 QuicVarIntSize(TransportParams->ObservedAddressRole));
     }
-    if (TransportParams->Flags & QUIC_TP_FLAG_NAT_TRAVERSE) {
-        if (IsServerTP) {
-            RequiredTPLen +=
-                TlsTransportParamLength(
-                    QUIC_TP_ID_NAT_TRAVERSE,
-                    QuicVarIntSize(TransportParams->NatTraverseConcurrencyLimit));
-        } else {
-            RequiredTPLen +=
-                TlsTransportParamLength(
-                    QUIC_TP_ID_NAT_TRAVERSE,
-                    0);
-        }
-    }
     if (TransportParams->Flags & QUIC_TP_FLAG_SERVER_MIGRATION) {
         RequiredTPLen +=
             TlsTransportParamLength(
                 QUIC_TP_ID_SERVER_MIGRATION,
+                0);
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS) {
+        //
+        // Zero length. The parameter's value lists the address types supported
+        // *beyond* CURRENT_PATH, IPv4 and IPv6, which the draft makes implicit;
+        // this implementation supports no others, so the list is empty and the
+        // parameter conveys only that the extension is wanted.
+        //
+        RequiredTPLen +=
+            TlsTransportParamLength(
+                QUIC_TP_ID_ALTERNATIVE_ADDRESS,
+                0);
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_STATELESS_PUNCH) {
+        //
+        // Empty. The parameter says only that the extension is wanted; there
+        // is nothing to negotiate about it.
+        //
+        RequiredTPLen +=
+            TlsTransportParamLength(
+                QUIC_TP_ID_STATELESS_PUNCH,
                 0);
     }
     if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_PATH_ID) {
@@ -1300,32 +1310,6 @@ QuicCryptoTlsEncodeTransportParameters(
             "TP: Observed Address (%u)",
             (uint32_t)TransportParams->ObservedAddressRole);
     }
-    if (TransportParams->Flags & QUIC_TP_FLAG_NAT_TRAVERSE) {
-        if (IsServerTP) {
-            TPBuf =
-                TlsWriteTransportParamVarInt(
-                    QUIC_TP_ID_NAT_TRAVERSE,
-                    TransportParams->NatTraverseConcurrencyLimit,
-                    TPBuf);
-            QuicTraceLogConnVerbose(
-                EncodeTPNatTraverseServer,
-                Connection,
-                "TP: NAT Traverse (%llu)",
-                TransportParams->NatTraverseConcurrencyLimit);
-        } else {
-            TPBuf =
-                TlsWriteTransportParam(
-                    QUIC_TP_ID_NAT_TRAVERSE,
-                    0,
-                    NULL,
-                    TPBuf);
-            QuicTraceLogConnVerbose(
-                EncodeTPNatTraverseClient,
-                Connection,
-                "TP: NAT Traverse");
-        }
-    }
-
     if (TransportParams->Flags & QUIC_TP_FLAG_SERVER_MIGRATION) {
         TPBuf =
             TlsWriteTransportParam(
@@ -1337,6 +1321,30 @@ QuicCryptoTlsEncodeTransportParameters(
             EncodeTPServerMigration,
             Connection,
             "TP: Server Migration");
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS) {
+        TPBuf =
+            TlsWriteTransportParam(
+                QUIC_TP_ID_ALTERNATIVE_ADDRESS,
+                0,
+                NULL,
+                TPBuf);
+        QuicTraceLogConnVerbose(
+            EncodeTPAlternativeAddress,
+            Connection,
+            "TP: Alternative Address");
+    }
+    if (TransportParams->Flags & QUIC_TP_FLAG_STATELESS_PUNCH) {
+        TPBuf =
+            TlsWriteTransportParam(
+                QUIC_TP_ID_STATELESS_PUNCH,
+                0,
+                NULL,
+                TPBuf);
+        QuicTraceLogConnVerbose(
+            EncodeTPStatelessPunch,
+            Connection,
+            "TP: Stateless Punch");
     }
     if (TransportParams->Flags & QUIC_TP_FLAG_INITIAL_MAX_PATH_ID) {
         TPBuf =
@@ -2149,49 +2157,98 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
                 "TP: Server Migration");
             break;
 
-        case QUIC_TP_ID_NAT_TRAVERSE:
-            if (!IsServerTP) {
-                if (Length != 0) {
-                    QuicTraceEvent(
-                        ConnErrorStatus,
-                        "[conn][%p] ERROR, %u, %s.",
-                        Connection,
-                        Length,
-                        "Invalid length of QUIC_TP_ID_NAT_TRAVERSE");
-                    goto Exit;
-                }
-                TransportParams->Flags |= QUIC_TP_FLAG_NAT_TRAVERSE;
-                QuicTraceLogConnVerbose(
-                    DecodeTPNatTraverseServer,
+        case QUIC_TP_ID_ALTERNATIVE_ADDRESS: {
+            //
+            // Client to server only. A server that sends it has to be rejected
+            // rather than ignored -- the draft says TRANSPORT_PARAMETER_ERROR,
+            // and quietly accepting it would have a client believe it had
+            // negotiated an extension whose frames it is forbidden to receive.
+            //
+            if (IsServerTP) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
                     Connection,
-                    "TP: NAT Traverse");
-            } else {
-                QUIC_VAR_INT value = 0;
-                if (Length == 0 || !TRY_READ_VAR_INT(value)) {
-                    QuicTraceEvent(
-                        ConnErrorStatus,
-                        "[conn][%p] ERROR, %u, %s.",
-                        Connection,
-                        Length,
-                        "Invalid length of QUIC_TP_ID_NAT_TRAVERSE");
-                    goto Exit;
-                } else if (value == 0) {
+                    "Server sent QUIC_TP_ID_ALTERNATIVE_ADDRESS");
+                goto Exit;
+            }
+
+            //
+            // The value is a possibly empty list of the address types supported
+            // beyond the three the draft makes implicit, strictly increasing
+            // and without duplicates. The types themselves are not stored:
+            // this implementation sends only the implicit three, so the list
+            // cannot change what it would put in a frame. It is still parsed,
+            // because a malformed one is an error the peer needs told about
+            // and because skipping it would accept a list this code had not
+            // actually understood.
+            //
+            uint16_t ValueOffset = 0;
+            QUIC_VAR_INT PreviousType = 0;
+            BOOLEAN HaveType = FALSE;
+            while (ValueOffset < Length) {
+                QUIC_VAR_INT ExtraType;
+                if (!QuicVarIntDecode(Length, TPBuf + Offset, &ValueOffset, &ExtraType)) {
                     QuicTraceEvent(
                         ConnError,
                         "[conn][%p] ERROR, %s.",
                         Connection,
-                        "Invalid value of QUIC_TP_ID_NAT_TRAVERSE");
+                        "Truncated QUIC_TP_ID_ALTERNATIVE_ADDRESS list");
                     goto Exit;
                 }
-                TransportParams->Flags |= QUIC_TP_FLAG_NAT_TRAVERSE;
-                TransportParams->NatTraverseConcurrencyLimit = value;
-                QuicTraceLogConnVerbose(
-                    DecodeTPNatTraverseClient,
-                    Connection,
-                    "TP: NAT Traverse (%llu)",
-                    value);
+                if (HaveType && ExtraType <= PreviousType) {
+                    QuicTraceEvent(
+                        ConnError,
+                        "[conn][%p] ERROR, %s.",
+                        Connection,
+                        "Unordered QUIC_TP_ID_ALTERNATIVE_ADDRESS list");
+                    goto Exit;
+                }
+                PreviousType = ExtraType;
+                HaveType = TRUE;
             }
+
+            TransportParams->Flags |= QUIC_TP_FLAG_ALTERNATIVE_ADDRESS;
+            QuicTraceLogConnVerbose(
+                DecodeTPAlternativeAddress,
+                Connection,
+                "TP: Alternative Address");
             break;
+        }
+
+        case QUIC_TP_ID_STATELESS_PUNCH: {
+            //
+            // Empty value, both directions. A non-empty one is an error per
+            // the draft -- not ignored, because a peer that put something
+            // there means something by it and this implementation would not
+            // know what.
+            //
+            // The draft calls for TRANSPORT_PARAMETER_ERROR and the peer will
+            // see CRYPTO_ERROR. A server decodes the client's parameters once,
+            // from QuicCryptoTlsReadInitial, and a failure there closes with
+            // CRYPTO_HANDSHAKE_FAILURE; only the client's path can raise a
+            // parameter-specific code. That is true of every server-side
+            // parameter check in this implementation rather than anything
+            // about this one, so it is recorded rather than worked around.
+            //
+            if (Length != 0) {
+                QuicTraceEvent(
+                    ConnErrorStatus,
+                    "[conn][%p] ERROR, %u, %s.",
+                    Connection,
+                    Length,
+                    "Invalid length of QUIC_TP_ID_STATELESS_PUNCH");
+                goto Exit;
+            }
+
+            TransportParams->Flags |= QUIC_TP_FLAG_STATELESS_PUNCH;
+            QuicTraceLogConnVerbose(
+                DecodeTPStatelessPunch,
+                Connection,
+                "TP: Stateless Punch");
+            break;
+        }
+
 
         case QX_TP_ID_MAX_RECORD_SIZE:
             if (!TRY_READ_VAR_INT(TransportParams->MaxRecordSize)) {
@@ -2231,6 +2288,30 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
         }
 
         Offset += Length;
+    }
+
+    //
+    // A server receiving stateless_punch without alternative_address is an
+    // error -- CRYPTO_ERROR on the wire, for the reason recorded at the length
+    // check above, where the draft asks for TRANSPORT_PARAMETER_ERROR. It is
+    // the draft's one cross-parameter rule:
+    // the extension pairs the client's candidates against the addresses the
+    // server advertises in ALTERNATIVE_ADDRESS, so a client that asks for the
+    // one and not the other has asked for something that cannot work.
+    //
+    // After the loop, not inside it, because the two can arrive in either
+    // order and by here both flags are set either way. IsServerTP false means
+    // these are the client's parameters, which is to say we are the server.
+    //
+    if (!IsServerTP &&
+        (TransportParams->Flags & QUIC_TP_FLAG_STATELESS_PUNCH) &&
+        !(TransportParams->Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS)) {
+        QuicTraceEvent(
+            ConnError,
+            "[conn][%p] ERROR, %s.",
+            Connection,
+            "QUIC_TP_ID_STATELESS_PUNCH without QUIC_TP_ID_ALTERNATIVE_ADDRESS");
+        goto Exit;
     }
 
     if (TransportParams->Flags & QUIC_TP_FLAG_MIN_ACK_DELAY &&

@@ -164,9 +164,29 @@ typedef QUIC_VAR_INT QUIC_FRAME_TYPE;
 #define QUIC_FRAME_OBSERVED_ADDRESS_V6  ((QUIC_FRAME_TYPE)0x9f81a7ULL)
 #define QUIC_FRAME_ADD_ADDRESS_V4       ((QUIC_FRAME_TYPE)0x3d7e90LL)
 #define QUIC_FRAME_ADD_ADDRESS_V6       ((QUIC_FRAME_TYPE)0x3d7e91LL)
-#define QUIC_FRAME_PUNCH_ME_NOW_V4      ((QUIC_FRAME_TYPE)0x3d7e92LL)
-#define QUIC_FRAME_PUNCH_ME_NOW_V6      ((QUIC_FRAME_TYPE)0x3d7e93LL)
+/* 0x3d7e92 and 0x3d7e93 were PUNCH_ME_NOW_V4/V6, retired in #173 */
 #define QUIC_FRAME_REMOVE_ADDRESS       ((QUIC_FRAME_TYPE)0x3d7e94LL)
+
+//
+// draft-kozuka-quic-stateless-punch. The client names both halves of a
+// candidate pair -- its own endpoint and the server endpoint the server itself
+// advertised -- so the server needs no per-attempt state and no per-address
+// sequence number to look the request up by. The low bit selects the address
+// family, as the pair above does.
+//
+// Separate codepoints from the PUNCH_ME_NOW_V4/V6 this replaced, which #173
+// retired -- the gap left above them is deliberate.
+//
+#define QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 ((QUIC_FRAME_TYPE)0x5eea90ULL)
+#define QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6 ((QUIC_FRAME_TYPE)0x5eea91ULL)
+
+//
+// draft-munizaga-quic-alternative-server-address-02. One frame carries the
+// server's whole advertised address set; a newer one replaces the older
+// wholesale, and omission is how an address is withdrawn. That is why there is
+// no matching "remove" frame type here.
+//
+#define QUIC_FRAME_ALTERNATIVE_ADDRESS  ((QUIC_FRAME_TYPE)0x1d5845e2ULL)
 
 //
 // Multipath frame types, per draft-ietf-quic-multipath-21 (suggested codepoints).
@@ -209,7 +229,11 @@ CXPLAT_STATIC_ASSERT(
       X == QUIC_FRAME_RELIABLE_RESET_STREAM || \
       X == QUIC_FRAME_TIMESTAMP || \
       X == QUIC_FRAME_OBSERVED_ADDRESS_V4 || X == QUIC_FRAME_OBSERVED_ADDRESS_V6 || \
-     (X >= QUIC_FRAME_ADD_ADDRESS_V4 && X <= QUIC_FRAME_REMOVE_ADDRESS) || \
+     (X >= QUIC_FRAME_ADD_ADDRESS_V4 && X <= QUIC_FRAME_ADD_ADDRESS_V6) || \
+      X == QUIC_FRAME_REMOVE_ADDRESS || \
+     (X >= QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 && \
+      X <= QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6) || \
+      X == QUIC_FRAME_ALTERNATIVE_ADDRESS || \
      (X >= QUIC_FRAME_PATH_ACK && X <= QUIC_FRAME_PATH_ACK_1) || \
       X == QUIC_FRAME_PATH_ABANDON || \
      (X >= QUIC_FRAME_PATH_BACKUP && X <= QUIC_FRAME_PATH_RETIRE_CONNECTION_ID) || \
@@ -1200,21 +1224,41 @@ QuicAddAddressFrameDecode(
     );
 
 //
-// QUIC_FRAME_PUNCH_ME_NOW Encoding/Decoding
+// QUIC_FRAME_STATELESS_PUNCH_ME_NOW Encoding/Decoding
 //
+// draft-kozuka-quic-stateless-punch section 10:
+//
+//   Type (i) = 0x5eea90..0x5eea91
+//   Client Address (32 bits for IPv4 / 128 bits for IPv6)
+//   Client Port (16 bits)
+//   Server Address (32 bits for IPv4 / 128 bits for IPv6)
+//   Server Port (16 bits)
+//
+// Fixed width throughout: no varints in the body, so the frame's length
+// follows from its type alone. Both addresses carry their port, because the
+// draft's fields are address *and* port and what is being named is a pair of
+// endpoints, not of hosts.
+//
+typedef struct QUIC_STATELESS_PUNCH_ME_NOW_EX {
 
-typedef struct QUIC_PUNCH_ME_NOW_EX {
+    //
+    // Where the server should send the punch packet.
+    //
+    QUIC_ADDR ClientAddress;
 
-    QUIC_VAR_INT Round;
-    QUIC_VAR_INT PairedSequenceNumber;
-    QUIC_ADDR Address;
+    //
+    // Which of the server's own advertised addresses this is about. The server
+    // looks it up among what it advertised; no match means the request is
+    // ignored, not that the connection is in error.
+    //
+    QUIC_ADDR ServerAddress;
 
-} QUIC_PUNCH_ME_NOW_EX;
+} QUIC_STATELESS_PUNCH_ME_NOW_EX;
 
 _Success_(return != FALSE)
 BOOLEAN
-QuicPunchMeNowFrameEncode(
-    _In_ const QUIC_PUNCH_ME_NOW_EX * const Frame,
+QuicStatelessPunchMeNowFrameEncode(
+    _In_ const QUIC_STATELESS_PUNCH_ME_NOW_EX * const Frame,
     _Inout_ uint16_t* Offset,
     _In_ uint16_t BufferLength,
     _Out_writes_to_(BufferLength, *Offset)
@@ -1223,13 +1267,99 @@ QuicPunchMeNowFrameEncode(
 
 _Success_(return != FALSE)
 BOOLEAN
-QuicPunchMeNowFrameDecode(
+QuicStatelessPunchMeNowFrameDecode(
     _In_ QUIC_FRAME_TYPE FrameType,
     _In_ uint16_t BufferLength,
     _In_reads_bytes_(BufferLength)
         const uint8_t * const Buffer,
     _Inout_ uint16_t* Offset,
-    _Out_ QUIC_PUNCH_ME_NOW_EX* Frame
+    _Out_ QUIC_STATELESS_PUNCH_ME_NOW_EX* Frame
+    );
+
+//
+// QUIC_FRAME_ALTERNATIVE_ADDRESS Encoding/Decoding
+//
+// draft-munizaga-quic-alternative-server-address-02 section 3. Server to
+// client only. The frame is a sequence number, an entry count, and then that
+// many entries; exactly one of them is the CURRENT_PATH sentinel, which
+// separates the entries the server prefers over the current path from the
+// ones it offers as backups.
+//
+
+typedef enum QUIC_ALTERNATIVE_ADDRESS_ENTRY_TYPE {
+
+    QUIC_ALTERNATIVE_ADDRESS_ENTRY_CURRENT_PATH = 0x00,
+    QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV4         = 0x01,
+    QUIC_ALTERNATIVE_ADDRESS_ENTRY_IPV6         = 0x02,
+
+} QUIC_ALTERNATIVE_ADDRESS_ENTRY_TYPE;
+
+//
+// How many address entries one frame is decoded into. The draft sets no
+// bound, so one is imposed here rather than trusting the peer's count: the
+// decoder writes into a caller-supplied array, and a frame claiming a huge
+// entry count must not be able to decide how much memory that is. Entries
+// past the limit are dropped rather than treated as an error, which keeps a
+// peer that advertises more addresses than this build cares about usable.
+//
+#define QUIC_MAX_ALTERNATIVE_ADDRESSES 8
+
+typedef struct QUIC_ALTERNATIVE_ADDRESS_ENTRY {
+
+    //
+    // Lower is higher priority, and meaningful only against other entries on
+    // the same side of the current-path sentinel.
+    //
+    QUIC_VAR_INT PriorityHint;
+
+    QUIC_ADDR Address;
+
+    //
+    // Whether this entry sits before the CURRENT_PATH sentinel, i.e. whether
+    // the server would rather use it than the path the frame arrived on.
+    //
+    BOOLEAN PreferredToCurrentPath;
+
+} QUIC_ALTERNATIVE_ADDRESS_ENTRY;
+
+typedef struct QUIC_ALTERNATIVE_ADDRESS_EX {
+
+    QUIC_VAR_INT SequenceNumber;
+
+    //
+    // The addresses, with the CURRENT_PATH sentinel consumed rather than
+    // stored -- it carries no address, and what it conveys is recorded as
+    // PreferredToCurrentPath on each entry.
+    //
+    uint8_t AddressCount;
+    QUIC_ALTERNATIVE_ADDRESS_ENTRY Addresses[QUIC_MAX_ALTERNATIVE_ADDRESSES];
+
+} QUIC_ALTERNATIVE_ADDRESS_EX;
+
+_Success_(return != FALSE)
+BOOLEAN
+QuicAlternativeAddressFrameEncode(
+    _In_ const QUIC_ALTERNATIVE_ADDRESS_EX * const Frame,
+    _Inout_ uint16_t* Offset,
+    _In_ uint16_t BufferLength,
+    _Out_writes_to_(BufferLength, *Offset)
+        uint8_t* Buffer
+    );
+
+//
+// Returns FALSE for anything the draft calls a FRAME_ENCODING_ERROR: a
+// truncated integer or address, no CURRENT_PATH entry, more than one of them,
+// priority hints out of order on either side, or an address type that is not
+// one of the three always-supported ones.
+//
+_Success_(return != FALSE)
+BOOLEAN
+QuicAlternativeAddressFrameDecode(
+    _In_ uint16_t BufferLength,
+    _In_reads_bytes_(BufferLength)
+        const uint8_t * const Buffer,
+    _Inout_ uint16_t* Offset,
+    _Out_ QUIC_ALTERNATIVE_ADDRESS_EX* Frame
     );
 
 //

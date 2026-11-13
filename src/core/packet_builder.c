@@ -779,7 +779,7 @@ QuicPacketBuilderGetPacketTypeAndKeyForControlFrames(
     }
 
     QuicTraceLogConnWarning(
-        GetPacketTypeFailure,
+        GetPacketTypeFailure64,
         Builder->Connection,
         "Failed to get packet type for control frames, 0x%llx",
         SendFlags);

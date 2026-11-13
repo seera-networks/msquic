@@ -52,6 +52,29 @@ TRACEPOINT_EVENT(CLOG_SEND_C, ClearSendFlags,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressTruncated
+// [conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u
+// QuicTraceLogConnWarning(
+                        AlternativeAddressTruncated,
+                        Connection,
+                        "ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+                        QUIC_MAX_ALTERNATIVE_ADDRESSES);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = QUIC_MAX_ALTERNATIVE_ADDRESSES = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_SEND_C, AlternativeAddressTruncated,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for MtuProbeTruncated
 // [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
 // QuicTraceLogConnInfo(
@@ -102,10 +125,10 @@ TRACEPOINT_EVENT(CLOG_SEND_C, EcnValidationUnknown,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for ScheduleSendFlags
+// Decoder Ring for ScheduleSendFlags64
 // [conn][%p] Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)
 // QuicTraceLogConnVerbose(
-            ScheduleSendFlags,
+            ScheduleSendFlags64,
             Connection,
             "Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
             SendFlags,
@@ -116,7 +139,7 @@ TRACEPOINT_EVENT(CLOG_SEND_C, EcnValidationUnknown,
 // arg4 = arg4 = Send->SendFlags = arg4
 // arg5 = arg5 = Send->SendFlags | SendFlags = arg5
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SEND_C, ScheduleSendFlags,
+TRACEPOINT_EVENT(CLOG_SEND_C, ScheduleSendFlags64,
     TP_ARGS(
         const void *, arg1,
         unsigned long long, arg3,
@@ -133,17 +156,17 @@ TRACEPOINT_EVENT(CLOG_SEND_C, ScheduleSendFlags,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for RemoveSendFlagsMsg
+// Decoder Ring for RemoveSendFlagsMsg64
 // [conn][%p] Removing flags %llx
 // QuicTraceLogConnVerbose(
-            RemoveSendFlagsMsg,
+            RemoveSendFlagsMsg64,
             QuicSendGetConnection(Send),
             "Removing flags %llx",
             (SendFlags & Send->SendFlags));
 // arg1 = arg1 = QuicSendGetConnection(Send) = arg1
 // arg3 = arg3 = (SendFlags & Send->SendFlags) = arg3
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SEND_C, RemoveSendFlagsMsg,
+TRACEPOINT_EVENT(CLOG_SEND_C, RemoveSendFlagsMsg64,
     TP_ARGS(
         const void *, arg1,
         unsigned long long, arg3), 
@@ -175,17 +198,17 @@ TRACEPOINT_EVENT(CLOG_SEND_C, AmplificationProtectionBlocked,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SendFlushComplete
+// Decoder Ring for SendFlushComplete64
 // [conn][%p] Flush complete flags=0x%llx
 // QuicTraceLogConnVerbose(
-        SendFlushComplete,
+        SendFlushComplete64,
         Connection,
         "Flush complete flags=0x%llx",
         Send->SendFlags);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Send->SendFlags = arg3
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_SEND_C, SendFlushComplete,
+TRACEPOINT_EVENT(CLOG_SEND_C, SendFlushComplete64,
     TP_ARGS(
         const void *, arg1,
         unsigned long long, arg3), 

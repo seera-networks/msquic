@@ -624,7 +624,6 @@ CXPLAT_STATIC_ASSERT(
 //
 // The concurrency limit for NAT traverse attempts.
 //
-#define QUIC_NAT_TRAVERSE_CONCURRENCY_LIMIT          2
 
 //
 // The default settings for mode of processing added addresses.
@@ -644,6 +643,27 @@ CXPLAT_STATIC_ASSERT(
 // path's own address disappeared is never held down.
 //
 #define QUIC_DEFAULT_AUTO_MIGRATION_HOLD_DOWN_MS     1000
+
+//
+// How many punch packets one connection may provoke per window, and how long
+// the window is. draft-kozuka-quic-stateless-punch section 5.1 requires a
+// per-connection rate limit and leaves the number to the implementation;
+// section 11 gives the reason -- without one an attacker exhausts the NAT
+// mapping table on the server's side by asking for punches it never follows
+// up.
+//
+// Ten per second is meant to be generous for the legitimate case and useless
+// for the abusive one. A client has at most QUIC_MAX_ALTERNATIVE_ADDRESSES
+// server candidates to pair against, and the draft has it wait roughly a round
+// trip between a request and the validation that follows, so a real client's
+// rate is a handful per RTT. An attacker wants thousands.
+//
+// A window rather than a token bucket: the bound that matters is "not many per
+// second", and a window that closes by time cannot accumulate an allowance
+// into a burst, which is what the draft asks for in so many words.
+//
+#define QUIC_PUNCH_RATE_LIMIT_PER_WINDOW             10
+#define QUIC_PUNCH_RATE_WINDOW_US                    MS_TO_US(1000)
 
 //
 // The default settings for ignore unreachable addresses.
@@ -721,9 +741,25 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_TP_FLAG_TIMESTAMP_SHIFT                        24
 #define QUIC_TP_FLAG_OBSERVED_ADDRESS                       0x04000000
 #define QUIC_TP_FLAG_SERVER_MIGRATION                       0x08000000
-#define QUIC_TP_FLAG_NAT_TRAVERSE                           0x10000000
 #define QUIC_TP_FLAG_INITIAL_MAX_PATH_ID                    0x20000000
+//
+// The bit seera-main deliberately skips for this branch, which is why this
+// merge did not have to renumber it.
+//
 #define QX_TP_FLAG_MAX_RECORD_SIZE                          0x40000000
+#define QUIC_TP_FLAG_ALTERNATIVE_ADDRESS                    0x80000000
+//
+// Which is where Flags ran out of 32 bits, so it is a uint64_t now and this
+// is the first parameter above the old boundary.
+//
+// Neither flag below bit 32 needs a ULL suffix for the one site that clears
+// one (QuicCryptoTlsCleanupTransportParameters, on VERSION_NEGOTIATION):
+// 0x00080000 and 0x40000000 both fit in int, so ~ yields a negative int that
+// sign-extends and leaves the high bits alone. 0x80000000 does not fit, so it
+// is unsigned and ~ zero-extends -- ALTERNATIVE_ADDRESS would silently clear
+// STATELESS_PUNCH if anything ever cleared it that way. Nothing does today.
+//
+#define QUIC_TP_FLAG_STATELESS_PUNCH                        0x100000000ULL
 
 #define QUIC_TP_MAX_PACKET_SIZE_DEFAULT                     65527
 #define QUIC_TP_MAX_UDP_PAYLOAD_SIZE_MIN                    1200

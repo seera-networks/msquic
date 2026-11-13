@@ -50,6 +50,11 @@ typedef struct QUIC_PATH {
     uint8_t ID;
 
     //
+    // How this path came to exist. See QUIC_PATH_ORIGIN.
+    //
+    uint8_t Origin;
+
+    //
     // Indicates the path object is actively in use.
     //
     BOOLEAN InUse : 1;
@@ -153,19 +158,21 @@ typedef struct QUIC_PATH {
     BOOLEAN RemoteAddressSequenceNumberValid : 1;
 
     //
-    // Indicates whether we tries to do NAT traversal
+    // A draft-kozuka-quic-stateless-punch request is queued for this path:
+    // the client asking the server to send a packet towards PunchClientAddress
+    // from this path's remote address, so the NAT in front of the client opens
+    // a mapping before the client's own PATH_CHALLENGE arrives.
     //
-    BOOLEAN NatTraversal : 1;
+    BOOLEAN SendStatelessPunch : 1;
 
     //
-    // The add address needs to be sent out.
+    // This path exists because of a punch request, and stays marked after the
+    // request has gone out -- unlike SendStatelessPunch, which is cleared as
+    // soon as the frame is written. Kept because the obligation it carries
+    // only comes due if the path fails: the destination CID it probed with has
+    // been seen on this path, so a later attempt must not reuse it.
     //
-    BOOLEAN SendPunchMeNow : 1;
-
-    //
-    // Indicates whether the punch me now round number is valid.
-    //
-    BOOLEAN PunchMeNowRoundValid : 1;
+    BOOLEAN StatelessPunchAttempt : 1;
 
     //
     // The ending time of ECN validation testing state in microseconds.
@@ -201,7 +208,15 @@ typedef struct QUIC_PATH {
 
     QUIC_VAR_INT RemoteAddressSequenceNumber;
 
-    QUIC_VAR_INT PunchMeNowRound;
+    //
+    // Where the server should send its punch packet: this client's address as
+    // the server would see it, which is the observed address of the candidate
+    // matching this path's local address. Snapshotted when the request is
+    // queued rather than looked up when it is written, because the application
+    // can add and replace candidates at any time and a retransmission has to
+    // name the address the first attempt named.
+    //
+    QUIC_ADDR PunchClientAddress;
 
     //
     // The destination CID used for sending on this path.
@@ -284,7 +299,8 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathInitialize(
     _In_ QUIC_CONNECTION* Connection,
-    _In_ QUIC_PATH* Path
+    _In_ QUIC_PATH* Path,
+    _In_ QUIC_PATH_ORIGIN Origin
     );
 
 //

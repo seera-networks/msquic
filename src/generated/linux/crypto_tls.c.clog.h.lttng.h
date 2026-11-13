@@ -696,38 +696,15 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPObservedAddress,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for EncodeTPNatTraverseServer
-// [conn][%p] TP: NAT Traverse (%llu)
+// Decoder Ring for EncodeTPServerMigration
+// [conn][%p] TP: Server Migration
 // QuicTraceLogConnVerbose(
-                EncodeTPNatTraverseServer,
-                Connection,
-                "TP: NAT Traverse (%llu)",
-                TransportParams->NatTraverseConcurrencyLimit);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = TransportParams->NatTraverseConcurrencyLimit = arg3
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPNatTraverseServer,
-    TP_ARGS(
-        const void *, arg1,
-        unsigned long long, arg3), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(uint64_t, arg3, arg3)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for EncodeTPNatTraverseClient
-// [conn][%p] TP: NAT Traverse
-// QuicTraceLogConnVerbose(
-                EncodeTPNatTraverseClient,
-                Connection,
-                "TP: NAT Traverse");
+            EncodeTPServerMigration,
+            Connection,
+            "TP: Server Migration");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPNatTraverseClient,
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPServerMigration,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -738,15 +715,34 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPNatTraverseClient,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for EncodeTPServerMigration
-// [conn][%p] TP: Server Migration
+// Decoder Ring for EncodeTPAlternativeAddress
+// [conn][%p] TP: Alternative Address
 // QuicTraceLogConnVerbose(
-            EncodeTPServerMigration,
+            EncodeTPAlternativeAddress,
             Connection,
-            "TP: Server Migration");
+            "TP: Alternative Address");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPServerMigration,
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPAlternativeAddress,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for EncodeTPStatelessPunch
+// [conn][%p] TP: Stateless Punch
+// QuicTraceLogConnVerbose(
+            EncodeTPStatelessPunch,
+            Connection,
+            "TP: Stateless Punch");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, EncodeTPStatelessPunch,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -1497,15 +1493,15 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPServerMigration,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for DecodeTPNatTraverseServer
-// [conn][%p] TP: NAT Traverse
+// Decoder Ring for DecodeTPAlternativeAddress
+// [conn][%p] TP: Alternative Address
 // QuicTraceLogConnVerbose(
-                    DecodeTPNatTraverseServer,
-                    Connection,
-                    "TP: NAT Traverse");
+                DecodeTPAlternativeAddress,
+                Connection,
+                "TP: Alternative Address");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseServer,
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPAlternativeAddress,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -1516,23 +1512,19 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseServer,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for DecodeTPNatTraverseClient
-// [conn][%p] TP: NAT Traverse (%llu)
+// Decoder Ring for DecodeTPStatelessPunch
+// [conn][%p] TP: Stateless Punch
 // QuicTraceLogConnVerbose(
-                    DecodeTPNatTraverseClient,
-                    Connection,
-                    "TP: NAT Traverse (%llu)",
-                    value);
+                DecodeTPStatelessPunch,
+                Connection,
+                "TP: Stateless Punch");
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = value = arg3
 ----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPNatTraverseClient,
+TRACEPOINT_EVENT(CLOG_CRYPTO_TLS_C, DecodeTPStatelessPunch,
     TP_ARGS(
-        const void *, arg1,
-        unsigned long long, arg3), 
+        const void *, arg1), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(uint64_t, arg3, arg3)
     )
 )
 

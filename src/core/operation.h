@@ -32,6 +32,7 @@ typedef enum QUIC_OPERATION_TYPE {
     QUIC_OPER_TYPE_TRACE_RUNDOWN,       // A trace rundown was triggered.
     QUIC_OPER_TYPE_ROUTE_COMPLETION,    // Process route completion event.
     QUIC_OPER_TYPE_REMOVE_ADDRESS,      // Process remove address frame.
+    QUIC_OPER_TYPE_RECONCILE_PATHS,     // Rebuild the table, then make paths follow it.
     QUIC_OPER_TYPE_LOCAL_ADDRESS_CHANGE,// Reconcile paths with the host's local addresses.
     QUIC_OPER_TYPE_FLUSH_TCP_RECV,      // Process queue of received TCP data.
     QUIC_OPER_TYPE_TCP_DISCONNECT,      // Process TCP disconnect event.
@@ -205,6 +206,7 @@ typedef enum QUIC_CONN_TIMER_TYPE {
     QUIC_CONN_TIMER_PATH_VALIDATION,
     QUIC_CONN_TIMER_PROBE_AFTER_PUNCH,
     QUIC_CONN_TIMER_PATH_KEEP_ALIVE,
+    QUIC_CONN_TIMER_RECONCILE,
 
     QUIC_CONN_TIMER_COUNT
 

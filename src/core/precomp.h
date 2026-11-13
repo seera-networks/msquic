@@ -76,6 +76,7 @@
 #include "path.h"
 #include "pathid_set.h"
 #include "pathid.h"
+#include "candidate.h"
 #include "connection.h"
 #include "packet_builder.h"
 #include "listener.h"

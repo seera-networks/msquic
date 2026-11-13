@@ -18,6 +18,10 @@
 #define _clog_MACRO_QuicTraceLogStreamVerbose  1
 #define QuicTraceLogStreamVerbose(a, ...) _clog_CAT(_clog_ARGN_SELECTOR(__VA_ARGS__), _clog_CAT(_,a(#a, __VA_ARGS__)))
 #endif
+#ifndef _clog_MACRO_QuicTraceLogConnWarning
+#define _clog_MACRO_QuicTraceLogConnWarning  1
+#define QuicTraceLogConnWarning(a, ...) _clog_CAT(_clog_ARGN_SELECTOR(__VA_ARGS__), _clog_CAT(_,a(#a, __VA_ARGS__)))
+#endif
 #ifndef _clog_MACRO_QuicTraceLogConnInfo
 #define _clog_MACRO_QuicTraceLogConnInfo  1
 #define QuicTraceLogConnInfo(a, ...) _clog_CAT(_clog_ARGN_SELECTOR(__VA_ARGS__), _clog_CAT(_,a(#a, __VA_ARGS__)))
@@ -76,6 +80,26 @@ tracepoint(CLOG_SEND_C, ClearSendFlags , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for AlternativeAddressTruncated
+// [conn][%p] ALTERNATIVE_ADDRESS truncated the advertised set at %u
+// QuicTraceLogConnWarning(
+                        AlternativeAddressTruncated,
+                        Connection,
+                        "ALTERNATIVE_ADDRESS truncated the advertised set at %u",
+                        QUIC_MAX_ALTERNATIVE_ADDRESSES);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = QUIC_MAX_ALTERNATIVE_ADDRESSES = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_AlternativeAddressTruncated
+#define _clog_4_ARGS_TRACE_AlternativeAddressTruncated(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_SEND_C, AlternativeAddressTruncated , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for MtuProbeTruncated
 // [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
 // QuicTraceLogConnInfo(
@@ -118,10 +142,10 @@ tracepoint(CLOG_SEND_C, EcnValidationUnknown , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for ScheduleSendFlags
+// Decoder Ring for ScheduleSendFlags64
 // [conn][%p] Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)
 // QuicTraceLogConnVerbose(
-            ScheduleSendFlags,
+            ScheduleSendFlags64,
             Connection,
             "Adding send flags 0x%llx (prev: 0x%llx, new: 0x%llx)",
             SendFlags,
@@ -132,9 +156,9 @@ tracepoint(CLOG_SEND_C, EcnValidationUnknown , arg1);\
 // arg4 = arg4 = Send->SendFlags = arg4
 // arg5 = arg5 = Send->SendFlags | SendFlags = arg5
 ----------------------------------------------------------*/
-#ifndef _clog_6_ARGS_TRACE_ScheduleSendFlags
-#define _clog_6_ARGS_TRACE_ScheduleSendFlags(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
-tracepoint(CLOG_SEND_C, ScheduleSendFlags , arg1, arg3, arg4, arg5);\
+#ifndef _clog_6_ARGS_TRACE_ScheduleSendFlags64
+#define _clog_6_ARGS_TRACE_ScheduleSendFlags64(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
+tracepoint(CLOG_SEND_C, ScheduleSendFlags64 , arg1, arg3, arg4, arg5);\
 
 #endif
 
@@ -142,19 +166,19 @@ tracepoint(CLOG_SEND_C, ScheduleSendFlags , arg1, arg3, arg4, arg5);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for RemoveSendFlagsMsg
+// Decoder Ring for RemoveSendFlagsMsg64
 // [conn][%p] Removing flags %llx
 // QuicTraceLogConnVerbose(
-            RemoveSendFlagsMsg,
+            RemoveSendFlagsMsg64,
             QuicSendGetConnection(Send),
             "Removing flags %llx",
             (SendFlags & Send->SendFlags));
 // arg1 = arg1 = QuicSendGetConnection(Send) = arg1
 // arg3 = arg3 = (SendFlags & Send->SendFlags) = arg3
 ----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_RemoveSendFlagsMsg
-#define _clog_4_ARGS_TRACE_RemoveSendFlagsMsg(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_SEND_C, RemoveSendFlagsMsg , arg1, arg3);\
+#ifndef _clog_4_ARGS_TRACE_RemoveSendFlagsMsg64
+#define _clog_4_ARGS_TRACE_RemoveSendFlagsMsg64(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_SEND_C, RemoveSendFlagsMsg64 , arg1, arg3);\
 
 #endif
 
@@ -180,19 +204,19 @@ tracepoint(CLOG_SEND_C, AmplificationProtectionBlocked , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for SendFlushComplete
+// Decoder Ring for SendFlushComplete64
 // [conn][%p] Flush complete flags=0x%llx
 // QuicTraceLogConnVerbose(
-        SendFlushComplete,
+        SendFlushComplete64,
         Connection,
         "Flush complete flags=0x%llx",
         Send->SendFlags);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Send->SendFlags = arg3
 ----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_SendFlushComplete
-#define _clog_4_ARGS_TRACE_SendFlushComplete(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_SEND_C, SendFlushComplete , arg1, arg3);\
+#ifndef _clog_4_ARGS_TRACE_SendFlushComplete64
+#define _clog_4_ARGS_TRACE_SendFlushComplete64(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_SEND_C, SendFlushComplete64 , arg1, arg3);\
 
 #endif
 

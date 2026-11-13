@@ -693,6 +693,45 @@ QuicLossDetectionOnPacketAcknowledged(
             Packet->Frames[i].DATAGRAM.ClientContext = NULL;
             break;
 
+        case QUIC_FRAME_ALTERNATIVE_ADDRESS: {
+            //
+            // The peer has seen an advertised set. Any address withdrawn at or
+            // before this frame's sequence number was left out of it, so the
+            // withdrawal has landed and the entry can go.
+            //
+            // Walked with the next pointer taken first, because the body frees
+            // the entry the link belongs to.
+            //
+            const QUIC_VAR_INT AckedSequence =
+                Packet->Frames[i].ALTERNATIVE_ADDRESS.Sequence;
+            CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
+            while (Entry != &Connection->BoundAddresses) {
+                QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound =
+                    CXPLAT_CONTAINING_RECORD(
+                        Entry,
+                        QUIC_BOUND_ADDRESS_LIST_ENTRY,
+                        Link);
+                Entry = Entry->Flink;
+
+                if (!Bound->Removing ||
+                    Bound->WithdrawnAtAltSequenceNumber > AckedSequence) {
+                    continue;
+                }
+
+                QuicTraceEvent(
+                    ConnObservedAddrRemoved,
+                    "[conn][%p] Removed Observed IP: %!ADDR! for Bound IP: %!ADDR!",
+                    Connection,
+                    CASTED_CLOG_BYTEARRAY(sizeof(Bound->ObservedAddress), &Bound->ObservedAddress),
+                    CASTED_CLOG_BYTEARRAY(sizeof(Bound->Address), &Bound->Address));
+
+                CxPlatListEntryRemove(&Bound->Link);
+                Connection->BoundAddressesCount--;
+                CXPLAT_FREE(Bound, QUIC_POOL_BOUND_ADDRESS_LIST);
+            }
+            break;
+        }
+
         case QUIC_FRAME_REMOVE_ADDRESS: {
 #pragma warning(push)
 #pragma warning(disable:6001) // Using uninitialized memory
@@ -1145,6 +1184,20 @@ QuicLossDetectionRetransmitFrames(
             break;
         }
 
+        case QUIC_FRAME_ALTERNATIVE_ADDRESS:
+            //
+            // Nothing to look up. The frame carries the whole advertised set,
+            // so re-arming the flag rebuilds it from the bound addresses as
+            // they are now, which is more correct than resending what was lost
+            // -- the set may have moved on, and the rebuilt frame carries a
+            // newer sequence number so the receiver prefers it either way.
+            //
+            NewDataQueued |=
+                QuicSendSetSendFlag(
+                    &Connection->Send,
+                    QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS);
+            break;
+
         case QUIC_FRAME_REMOVE_ADDRESS: {
             QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound = NULL;
             for (CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
@@ -1172,23 +1225,31 @@ QuicLossDetectionRetransmitFrames(
             break;
         }
 
-        case QUIC_FRAME_PUNCH_ME_NOW_V4:
-        case QUIC_FRAME_PUNCH_ME_NOW_V6: {
-            QUIC_PATH* TempPath = NULL;
+        case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4:
+        case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6: {
+            //
+            // Re-queued on the path that asked. The request is reliable -- the
+            // opposite of the punch packet it provokes, which is sent once and
+            // never tracked -- because a lost request means the server never
+            // learned to punch at all, and the client would then wait out a
+            // validation timeout for a hole that was never opened.
+            //
+            // A path that has gone away in the meantime finds no match and
+            // nothing is re-queued, which is what "unless the attempt has been
+            // abandoned" asks for: no separate cancellation is needed, because
+            // abandoning the attempt is removing the path.
+            //
             for (uint8_t j = 0; j < Connection->PathsCount; ++j) {
-                TempPath = &Connection->Paths[j];
-                if (TempPath->PunchMeNowRoundValid &&
-                    TempPath->PunchMeNowRound == Packet->Frames[i].PUNCH_ME_NOW.Round) {
+                QUIC_PATH* TempPath = &Connection->Paths[j];
+                if (TempPath->ID ==
+                        Packet->Frames[i].STATELESS_PUNCH_ME_NOW.PathId) {
+                    TempPath->SendStatelessPunch = TRUE;
+                    NewDataQueued |=
+                        QuicSendSetSendFlag(
+                            &Connection->Send,
+                            QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW);
                     break;
                 }
-                TempPath = NULL;
-            }
-            if (TempPath != NULL) {
-                TempPath->SendPunchMeNow = TRUE;
-                NewDataQueued |=
-                    QuicSendSetSendFlag(
-                        &Connection->Send,
-                        QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW);
             }
             break;
         }

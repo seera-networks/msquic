@@ -520,6 +520,32 @@ QuicCryptoHandshakeConfirmed(
         //
         QuicConnProcessLocalAddressChange(Connection);
     }
+
+    //
+    // The address monitor is taken here rather than when settings are applied,
+    // because the reference is given back in QuicConnOnShutdownComplete and
+    // that needs a worker -- a connection opened, configured and closed
+    // without ever starting would otherwise reach QuicConnFree still holding
+    // it, which is what its assert says must not happen. This is also where
+    // the opening local-address pass belongs.
+    //
+    QuicConnUpdateAddressMonitorRef(Connection, FALSE);
+
+    //
+    // And a reconciliation, because one may have been dropped. The reconciler
+    // bails out before confirmation -- RFC 9000 section 9 does not allow
+    // migration there -- and nothing else would bring it back: an
+    // ALTERNATIVE_ADDRESS frame that arrived first is recorded in AltAddrs and
+    // never revisited, since a resend with the same sequence number is ignored
+    // as stale. The frame carrying HANDSHAKE_DONE only has to be lost or
+    // reordered behind the one carrying ALTERNATIVE_ADDRESS for the advertised
+    // address to go without a path for the life of the connection.
+    //
+    // Unconditional rather than driven by a dirty flag: it is one coalesced
+    // pass, it is where "the answer is ready for confirmation" has to actually
+    // happen, and a pass with nothing to do costs a table rebuild.
+    //
+    QuicConnQueueReconcile(Connection);
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -2626,8 +2652,7 @@ QuicCryptoEncodeServerTicket(
         QUIC_TP_FLAG_INITIAL_MAX_STRM_DATA_UNI |
         QUIC_TP_FLAG_INITIAL_MAX_STRMS_BIDI |
         QUIC_TP_FLAG_INITIAL_MAX_STRMS_UNI |
-        QUIC_TP_FLAG_OBSERVED_ADDRESS |
-        QUIC_TP_FLAG_NAT_TRAVERSE);
+        QUIC_TP_FLAG_OBSERVED_ADDRESS);
 
     EncodedHSTP =
         QuicCryptoTlsEncodeTransportParameters(
@@ -2952,7 +2977,17 @@ QuicCryptoEncodeClientTicket(
         QUIC_TP_FLAG_ORIGINAL_DESTINATION_CONNECTION_ID |
         QUIC_TP_FLAG_PREFERRED_ADDRESS |
         QUIC_TP_FLAG_RETRY_SOURCE_CONNECTION_ID |
-        QUIC_TP_FLAG_STATELESS_RESET_TOKEN);
+        QUIC_TP_FLAG_STATELESS_RESET_TOKEN |
+        //
+        // draft-kozuka-quic-stateless-punch MUST NOT be remembered for 0-RTT,
+        // and this list is a deny-list -- unlike the server ticket's, which is
+        // an allow-list and would have excluded it by omission. Named here
+        // explicitly for a second reason: every other constant in this list
+        // fits in an int, so ~(...) is a negative int that sign-extends across
+        // the whole of the now 64-bit Flags, which means bit 32 would have
+        // survived the mask rather than being cleared by it.
+        //
+        QUIC_TP_FLAG_STATELESS_PUNCH);
 
     EncodedServerTP =
         QuicCryptoTlsEncodeTransportParameters(

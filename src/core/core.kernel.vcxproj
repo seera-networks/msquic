@@ -25,6 +25,7 @@
     <ClCompile Include="binding.c" />
     <ClCompile Include="configuration.c" />
     <ClCompile Include="congestion_control.c" />
+    <ClCompile Include="candidate.c" />
     <ClCompile Include="connection.c" />
     <ClCompile Include="connection_pool.c" />
     <ClCompile Include="crypto.c" />

@@ -1613,7 +1613,18 @@ VersionSettingsFail:
             QUIC_SETTING_ADD_ADDRESS_MODE,
             (uint8_t*)&Value,
             &ValueLen);
-        Settings->AddAddressMode = (uint8_t)Value;
+        //
+        // Range-checked, which it was not. The field is two bits internally
+        // and every mode test is an equality, so an out-of-range value became
+        // an undocumented fourth mode: no events, no table, no automatic
+        // management -- while still taking the address monitor and still
+        // opening a path with an all-zero local address out of
+        // QuicConnProcessAddAddress. An administrator's typo should leave the
+        // default, not invent a behaviour.
+        //
+        if (Value < QUIC_ADD_ADDRESS_COUNT) {
+            Settings->AddAddressMode = (uint8_t)Value;
+        }
     }
     if (!Settings->IsSet.LocalAddressChangeMode) {
         Value = QUIC_DEFAULT_LOCAL_ADDRESS_CHANGE_MODE;

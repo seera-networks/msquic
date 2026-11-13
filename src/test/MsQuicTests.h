@@ -206,11 +206,88 @@ QuicTestLocalAddressChangeAuto(
     );
 
 void
+QuicTestNatTraversalLocalAddressChange(
+    );
+
+void
 QuicTestLocalAddressChangeAutoOffline(
     );
 
 void
 QuicTestLocalAddressChangeAutoServerMigration(
+    );
+
+void
+QuicTestAlternativeServerAddress(
+    );
+
+void
+QuicTestAlternativeServerAddressAuto(
+    );
+
+void
+QuicTestPathOrigins(
+    );
+
+void
+QuicTestPathOriginsAdvertised(
+    );
+
+void
+QuicTestPathReconcilerSwapAtPathLimit(
+    );
+
+void
+QuicTestPathReconcilerKeepsApplicationPath(
+    );
+
+void
+QuicTestTableMigration(
+    );
+
+void
+QuicTestTableMigrationBackupOnly(
+    );
+
+void
+QuicTestTableMigrationHoldDown(
+    );
+
+void
+QuicTestTableMigrationNoFlap(
+    );
+
+void
+QuicTestTableMigrationAfterFailure(
+    );
+
+void
+QuicTestModeManual(
+    );
+
+void
+QuicTestModeNatTraversal(
+    );
+
+void
+QuicTestStatelessPunchNegotiation(
+    );
+
+void
+QuicTestStatelessPunchRequest(
+    );
+
+void
+QuicTestServerLostAddressAbandonsPath(
+    );
+
+void
+QuicTestServerLostAddressWithoutMultipath(
+    );
+
+void
+QuicTestDeprecatedLocalAddressChangeMode(
+    _In_ const FamilyArgs& Params
     );
 
 void

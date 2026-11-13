@@ -1008,12 +1008,17 @@ QuicLibraryOnLocalAddressChange(
     // which is the order QuicRegistrationTraceRundown uses, and
     // LocalAddressesLock above is released before either is taken.
     //
-    // This walks every connection in the process, including the ones that
-    // never asked for this. It is only reached while some connection has the
-    // monitor running, and the per-connection work is a settings test, but an
-    // interface that flaps hard enough will serialize the library behind this
-    // thread. A per-registration list of interested connections is the fix if
-    // that ever shows up in a profile.
+    // This walks every connection in the process, and since stage 5 of #157
+    // every one of them wants the result: AddAddressMode governs the host's
+    // addresses too, so there is no longer a settings test that makes most of
+    // the work go away. Each connection queues an operation that reads the
+    // snapshot and, in AUTO, rebuilds its candidate table.
+    //
+    // So an interface that flaps on a process holding many connections costs
+    // rather more than it used to, and a per-registration list of interested
+    // connections has gone from a nice-to-have to the obvious fix if this
+    // shows up in a profile. #164 narrows what a server does with any of it,
+    // which is where most of those connections live.
     //
     CxPlatLockAcquire(&MsQuicLib.Lock);
 

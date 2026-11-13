@@ -68,19 +68,19 @@ tracepoint(CLOG_PACKET_BUILDER_C, SkipPacketNumber , arg1, arg3);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for GetPacketTypeFailure
+// Decoder Ring for GetPacketTypeFailure64
 // [conn][%p] Failed to get packet type for control frames, 0x%llx
 // QuicTraceLogConnWarning(
-        GetPacketTypeFailure,
+        GetPacketTypeFailure64,
         Builder->Connection,
         "Failed to get packet type for control frames, 0x%llx",
         SendFlags);
 // arg1 = arg1 = Builder->Connection = arg1
 // arg3 = arg3 = SendFlags = arg3
 ----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_GetPacketTypeFailure
-#define _clog_4_ARGS_TRACE_GetPacketTypeFailure(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_PACKET_BUILDER_C, GetPacketTypeFailure , arg1, arg3);\
+#ifndef _clog_4_ARGS_TRACE_GetPacketTypeFailure64
+#define _clog_4_ARGS_TRACE_GetPacketTypeFailure64(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_PACKET_BUILDER_C, GetPacketTypeFailure64 , arg1, arg3);\
 
 #endif
 

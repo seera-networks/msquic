@@ -147,8 +147,14 @@ QuicPacketTypeToEncryptLevelV2(
 #define QUIC_CONN_SEND_FLAG_UNI_STREAMS_BLOCKED     0x00020000ULL
 #define QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS        0x00040000ULL
 #define QUIC_CONN_SEND_FLAG_ADD_ADDRESS             0x00080000ULL
-#define QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW            0x00100000ULL
-#define QUIC_CONN_SEND_FLAG_PUNCH_YOU_NOW           0x00200000ULL
+//
+// 0x00100000 and 0x00200000 were PUNCH_ME_NOW and PUNCH_YOU_NOW, the older
+// NAT-traversal punch request and the probe a server answered it with. Both
+// went with the frame in #173, and the bits are deliberately left unused
+// rather than reassigned: the next flag should take 0x200000000 and keep the
+// numbering a record of what was here, which is what made the 32-bit
+// exhaustion that forced SendFlags to 64 bits legible in the first place.
+//
 #define QUIC_CONN_SEND_FLAG_REMOVE_ADDRESS          0x00400000ULL
 #define QUIC_CONN_SEND_FLAG_PATH_ABANDON            0x00800000ULL
 #define QUIC_CONN_SEND_FLAG_PATH_BACKUP             0x01000000ULL
@@ -157,15 +163,30 @@ QuicPacketTypeToEncryptLevelV2(
 #define QUIC_CONN_SEND_FLAG_PATHS_BLOCKED           0x08000000ULL
 #define QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED       0x10000000ULL
 #define QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE         0x20000000ULL
+#define QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS     0x40000000ULL
 #define QUIC_CONN_SEND_FLAG_DPLPMTUD                0x80000000ULL
+
 //
-// QMux (QX) connection send flags. SendFlags is a uint64_t; these live above
-// bit 31 so they coexist with the multipath PATH_* flags without renumbering
-// any upstream flags.
+// The first flag past the 32 the original set had, and the reason SendFlags is
+// 64 bits now. draft-kozuka-quic-stateless-punch's request frame.
 //
-#define QUIC_CONN_SEND_FLAG_QX_TRANSPORT_PARAMETERS 0x0000000100000000ULL
-#define QUIC_CONN_SEND_FLAG_QX_PING                 0x0000000200000000ULL
-#define QUIC_CONN_SEND_FLAG_QX_PING_RESPONSE        0x0000000400000000ULL
+#define QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW  0x100000000ULL
+
+//
+// QMux (QX) connection send flags. SendFlags is a uint64_t, so these live
+// above the upstream set rather than renumbering any of it.
+//
+// Moved from bits 32-34 to 40-42 when seera-main's STATELESS_PUNCH_ME_NOW took
+// bit 32 and collided head-on with QX_TRANSPORT_PARAMETERS. Deliberately not
+// moved to bits 33-35, which would merely postpone the same collision: the
+// comment above the retired punch bits says the next upstream flag takes
+// 0x200000000, and upstream has added three flags past bit 31 in two merges.
+// Bits 33-39 are left to it, and a QX flag has never been a wire value, so
+// where they sit is internal to this branch.
+//
+#define QUIC_CONN_SEND_FLAG_QX_TRANSPORT_PARAMETERS 0x0000010000000000ULL
+#define QUIC_CONN_SEND_FLAG_QX_PING                 0x0000020000000000ULL
+#define QUIC_CONN_SEND_FLAG_QX_PING_RESPONSE        0x0000040000000000ULL
 
 //
 // Flags that aren't blocked by congestion control.
@@ -199,6 +220,8 @@ QuicPacketTypeToEncryptLevelV2(
     QUIC_CONN_SEND_FLAG_BIDI_STREAMS_BLOCKED | \
     QUIC_CONN_SEND_FLAG_UNI_STREAMS_BLOCKED | \
     QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS | \
+    QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS | \
+    QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW | \
     QUIC_CONN_SEND_FLAG_QX_TRANSPORT_PARAMETERS | \
     QUIC_CONN_SEND_FLAG_QX_PING | \
     QUIC_CONN_SEND_FLAG_QX_PING_RESPONSE \
@@ -347,6 +370,13 @@ typedef struct QUIC_SEND {
 
     //
     // Set of flags indicating what data is ready to be sent out.
+    //
+    // 64 bits, because the 32 ran out. Every QUIC_CONN_SEND_FLAG_* above is
+    // spelled ULL for the same reason the transport parameter flags are: a
+    // 32-bit constant in `SendFlags &= ~FLAG` gives a 32-bit complement that
+    // zero-extends, so the mask would clear every flag above bit 31 as a side
+    // effect of clearing one below it. The QX flags at bits 40-42 are what
+    // that would silently clear on this branch.
     //
     uint64_t SendFlags;
 

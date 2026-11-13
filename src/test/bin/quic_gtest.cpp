@@ -1141,6 +1141,14 @@ TEST_P(WithFamilyArgs, LocalAddressChangeNotify) {
     QuicTestLocalAddressChangeNotify(GetParam());
 }
 
+TEST_P(WithFamilyArgs, DeprecatedLocalAddressChangeMode) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestDeprecatedLocalAddressChangeMode is user-mode only.";
+    }
+    TestLoggerT<ParamType> Logger("QuicTestDeprecatedLocalAddressChangeMode", GetParam());
+    QuicTestDeprecatedLocalAddressChangeMode(GetParam());
+}
+
 TEST_P(WithFamilyArgs, LocalAddressChangeDisabled) {
     if (TestingKernelMode) {
         GTEST_SKIP() << "QuicTestLocalAddressChangeDisabled is user-mode only.";
@@ -1159,6 +1167,14 @@ TEST(Basic, LocalAddressChangeAuto) {
     }
     TestLogger Logger("QuicTestLocalAddressChangeAuto");
     QuicTestLocalAddressChangeAuto();
+}
+
+TEST(Basic, NatTraversalLocalAddressChange) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestNatTraversalLocalAddressChange is user-mode only.";
+    }
+    TestLogger Logger("QuicTestNatTraversalLocalAddressChange");
+    QuicTestNatTraversalLocalAddressChange();
 }
 
 TEST(Basic, LocalAddressChangeAutoOffline) {
@@ -1193,6 +1209,219 @@ TEST(Basic, LocalAddressChangeAutoRouteUnchanged) {
     QuicTestLocalAddressChangeAutoRouteUnchanged();
 }
 #endif // DEBUG
+
+//
+// Needs no debug-only injection parameter -- the server advertises through the
+// public address parameters -- so it runs in release too, outside the DEBUG
+// guard above.
+//
+TEST(Basic, AlternativeServerAddress) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestAlternativeServerAddress is user-mode only.";
+    }
+    TestLogger Logger("QuicTestAlternativeServerAddress");
+    QuicTestAlternativeServerAddress();
+}
+
+TEST(Basic, AlternativeServerAddressAuto) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestAlternativeServerAddressAuto is user-mode only.";
+    }
+    TestLogger Logger("QuicTestAlternativeServerAddressAuto");
+    QuicTestAlternativeServerAddressAuto();
+}
+
+//
+// These two read the origins back through a debug-only parameter, so in a
+// release build they skip rather than run. The skip is deliberate and explicit:
+// leaving the registration unguarded with an empty body would report a green
+// pass in release while testing nothing at all.
+//
+TEST(Basic, PathOrigins) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathOrigins needs QUIC_PARAM_CONN_TEST_PATH_ORIGINS, which is debug only.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathOrigins is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathOrigins");
+    QuicTestPathOrigins();
+#endif
+}
+
+TEST(Basic, PathOriginsAdvertised) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathOriginsAdvertised needs QUIC_PARAM_CONN_TEST_PATH_ORIGINS, which is debug only.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathOriginsAdvertised is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathOriginsAdvertised");
+    QuicTestPathOriginsAdvertised();
+#endif
+}
+
+//
+// Stage 3 of #157. Debug only for the same reason: they read the paths'
+// endpoints and origins back through debug-only parameters.
+//
+TEST(Basic, PathReconcilerSwapAtPathLimit) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathReconcilerSwapAtPathLimit needs QUIC_PARAM_CONN_TEST_PATH_ADDRESSES, which is debug only.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathReconcilerSwapAtPathLimit is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathReconcilerSwapAtPathLimit");
+    QuicTestPathReconcilerSwapAtPathLimit();
+#endif
+}
+
+TEST(Basic, PathReconcilerKeepsApplicationPath) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathReconcilerKeepsApplicationPath needs QUIC_PARAM_CONN_TEST_PATH_ADDRESSES, which is debug only.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathReconcilerKeepsApplicationPath is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathReconcilerKeepsApplicationPath");
+    QuicTestPathReconcilerKeepsApplicationPath();
+#endif
+}
+
+TEST(Basic, TableMigration) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigration needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigration is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigration");
+    QuicTestTableMigration();
+#endif
+}
+
+TEST(Basic, TableMigrationBackupOnly) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationBackupOnly needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationBackupOnly is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationBackupOnly");
+    QuicTestTableMigrationBackupOnly();
+#endif
+}
+
+TEST(Basic, TableMigrationHoldDown) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationHoldDown needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationHoldDown is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationHoldDown");
+    QuicTestTableMigrationHoldDown();
+#endif
+}
+
+TEST(Basic, TableMigrationNoFlap) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationNoFlap needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationNoFlap is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationNoFlap");
+    QuicTestTableMigrationNoFlap();
+#endif
+}
+
+TEST(Basic, TableMigrationAfterFailure) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestTableMigrationAfterFailure needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestTableMigrationAfterFailure is user-mode only.";
+    }
+    TestLogger Logger("QuicTestTableMigrationAfterFailure");
+    QuicTestTableMigrationAfterFailure();
+#endif
+}
+
+TEST(Basic, ModeManual) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestModeManual needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestModeManual is user-mode only.";
+    }
+    TestLogger Logger("QuicTestModeManual");
+    QuicTestModeManual();
+#endif
+}
+
+TEST(Basic, ModeNatTraversal) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestModeNatTraversal needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestModeNatTraversal is user-mode only.";
+    }
+    TestLogger Logger("QuicTestModeNatTraversal");
+    QuicTestModeNatTraversal();
+#endif
+}
+
+TEST(Basic, StatelessPunchNegotiation) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestStatelessPunchNegotiation needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestStatelessPunchNegotiation is user-mode only.";
+    }
+    TestLogger Logger("QuicTestStatelessPunchNegotiation");
+    QuicTestStatelessPunchNegotiation();
+#endif
+}
+
+TEST(Basic, StatelessPunchRequest) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestStatelessPunchRequest needs debug-only parameters.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestStatelessPunchRequest is user-mode only.";
+    }
+    TestLogger Logger("QuicTestStatelessPunchRequest");
+    QuicTestStatelessPunchRequest();
+#endif
+}
+
+TEST(Basic, ServerLostAddressAbandonsPath) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestServerLostAddressAbandonsPath needs the debug-only address injection.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestServerLostAddressAbandonsPath is user-mode only.";
+    }
+    TestLogger Logger("QuicTestServerLostAddressAbandonsPath");
+    QuicTestServerLostAddressAbandonsPath();
+#endif
+}
+
+TEST(Basic, ServerLostAddressWithoutMultipath) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestServerLostAddressWithoutMultipath needs the debug-only address injection.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestServerLostAddressWithoutMultipath is user-mode only.";
+    }
+    TestLogger Logger("QuicTestServerLostAddressWithoutMultipath");
+    QuicTestServerLostAddressWithoutMultipath();
+#endif
+}
+
+
 
 //
 // Reads a public parameter and needs no injection, so it runs in release too.
