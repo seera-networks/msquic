@@ -3096,12 +3096,32 @@ QuicLibraryLookupBinding(
 
         } else {
             //
-            // For server (unconnected/listening) bindings we always use wildcard
-            // addresses, so we simply need to match on the local port. We need not consider the
-            // binding QTIP settings because we always disallow listeners with different QTIP settings to
-            // share a binding. This is enforced by the caller.
+            // For server (unconnected/listening) bindings the local port is
+            // usually the whole of the match, because such a binding usually
+            // has a wildcard address. We need not consider the binding QTIP
+            // settings because we always disallow listeners with different
+            // QTIP settings to share a binding. This is enforced by the
+            // caller.
             //
-            if (QuicAddrGetPort(&BindingLocalAddr) == QuicAddrGetPort(LocalAddress)) {
+            // "Usually" rather than "always", which it used to say: a
+            // connection that sets QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET gets
+            // an unconnected binding with a *specific* local address, and has
+            // no choice about that -- QuicConnOpenNewPath refuses a wildcard
+            // for an unconnected socket ("Unconnected socket requires a
+            // specific local address"). Matching such a binding on the port
+            // alone hands a path the binding of a different local address, and
+            // QuicConnOpenNewPath then takes the path's local address from the
+            // binding, so it sends from the wrong interface -- the failure
+            // #198 was about, reached a different way. See #200.
+            //
+            // So two specific addresses have to agree. Where either side is a
+            // wildcard the port alone still decides, which keeps every
+            // listener case exactly as it was, including the note below.
+            //
+            if (QuicAddrGetPort(&BindingLocalAddr) == QuicAddrGetPort(LocalAddress) &&
+                (QuicAddrIsWildCard(&BindingLocalAddr) ||
+                 QuicAddrIsWildCard(LocalAddress) ||
+                 QuicAddrCompareIp(&BindingLocalAddr, LocalAddress))) {
                 //
                 // Note: We don't check the remote address, because we want to
                 // return a match even if the caller is looking for a connected
