@@ -509,7 +509,7 @@ _Success_(return != FALSE)
 BOOLEAN
 QuicPacketBuilderGetPacketTypeAndKeyForControlFrames(
     _In_ const QUIC_PACKET_BUILDER* Builder,
-    _In_ uint32_t SendFlags,
+    _In_ uint64_t SendFlags,
     _Out_ QUIC_PACKET_KEY_TYPE* PacketKeyType
     )
 {
@@ -618,9 +618,9 @@ QuicPacketBuilderGetPacketTypeAndKeyForControlFrames(
     }
 
     QuicTraceLogConnWarning(
-        GetPacketTypeFailure,
+        GetPacketTypeFailure64,
         Builder->Connection,
-        "Failed to get packet type for control frames, 0x%x",
+        "Failed to get packet type for control frames, 0x%llx",
         SendFlags);
     CXPLAT_DBG_ASSERT(CxPlatIsRandomMemoryFailureEnabled()); // This shouldn't have been called then!
 
@@ -633,7 +633,7 @@ BOOLEAN
 QuicPacketBuilderPrepareForControlFrames(
     _Inout_ QUIC_PACKET_BUILDER* Builder,
     _In_ BOOLEAN IsTailLossProbe,
-    _In_ uint32_t SendFlags
+    _In_ uint64_t SendFlags
     )
 {
     CXPLAT_DBG_ASSERT(!(SendFlags & QUIC_CONN_SEND_FLAG_DPLPMTUD));

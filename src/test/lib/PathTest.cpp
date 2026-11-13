@@ -4584,6 +4584,254 @@ QuicTestStatelessPunchNegotiation(
 
 #if DEBUG
 //
+// The punch counters for one connection. Debug-only for the reason msquicp.h
+// records: the exchange leaves nothing else to observe.
+//
+static
+bool
+PunchCounters(
+    _In_ MsQuicConnection* Connection,
+    _Out_ QUIC_TEST_PUNCH_COUNTERS* Counters
+    )
+{
+    CxPlatZeroMemory(Counters, sizeof(*Counters));
+    uint32_t Length = sizeof(*Counters);
+    const QUIC_STATUS Status =
+        Connection->GetParam(
+            QUIC_PARAM_CONN_TEST_PUNCH_COUNTERS, &Length, Counters);
+    if (QUIC_FAILED(Status)) {
+        TEST_FAILURE("GetParam(PUNCH_COUNTERS) failed, 0x%x", Status);
+        return false;
+    }
+    return true;
+}
+
+//
+// Waits for the client to have sent a request, so the test does not race the
+// reconciler. Returns false if none arrives, which the caller reports.
+//
+static
+bool
+WaitForPunchRequestSent(
+    _In_ MsQuicConnection* Client
+    )
+{
+    for (uint32_t i = 0; i < 50; ++i) {
+        QUIC_TEST_PUNCH_COUNTERS Counters;
+        if (!PunchCounters(Client, &Counters)) {
+            return false;
+        }
+        if (Counters.RequestsSent > 0) {
+            return true;
+        }
+        CxPlatSleep(100);
+    }
+    return false;
+}
+#endif
+
+//
+// Stage 3 of #169: the client asks, waits, and validates.
+//
+// What this asserts is the exchange itself -- a request leaves the client, the
+// server reads it and answers -- and the one rule a client can break on its
+// own: a server answers one punch per received packet, so a client that puts
+// two requests in one packet has the second read and dropped. The counter for
+// that is the only way to see it, since the dropped request looks like nothing
+// at all from outside.
+//
+// Needs a connection on a real interface. A loopback connection has no
+// candidate pairs for the reconciler to open a path for -- every local address
+// and the advertised remote are loopback, so the table stays empty -- and with
+// no path there is no request. That is why this does its work on the XDP runs
+// and skips elsewhere, and the skip is deliberate rather than a silent pass:
+// the assertions below would all hold vacuously on loopback.
+//
+void
+QuicTestStatelessPunchRequest(
+    )
+{
+#if !DEBUG
+#else
+    TableMigrationTest Test;
+    MsQuicConnection* Conn = nullptr;
+    (void)Test.Start(Conn, 0, QUIC_ADD_ADDRESS_AUTO);
+    if (Test.Client == nullptr || Test.ServerContext.Connection == nullptr) {
+        TEST_FAILURE("Handshake did not complete");
+        return;
+    }
+
+    QuicAddr Remote;
+    if (QUIC_FAILED(Test.Client->GetRemoteAddr(Remote)) ||
+        IS_LOOPBACK(Remote.SockAddr)) {
+        return;
+    }
+
+    //
+    // The client says how it is seen from its own local address, before the
+    // server advertises anything. The order matters: the pair becomes
+    // punchable only if the candidate is already there when the reconciler
+    // reaches it, and a pair reached without one is probed directly instead.
+    //
+    QuicAddr Local;
+    TEST_QUIC_SUCCEEDED(Test.Client->GetLocalAddr(Local));
+
+    //
+    // One of this host's own addresses with a port nothing is listening on, so
+    // the punch the server sends stays on this network and is dropped here.
+    // It has to be a real address rather than loopback: the server refuses to
+    // punch towards loopback, which is the whole point of that filter.
+    //
+    QuicAddr Observed = Test.Host;
+    Observed.SetEphemeralPort();
+
+    QUIC_CANDIDATE_ADDRESS Candidate = { &Local.SockAddr, &Observed.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        Test.Client->SetParam(
+            QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS,
+            sizeof(Candidate),
+            &Candidate));
+
+    //
+    // Two advertised addresses, so there are two punchable pairs and therefore
+    // two requests. One is not enough to test the rule that matters: a single
+    // request cannot share a packet with another, so the server would never
+    // have to ignore one and the counter would read zero whatever the client
+    // did. Both pairs share this one candidate, since the table pairs every
+    // local address against every remote.
+    //
+    QuicAddr Advertised, SecondAdvertised;
+    if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Advertised) ||
+        !ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, SecondAdvertised)) {
+        return;
+    }
+
+    if (!WaitForPunchRequestSent(Test.Client)) {
+        TEST_FAILURE("Client never sent a punch request");
+        return;
+    }
+
+    //
+    // Let both requests land and be answered.
+    //
+    CxPlatSleep(1000);
+
+    QUIC_TEST_PUNCH_COUNTERS ClientCounters;
+    if (!PunchCounters(Test.Client, &ClientCounters)) {
+        return;
+    }
+    QUIC_TEST_PUNCH_COUNTERS ServerCounters;
+    if (!PunchCounters(Test.ServerContext.Connection, &ServerCounters)) {
+        return;
+    }
+
+    //
+    // Reported together, because any one of these failing is only
+    // interpretable next to the others -- "fewer punches than requests" means
+    // something quite different from "fewer requests than expected", and the
+    // first version of this test said neither. The XDP runs are where that
+    // mattered: PunchesSent came up short and the log gave no way to tell
+    // whether a request had been dropped for sharing a packet, refused by the
+    // destination filter, or failed to send at all.
+    //
+    //
+    // The server was asked for both pairs, and answered.
+    //
+    if (ServerCounters.RequestsReceived < 2 ||
+        ServerCounters.PunchesSent < 2 ||
+        ServerCounters.RequestsIgnoredPerPacket != 0) {
+        TEST_FAILURE(
+            "punch counters: client sent=%u, server recv=%u punched=%u ignored=%u "
+            "(wanted recv>=2, punched>=2, ignored==0)",
+            ClientCounters.RequestsSent,
+            ServerCounters.RequestsReceived,
+            ServerCounters.PunchesSent,
+            ServerCounters.RequestsIgnoredPerPacket);
+        return;
+    }
+
+    //
+    // No request was dropped for sharing a packet with another.
+    //
+    // Kept as an invariant, but it is weaker than it looks and the comment is
+    // here so nobody reads more into it. The two requests arrive in separate
+    // ALTERNATIVE_ADDRESS frames, so each drives its own reconciliation pass
+    // and each is written into its own packet whatever the writer's batching
+    // rule says -- measured, by removing the writer's one-per-packet break and
+    // watching this still read zero.
+    //
+    // Making it discriminating needs two pairs queued in the same pass, which
+    // means two candidate locals to one remote, which means multipath so the
+    // reconciler stops collapsing them onto one path -- on top of the
+    // non-loopback connection this test already needs. That combination is not
+    // yet standing up, so one-request-per-packet remains enforced by the
+    // writer and by the server's own guard rather than by a test.
+    //
+    // Checked in the block above, with the other two, so a failure reports all
+    // four numbers at once.
+
+    //
+    // Every request answered, which is the same statement from the other side
+    // and would not hold if any had been dropped.
+    //
+    TEST_EQUAL(ServerCounters.RequestsReceived, ServerCounters.PunchesSent);
+    TEST_EQUAL(ClientCounters.RequestsSent, ServerCounters.RequestsReceived);
+
+    //
+    // Neither end asked the other for something it did not implement: a client
+    // sends requests and does not answer them, a server answers and does not
+    // ask.
+    //
+    TEST_EQUAL(0u, ClientCounters.RequestsReceived);
+    TEST_EQUAL(0u, ClientCounters.PunchesSent);
+    TEST_EQUAL(0u, ServerCounters.RequestsSent);
+
+    //
+    // NAT_TRAVERSAL on the same host, which cannot negotiate the extension --
+    // it offers no alternative_address, and the draft makes that a
+    // prerequisite. Same environment as above, so a zero here means the mode
+    // refused rather than the environment being unable to produce a request.
+    //
+    {
+        TableMigrationTest NatTest;
+        MsQuicConnection* NatConn = nullptr;
+        (void)NatTest.Start(NatConn, 0, QUIC_ADD_ADDRESS_NAT_TRAVERSAL);
+        if (NatTest.Client == nullptr || NatTest.ServerContext.Connection == nullptr) {
+            TEST_FAILURE("Handshake did not complete in NAT_TRAVERSAL mode");
+            return;
+        }
+
+        QuicAddr NatLocal;
+        TEST_QUIC_SUCCEEDED(NatTest.Client->GetLocalAddr(NatLocal));
+        QuicAddr NatObserved = NatTest.Host;
+        NatObserved.SetEphemeralPort();
+        QUIC_CANDIDATE_ADDRESS NatCandidate =
+            { &NatLocal.SockAddr, &NatObserved.SockAddr };
+        TEST_QUIC_SUCCEEDED(
+            NatTest.Client->SetParam(
+                QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS,
+                sizeof(NatCandidate),
+                &NatCandidate));
+
+        QuicAddr NatAdvertised;
+        if (!ReconcilerAdvertise(
+                NatTest.ServerContext.Connection, NatTest.Host, NatAdvertised)) {
+            return;
+        }
+
+        CxPlatSleep(1000);
+
+        QUIC_TEST_PUNCH_COUNTERS NatCounters;
+        if (!PunchCounters(NatTest.Client, &NatCounters)) {
+            return;
+        }
+        TEST_EQUAL(0u, NatCounters.RequestsSent);
+    }
+#endif
+}
+
+#if DEBUG
+//
 // A second address on the same host that a connection could be carried by.
 // Only 127/8 qualifies -- a loopback connection cannot be carried by a real
 // interface address, and IPv6 has only ::1 -- so this answers only for IPv4

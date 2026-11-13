@@ -127,38 +127,44 @@ QuicPacketTypeToEncryptLevelV2(
 // reflects the order the data is framed into a packet.
 //
 
-#define QUIC_CONN_SEND_FLAG_ACK                     0x00000001U
-#define QUIC_CONN_SEND_FLAG_CRYPTO                  0x00000002U
-#define QUIC_CONN_SEND_FLAG_CONNECTION_CLOSE        0x00000004U
-#define QUIC_CONN_SEND_FLAG_APPLICATION_CLOSE       0x00000008U
-#define QUIC_CONN_SEND_FLAG_DATA_BLOCKED            0x00000010U
-#define QUIC_CONN_SEND_FLAG_MAX_DATA                0x00000020U
-#define QUIC_CONN_SEND_FLAG_MAX_STREAMS_BIDI        0x00000040U
-#define QUIC_CONN_SEND_FLAG_MAX_STREAMS_UNI         0x00000080U
-#define QUIC_CONN_SEND_FLAG_NEW_CONNECTION_ID       0x00000100U
-#define QUIC_CONN_SEND_FLAG_RETIRE_CONNECTION_ID    0x00000200U
-#define QUIC_CONN_SEND_FLAG_PATH_CHALLENGE          0x00000400U
-#define QUIC_CONN_SEND_FLAG_PATH_RESPONSE           0x00000800U
-#define QUIC_CONN_SEND_FLAG_PING                    0x00001000U
-#define QUIC_CONN_SEND_FLAG_HANDSHAKE_DONE          0x00002000U
-#define QUIC_CONN_SEND_FLAG_DATAGRAM                0x00004000U
-#define QUIC_CONN_SEND_FLAG_ACK_FREQUENCY           0x00008000U
-#define QUIC_CONN_SEND_FLAG_BIDI_STREAMS_BLOCKED    0x00010000U
-#define QUIC_CONN_SEND_FLAG_UNI_STREAMS_BLOCKED     0x00020000U
-#define QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS        0x00040000U
-#define QUIC_CONN_SEND_FLAG_ADD_ADDRESS             0x00080000U
-#define QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW            0x00100000U
-#define QUIC_CONN_SEND_FLAG_PUNCH_YOU_NOW           0x00200000U
-#define QUIC_CONN_SEND_FLAG_REMOVE_ADDRESS          0x00400000U
-#define QUIC_CONN_SEND_FLAG_PATH_ABANDON            0x00800000U
-#define QUIC_CONN_SEND_FLAG_PATH_BACKUP             0x01000000U
-#define QUIC_CONN_SEND_FLAG_PATH_AVAILABLE          0x02000000U
-#define QUIC_CONN_SEND_FLAG_MAX_PATH_ID             0x04000000U
-#define QUIC_CONN_SEND_FLAG_PATHS_BLOCKED           0x08000000U
-#define QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED       0x10000000U
-#define QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE         0x20000000U
-#define QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS     0x40000000U
-#define QUIC_CONN_SEND_FLAG_DPLPMTUD                0x80000000U
+#define QUIC_CONN_SEND_FLAG_ACK                     0x00000001ULL
+#define QUIC_CONN_SEND_FLAG_CRYPTO                  0x00000002ULL
+#define QUIC_CONN_SEND_FLAG_CONNECTION_CLOSE        0x00000004ULL
+#define QUIC_CONN_SEND_FLAG_APPLICATION_CLOSE       0x00000008ULL
+#define QUIC_CONN_SEND_FLAG_DATA_BLOCKED            0x00000010ULL
+#define QUIC_CONN_SEND_FLAG_MAX_DATA                0x00000020ULL
+#define QUIC_CONN_SEND_FLAG_MAX_STREAMS_BIDI        0x00000040ULL
+#define QUIC_CONN_SEND_FLAG_MAX_STREAMS_UNI         0x00000080ULL
+#define QUIC_CONN_SEND_FLAG_NEW_CONNECTION_ID       0x00000100ULL
+#define QUIC_CONN_SEND_FLAG_RETIRE_CONNECTION_ID    0x00000200ULL
+#define QUIC_CONN_SEND_FLAG_PATH_CHALLENGE          0x00000400ULL
+#define QUIC_CONN_SEND_FLAG_PATH_RESPONSE           0x00000800ULL
+#define QUIC_CONN_SEND_FLAG_PING                    0x00001000ULL
+#define QUIC_CONN_SEND_FLAG_HANDSHAKE_DONE          0x00002000ULL
+#define QUIC_CONN_SEND_FLAG_DATAGRAM                0x00004000ULL
+#define QUIC_CONN_SEND_FLAG_ACK_FREQUENCY           0x00008000ULL
+#define QUIC_CONN_SEND_FLAG_BIDI_STREAMS_BLOCKED    0x00010000ULL
+#define QUIC_CONN_SEND_FLAG_UNI_STREAMS_BLOCKED     0x00020000ULL
+#define QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS        0x00040000ULL
+#define QUIC_CONN_SEND_FLAG_ADD_ADDRESS             0x00080000ULL
+#define QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW            0x00100000ULL
+#define QUIC_CONN_SEND_FLAG_PUNCH_YOU_NOW           0x00200000ULL
+#define QUIC_CONN_SEND_FLAG_REMOVE_ADDRESS          0x00400000ULL
+#define QUIC_CONN_SEND_FLAG_PATH_ABANDON            0x00800000ULL
+#define QUIC_CONN_SEND_FLAG_PATH_BACKUP             0x01000000ULL
+#define QUIC_CONN_SEND_FLAG_PATH_AVAILABLE          0x02000000ULL
+#define QUIC_CONN_SEND_FLAG_MAX_PATH_ID             0x04000000ULL
+#define QUIC_CONN_SEND_FLAG_PATHS_BLOCKED           0x08000000ULL
+#define QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED       0x10000000ULL
+#define QUIC_CONN_SEND_FLAG_PATH_KEEP_ALIVE         0x20000000ULL
+#define QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS     0x40000000ULL
+#define QUIC_CONN_SEND_FLAG_DPLPMTUD                0x80000000ULL
+
+//
+// The first flag past the 32 the original set had, and the reason SendFlags is
+// 64 bits now. draft-kozuka-quic-stateless-punch's request frame.
+//
+#define QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW  0x100000000ULL
 
 //
 // Flags that aren't blocked by congestion control.
@@ -192,7 +198,8 @@ QuicPacketTypeToEncryptLevelV2(
     QUIC_CONN_SEND_FLAG_BIDI_STREAMS_BLOCKED | \
     QUIC_CONN_SEND_FLAG_UNI_STREAMS_BLOCKED | \
     QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS | \
-    QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS \
+    QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS | \
+    QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW \
 )
 
 //
@@ -339,7 +346,13 @@ typedef struct QUIC_SEND {
     //
     // Set of flags indicating what data is ready to be sent out.
     //
-    uint32_t SendFlags;
+    // 64 bits, because the 32 ran out. Every QUIC_CONN_SEND_FLAG_* above is
+    // spelled ULL for the same reason the transport parameter flags are: a
+    // 32-bit constant in `SendFlags &= ~FLAG` gives a 32-bit complement that
+    // zero-extends, so the mask would clear every flag above bit 31 as a side
+    // effect of clearing one below it.
+    //
+    uint64_t SendFlags;
 
     //
     // List of streams with data or control frames to send.
@@ -497,7 +510,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 BOOLEAN
 QuicSendSetSendFlag(
     _In_ QUIC_SEND* Send,
-    _In_ uint32_t SendFlag
+    _In_ uint64_t SendFlag
     );
 
 //
@@ -507,7 +520,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 void
 QuicSendClearSendFlag(
     _In_ QUIC_SEND* Send,
-    _In_ uint32_t SendFlag
+    _In_ uint64_t SendFlag
     );
 
 //

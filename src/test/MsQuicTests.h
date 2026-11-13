@@ -274,6 +274,10 @@ QuicTestStatelessPunchNegotiation(
     );
 
 void
+QuicTestStatelessPunchRequest(
+    );
+
+void
 QuicTestServerLostAddressAbandonsPath(
     );
 
