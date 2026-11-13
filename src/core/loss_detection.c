@@ -1225,27 +1225,6 @@ QuicLossDetectionRetransmitFrames(
             break;
         }
 
-        case QUIC_FRAME_PUNCH_ME_NOW_V4:
-        case QUIC_FRAME_PUNCH_ME_NOW_V6: {
-            QUIC_PATH* TempPath = NULL;
-            for (uint8_t j = 0; j < Connection->PathsCount; ++j) {
-                TempPath = &Connection->Paths[j];
-                if (TempPath->PunchMeNowRoundValid &&
-                    TempPath->PunchMeNowRound == Packet->Frames[i].PUNCH_ME_NOW.Round) {
-                    break;
-                }
-                TempPath = NULL;
-            }
-            if (TempPath != NULL) {
-                TempPath->SendPunchMeNow = TRUE;
-                NewDataQueued |=
-                    QuicSendSetSendFlag(
-                        &Connection->Send,
-                        QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW);
-            }
-            break;
-        }
-
         case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4:
         case QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6: {
             //

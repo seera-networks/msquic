@@ -4035,8 +4035,7 @@ QuicConnGenerateLocalTransportParameters(
         QUIC_TP_FLAG_MAX_UDP_PAYLOAD_SIZE |
         QUIC_TP_FLAG_MAX_ACK_DELAY |
         QUIC_TP_FLAG_MIN_ACK_DELAY |
-        QUIC_TP_FLAG_ACTIVE_CONNECTION_ID_LIMIT |
-        QUIC_TP_FLAG_NAT_TRAVERSE;
+        QUIC_TP_FLAG_ACTIVE_CONNECTION_ID_LIMIT;
 
     //
     // The observed_address transport parameter is only sent when at least one
@@ -4139,23 +4138,27 @@ QuicConnGenerateLocalTransportParameters(
     // parameter: it is how a client says it will accept the server's list of
     // alternative addresses. A server must not send it at all.
     //
-    // Offered except in NAT-traversal mode, which is left on the older
-    // ADD_ADDRESS and PUNCH_ME_NOW frames. Those pair a punch request to an
-    // advertised address by that frame's per-address sequence number, and the
-    // single frame-level sequence number of this draft cannot express that --
-    // so a client relying on NAT traversal does not ask the server to switch.
+    // Offered in NAT-traversal mode too, as of #173. It used to be withheld
+    // there because the older PUNCH_ME_NOW paired a request to an advertised
+    // address by that frame's per-address sequence number, which this draft's
+    // single frame-level number cannot express -- so the mode stayed on
+    // ADD_ADDRESS and a frame that is now gone. The stateless punch names the
+    // pair by address instead, so there is nothing left to withhold it for,
+    // and withholding it would now be the thing that breaks the mode: without
+    // the advertised set the candidate pair table has no remotes to pair
+    // against, and NAT traversal is a policy over that table.
     //
-    // Not offered with server migration enabled either. A client that
-    // negotiates that hands path creation to the server, and
-    // QuicConnProcessAddAddress refuses every address a client is told about in
-    // that state -- so offering the extension would have the client acknowledge
-    // the frames, advance its sequence number and store the set, then reject
-    // every address in it. Silently inert is the worst of the three outcomes;
-    // not negotiating says so honestly.
+    // Not offered with server migration enabled. A client that negotiates that
+    // hands path creation to the server, and QuicConnProcessAddAddress refuses
+    // every address a client is told about in that state -- so offering the
+    // extension would have the client acknowledge the frames, advance its
+    // sequence number and store the set, then reject every address in it.
+    // Silently inert is the worst of the three outcomes; not negotiating says
+    // so honestly. That is also what keeps the ADD_ADDRESS frames alive: they
+    // are the fallback for a peer this parameter was never agreed with.
     //
     if (QuicConnIsClient(Connection) &&
-        !Connection->Settings.ServerMigrationEnabled &&
-        Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_NAT_TRAVERSAL) {
+        !Connection->Settings.ServerMigrationEnabled) {
         LocalTP->Flags |= QUIC_TP_FLAG_ALTERNATIVE_ADDRESS;
     }
 
@@ -4239,8 +4242,6 @@ QuicConnGenerateLocalTransportParameters(
                     PrevSourceCid->CID.Length);
             }
         }
-        LocalTP->NatTraverseConcurrencyLimit = QUIC_NAT_TRAVERSE_CONCURRENCY_LIMIT;
-
     } else {
 
         if (Connection->Streams.Types[STREAM_ID_FLAG_IS_SERVER | STREAM_ID_FLAG_IS_BI_DIR].MaxTotalStreamCount) {
@@ -4776,11 +4777,6 @@ QuicConnProcessPeerTransportParameters(
             QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS);
     }
 
-    if (Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_NAT_TRAVERSE) {
-        Connection->State.NatTraverseNegotiated = TRUE;
-        Connection->NatTraverseConcurrencyLimit = Connection->PeerTransportParams.NatTraverseConcurrencyLimit;
-    }
-
     if (!FromResumptionTicket) {
         if (Connection->Settings.VersionNegotiationExtEnabled &&
             Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_VERSION_NEGOTIATION) {
@@ -4904,8 +4900,7 @@ QuicConnProcessPeerTransportParameters(
                 !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_ALTERNATIVE_ADDRESS);
         } else {
             Connection->State.AlternativeAddressNegotiated =
-                !Connection->Settings.ServerMigrationEnabled &&
-                Connection->Settings.AddAddressMode != QUIC_ADD_ADDRESS_NAT_TRAVERSAL;
+                !Connection->Settings.ServerMigrationEnabled;
         }
 
         //
@@ -7724,58 +7719,6 @@ QuicConnRecvFrames(
             break;
         }
 
-        case QUIC_FRAME_PUNCH_ME_NOW_V4:
-        case QUIC_FRAME_PUNCH_ME_NOW_V6: {
-            QUIC_PUNCH_ME_NOW_EX Frame;
-            if (!QuicPunchMeNowFrameDecode(FrameType, PayloadLength, Payload, &Offset, &Frame)) {
-                QuicTraceEvent(
-                    ConnError,
-                    "[conn][%p] ERROR, %s.",
-                    Connection,
-                    "Decoding PUNCH_ME_NOW frame");
-                QuicConnTransportError(Connection, QUIC_ERROR_FRAME_ENCODING_ERROR);
-                return FALSE;
-            }
-            if ((QuicConnIsClient(Connection) && !Connection->State.ServerMigrationNegotiated) ||
-                (QuicConnIsServer(Connection) && Connection->State.ServerMigrationNegotiated)) {
-                QuicTraceEvent(
-                    ConnError,
-                    "[conn][%p] ERROR, %s.",
-                    Connection,
-                    "Client received PUNCH_ME_NOW frame");
-                QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
-                return FALSE;
-            }
-            QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound = NULL;
-            for (CXPLAT_LIST_ENTRY* Entry = Connection->BoundAddresses.Flink;
-                    Entry != &Connection->BoundAddresses;
-                    Entry = Entry->Flink) {
-                QUIC_BOUND_ADDRESS_LIST_ENTRY* Current =
-                    CXPLAT_CONTAINING_RECORD(
-                        Entry,
-                        QUIC_BOUND_ADDRESS_LIST_ENTRY,
-                        Link);
-                if (Current->SequenceNumberValid &&
-                    Current->SequenceNumber == Frame.PairedSequenceNumber) {
-                    Bound = Current;
-                    break;
-                }
-            }
-            //
-            // Not one that is on its way out. QuicConnRemoveBoundAddress
-            // releases the binding and leaves the entry on the list until the
-            // withdrawal is acknowledged, and QuicConnSendPunchProbe takes a
-            // reference on that binding without checking -- so a peer naming a
-            // withdrawn entry's sequence number during that window would
-            // dereference NULL. Both withdrawal branches produce the state, so
-            // the test belongs here rather than in either of them.
-            //
-            if (Bound != NULL && !Bound->Removing) {
-                QuicConnSendPunchProbe(Connection, Bound, &Frame.Address);
-            }
-            break;
-        }
-
         case QUIC_FRAME_ALTERNATIVE_ADDRESS: {
             QUIC_ALTERNATIVE_ADDRESS_EX Frame;
             if (!QuicAlternativeAddressFrameDecode(PayloadLength, Payload, &Offset, &Frame)) {
@@ -9669,21 +9612,24 @@ QuicConnOpenNewPaths(
                     Connection->Paths[i].Binding = NULL;
                 }
                 QuicPathRemove(Connection, i);
-            } else {
-                if (Connection->Paths[i].NatTraversal) {
-                    Connection->Paths[i].SendPunchMeNow = TRUE;
-                    QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW);
-                    if (Connection->Paths[i].DestCid != NULL) {
-                        QuicConnTimerSet(
-                            Connection,
-                            QUIC_CONN_TIMER_PROBE_AFTER_PUNCH,
-                            Connection->Paths[0].SmoothedRtt);
-                    }
-                } else {
-                    if (Connection->Paths[i].DestCid != NULL) {
-                        Assigned = TRUE;
-                    }
-                }
+            } else if (Connection->Paths[i].DestCid != NULL &&
+                       !Connection->Paths[i].StatelessPunchAttempt) {
+                //
+                // A punch attempt is left out, because the caller turns this
+                // into a PATH_CHALLENGE and that is the one thing such a path
+                // must not send yet: its probe waits for
+                // QUIC_CONN_TIMER_PROBE_AFTER_PUNCH so the server's punch has
+                // time to open the mapping first. The reconciler armed that
+                // timer and queued the request when it created the path;
+                // nothing more is owed here.
+                //
+                // This branch used to be the NAT-traversal one, sending the
+                // older PUNCH_ME_NOW and arming the same timer. #173 moved
+                // both to the reconciler, so the mode no longer needs a case
+                // of its own -- only the deferral does, and that is keyed on
+                // the attempt rather than on the mode.
+                //
+                Assigned = TRUE;
             }
         }
     }
@@ -9895,7 +9841,20 @@ QuicConnAddObservedAddress(
         return QUIC_STATUS_INVALID_STATE;
     }
 
-    if (!Connection->State.NatTraverseNegotiated) {
+    //
+    // Some mechanism for telling the peer has to be in play, or a bound
+    // address is a declaration nothing can carry. This used to be the
+    // nat_traverse transport parameter, which #173 retired along with its
+    // frame; the two that remain are the ones that actually advertise:
+    // ALTERNATIVE_ADDRESS when the peer offered that parameter, and the older
+    // ADD_ADDRESS when it did not, which in practice means a client whose peer
+    // negotiated server migration.
+    //
+    // QuicConnAddBoundAddress picks between them at the end of this function,
+    // so the test here is simply "is either available".
+    //
+    if (!Connection->State.AlternativeAddressNegotiated &&
+        !Connection->State.ServerMigrationNegotiated) {
         return QUIC_STATUS_INVALID_STATE;
     }
 
@@ -10332,7 +10291,13 @@ QuicConnRemoveBoundAddress(
             Bound->WithdrawnAtAltSequenceNumber = Connection->AltAddrNextSequenceNumber;
             QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS);
         } else if (Bound->SequenceNumberValid) {
-            CXPLAT_DBG_ASSERT(Connection->State.NatTraverseNegotiated);
+            //
+            // A sequence number means this entry was advertised by the older
+            // ADD_ADDRESS frame, which is only used when ALTERNATIVE_ADDRESS
+            // was not negotiated -- so withdrawing it by REMOVE_ADDRESS is
+            // right exactly when that is still true.
+            //
+            CXPLAT_DBG_ASSERT(!Connection->State.AlternativeAddressNegotiated);
             Bound->SendRemoveAddress = TRUE;
             Bound->Removing = TRUE;
             QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_REMOVE_ADDRESS);
@@ -10613,6 +10578,22 @@ QuicConnAddCandidateAddress(
 
     CxPlatListInsertTail(&Connection->CandidateAddresses, &Candidate->Link);
 
+    //
+    // A candidate changes which pairs the reconciler may open a path for, so
+    // the table has to be reconsidered. This matters as of #173: before it,
+    // candidates were read when a punch request was written and nothing else
+    // depended on them, so a late addition cost nothing. Now NAT traversal
+    // refuses a pair that has no candidate -- so without this, adding one
+    // after the server's advertised set arrived would leave the pair refused
+    // until some unrelated event happened to trigger a pass, and against a
+    // server that advertised nothing further, forever.
+    //
+    // Queued for AUTO as well, where it is merely harmless: the table is
+    // rebuilt from current state, so a pass that changes nothing costs one
+    // operation.
+    //
+    QuicConnQueueReconcile(Connection);
+
     return QUIC_STATUS_SUCCESS;
 }
 
@@ -10657,6 +10638,22 @@ QuicConnRemoveCandidateAddress(
     CxPlatListEntryRemove(&Candidate->Link);
     CXPLAT_FREE(Candidate, QUIC_POOL_CANDIDATE_ADDRESS_LIST);
 
+    //
+    // A candidate changes which pairs the reconciler may open a path for, so
+    // the table has to be reconsidered. This matters as of #173: before it,
+    // candidates were read when a punch request was written and nothing else
+    // depended on them, so a late addition cost nothing. Now NAT traversal
+    // refuses a pair that has no candidate -- so without this, adding one
+    // after the server's advertised set arrived would leave the pair refused
+    // until some unrelated event happened to trigger a pass, and against a
+    // server that advertised nothing further, forever.
+    //
+    // Queued for AUTO as well, where it is merely harmless: the table is
+    // rebuilt from current state, so a pass that changes nothing costs one
+    // operation.
+    //
+    QuicConnQueueReconcile(Connection);
+
     return QUIC_STATUS_SUCCESS;
 }
 
@@ -10691,28 +10688,19 @@ QuicConnProcessAddAddress(
     }
 
     QUIC_ADDR LocalAddress = {0};
-    if (Connection->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL) {
-        // TODO - Use the correct local address based on the observed address.
-        if (CxPlatListIsEmpty(&Connection->CandidateAddresses)) {
-            return QUIC_STATUS_NOT_FOUND;
-        }
-        QUIC_CANDIDATE_ADDRESS_LIST_ENTRY* Candidate =
-            CXPLAT_CONTAINING_RECORD(
-                Connection->CandidateAddresses.Flink,
-                QUIC_CANDIDATE_ADDRESS_LIST_ENTRY,
-                Link);
-        CxPlatCopyMemory(&LocalAddress, &Candidate->Address, sizeof(QUIC_ADDR));
-    }
 
     //
-    // PEER, not RECONCILER. This is reached from the legacy ADD_ADDRESS frames
-    // and from NAT-traversal mode, and neither produces a pair the candidate
-    // table can hold: nothing records these remotes in AltAddrs, and NAT
-    // traversal takes its local address from CandidateAddresses rather than
-    // from the address snapshot. Labelling them RECONCILER -- which stage 2
-    // did -- made them the one origin reconciliation is allowed to delete, so
-    // the next pass would tear down a punched path and the PUNCH_ME_NOW state
-    // with it.
+    // PEER, not RECONCILER. This is reached from the legacy ADD_ADDRESS frames,
+    // which produce no pair the candidate pair table can hold -- nothing
+    // records these remotes in AltAddrs. Labelling them RECONCILER -- which
+    // stage 2 of #157 did -- made them the one origin reconciliation is
+    // allowed to delete, so the next pass tore down a path this handler had
+    // just opened.
+    //
+    // NAT traversal used to arrive here too, for a local address taken from
+    // the configured candidates. As of #173 it comes through the reconciler
+    // with the rest, so what is left here is the fallback for a peer that
+    // never agreed to alternative_address.
     //
     QUIC_PATH_PARAM PathParam = { &LocalAddress, &Frame->Address };
     QUIC_PATH* Path = NULL;
@@ -10722,24 +10710,23 @@ QuicConnProcessAddAddress(
         return Status;
     }
 
-    if (Connection->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO) {
-        if (Path->DestCid != NULL) {
-            QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
-        }
-    } else if (Connection->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL) {
-        Path->NatTraversal = TRUE;
-        Path->RemoteAddressSequenceNumber = Frame->SequenceNumber;
-        Path->RemoteAddressSequenceNumberValid = TRUE;
-        if (Path->Binding != NULL) {
-            Path->SendPunchMeNow = TRUE;
-            QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW);
-            if (Path->DestCid != NULL) {
-                QuicConnTimerSet(
-                    Connection,
-                    QUIC_CONN_TIMER_PROBE_AFTER_PUNCH,
-                    Connection->Paths[0].SmoothedRtt);
-            }
-        }
+    //
+    // Remembered so REMOVE_ADDRESS can find this path again: that frame names
+    // an address by the sequence number ADD_ADDRESS gave it, and
+    // QuicConnProcessRemoveAddressOper matches on exactly this field.
+    //
+    // Set for every path this handler opens, where it used to be set only in
+    // the NAT-traversal branch -- so a path opened in any other mode could not
+    // be withdrawn by the frame that is supposed to withdraw it. #173 removed
+    // that branch, which would have left nothing setting it at all and the
+    // lookup matching nothing; setting it here is both what keeps the frame
+    // working and what it should always have been.
+    //
+    Path->RemoteAddressSequenceNumber = Frame->SequenceNumber;
+    Path->RemoteAddressSequenceNumberValid = TRUE;
+
+    if (QuicConnManagesPathsAutomatically(Connection) && Path->DestCid != NULL) {
+        QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
     }
 
     return QUIC_STATUS_SUCCESS;
@@ -11500,6 +11487,38 @@ QuicConnReconcileCreatePaths(
             continue;
         }
 
+        QUIC_ADDR PunchClientAddress;
+        const BOOLEAN Punchable =
+            QuicConnPunchableClientAddress(
+                Connection,
+                &Pair->LocalAddress,
+                &Pair->RemoteAddress,
+                &PunchClientAddress);
+
+        //
+        // NAT traversal is this one rule on top of AUTO: a pair becomes a path
+        // only where the application configured a candidate for its local
+        // address, because without one there is nothing to tell the server to
+        // punch towards and the path would be a direct probe at an address
+        // behind a NAT that has never heard of us.
+        //
+        // AUTO opens the path anyway and probes it directly, which is right
+        // there: a pair with no candidate is still a pair worth trying when
+        // both ends are reachable. The difference between the modes is this
+        // test and nothing else -- #163 specified it as "table built, but a
+        // pair produces no path unless a candidate is configured", and with
+        // the table and the request frame both in place that is now literally
+        // what it is.
+        //
+        if (!Punchable &&
+            Connection->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL) {
+            QuicTraceLogConnVerbose(
+                ReconcileSkippedUnpunchablePair,
+                Connection,
+                "NAT traversal skipped a pair with no configured candidate");
+            continue;
+        }
+
         QUIC_ADDR Local = Pair->LocalAddress;
         QuicAddrSetPort(&Local, 0);
         QUIC_ADDR Remote = Pair->RemoteAddress;
@@ -11530,12 +11549,7 @@ QuicConnReconcileCreatePaths(
         // timer, but the connection-level flag is what gets the send loop to
         // look; without it the challenge waits for an unrelated send.
         //
-        QUIC_ADDR PunchClientAddress;
-        if (QuicConnPunchableClientAddress(
-                Connection,
-                &Pair->LocalAddress,
-                &Pair->RemoteAddress,
-                &PunchClientAddress)) {
+        if (Punchable) {
             //
             // Ask before probing. The server's binding for this pair does not
             // exist yet, so a PATH_CHALLENGE sent now arrives at a NAT with no
@@ -12518,83 +12532,6 @@ QuicConnSendStatelessPunch(
     return TRUE;
 }
 
-// Sends a punch probe to the specified remote address using the specified bound address.
-_IRQL_requires_max_(PASSIVE_LEVEL)
-void
-QuicConnSendPunchProbe(
-    _In_ QUIC_CONNECTION* Connection,
-    _In_ QUIC_BOUND_ADDRESS_LIST_ENTRY* Bound,
-    _In_ QUIC_ADDR* RemoteAddress
-    )
-{
-#pragma warning(push)
-#pragma warning(disable:6001) // Using uninitialized memory
-
-    CXPLAT_DBG_ASSERT(Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_1_RTT] != NULL);
-
-    QUIC_PATH TempPath = { 0 };
-
-    QuicPathInitialize(Connection, &TempPath, QUIC_PATH_ORIGIN_TRANSIENT);
-    TempPath.Allowance = UINT32_MAX;
-
-    BOOLEAN FatalError = FALSE;
-    TempPath.PathID = QuicPathIDSetGetPathIDForPeer(
-        &Connection->PathIDs,
-        Connection->Paths[0].PathID->ID,
-        FALSE,
-        &FatalError);
-    if (TempPath.PathID == NULL) {
-        goto Done;
-    }
-
-    CxPlatCopyMemory(&TempPath.Route.LocalAddress, &Bound->Address, sizeof(QUIC_ADDR));
-    CxPlatCopyMemory(&TempPath.Route.RemoteAddress, RemoteAddress, sizeof(QUIC_ADDR));
-
-    TempPath.DestCid = QuicCidNewRandomDestination();
-    if (TempPath.DestCid == NULL) {
-        goto Done;
-    }
-
-    if (!QuicLibraryTryAddRefBinding(Bound->Binding)) {
-        goto Done;
-    }
-    TempPath.Binding = Bound->Binding;
-
-    if (!CxPlatIsRouteReady(Connection, &TempPath)) {
-        goto Done;
-    }
-
-    QUIC_PACKET_BUILDER Builder = { 0 };
-    if (!QuicPacketBuilderInitialize(&Builder, Connection, &TempPath)) {
-        goto Done;
-    }
-    _Analysis_assume_(Builder.Metadata != NULL);
-
-    if (!QuicPacketBuilderPrepareForControlFrames(
-            &Builder, FALSE, QUIC_CONN_SEND_FLAG_PUNCH_YOU_NOW)) {
-        goto Done;
-    }
-
-    Builder.Datagram->Buffer[Builder.DatagramLength++] = QUIC_FRAME_PING;
-    Builder.MinimumDatagramLength = (uint16_t)Builder.DatagramLength;
-    BOOLEAN Result = QuicPacketBuilderAddFrame(&Builder, QUIC_FRAME_PING, TRUE);
-    CXPLAT_DBG_ASSERT(!Result);
-    UNREFERENCED_PARAMETER(Result);
-    QuicPacketBuilderFinalize(&Builder, TRUE);
-    QuicPacketBuilderCleanup(&Builder);
-
-Done:
-    if (TempPath.DestCid != NULL) {
-        CXPLAT_FREE(TempPath.DestCid, QUIC_POOL_CIDLIST);
-    }
-    if (TempPath.Binding != NULL) {
-        QuicLibraryReleaseBinding(TempPath.Binding);
-    }
-    if (TempPath.PathID != NULL) {
-        QuicPathIDRelease(TempPath.PathID, QUIC_PATHID_REF_LOOKUP);
-    }
-#pragma warning(pop)
-}
 
 #define QUIC_CONN_BAD_START_STATE(CONN) (CONN->State.Started || CONN->State.ClosedLocally)
 
@@ -14448,10 +14385,6 @@ QuicConnApplyNewSettings(
         if (QuicConnIsServer(Connection) && Connection->Settings.ServerMigrationEnabled) {
             Connection->State.ServerMigrationNegotiated =
                 !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_SERVER_MIGRATION);
-        }
-
-        if (QuicConnIsServer(Connection) && Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_NAT_TRAVERSE) {
-            Connection->State.NatTraverseNegotiated = TRUE;
         }
 
         if (QuicConnIsServer(Connection) && Connection->Settings.MultipathEnabled) {

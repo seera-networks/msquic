@@ -623,7 +623,6 @@ CXPLAT_STATIC_ASSERT(
 //
 // The concurrency limit for NAT traverse attempts.
 //
-#define QUIC_NAT_TRAVERSE_CONCURRENCY_LIMIT          2
 
 //
 // The default settings for mode of processing added addresses.
@@ -741,7 +740,6 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_TP_FLAG_TIMESTAMP_SHIFT                        24
 #define QUIC_TP_FLAG_OBSERVED_ADDRESS                       0x04000000
 #define QUIC_TP_FLAG_SERVER_MIGRATION                       0x08000000
-#define QUIC_TP_FLAG_NAT_TRAVERSE                           0x10000000
 #define QUIC_TP_FLAG_INITIAL_MAX_PATH_ID                    0x20000000
 //
 // 0x40000000 is deliberately skipped: the QMux branch uses it for

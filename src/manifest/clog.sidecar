@@ -11788,6 +11788,18 @@
       ],
       "macroName": "QuicTraceLogConnWarning"
     },
+    "ReconcileSkippedUnpunchablePair": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] NAT traversal skipped a pair with no configured candidate",
+      "UniqueId": "ReconcileSkippedUnpunchablePair",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "RecoverCrypto": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Recovering crypto from %llu up to %llu",
@@ -19548,6 +19560,11 @@
         "UniquenessHash": "07290e82-054a-9026-6abe-7f36a5b99f16",
         "TraceID": "ReconcileRemovePathFailed",
         "EncodingString": "[conn][%p] Reconciler failed to remove a path, status=0x%x"
+      },
+      {
+        "UniquenessHash": "0e6c370e-a937-5374-2817-63cf4eaf35e0",
+        "TraceID": "ReconcileSkippedUnpunchablePair",
+        "EncodingString": "[conn][%p] NAT traversal skipped a pair with no configured candidate"
       },
       {
         "UniquenessHash": "94b619d7-6b5a-e1b4-d3ee-1b66a383ebbc",

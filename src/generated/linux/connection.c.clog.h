@@ -2247,6 +2247,24 @@ tracepoint(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileSkippedUnpunchablePair
+// [conn][%p] NAT traversal skipped a pair with no configured candidate
+// QuicTraceLogConnVerbose(
+                ReconcileSkippedUnpunchablePair,
+                Connection,
+                "NAT traversal skipped a pair with no configured candidate");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileSkippedUnpunchablePair
+#define _clog_3_ARGS_TRACE_ReconcileSkippedUnpunchablePair(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileSkippedUnpunchablePair , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ReconcileMigrateHeldDown
 // [conn][%p] Reconciler held down migrating for %llu us
 // QuicTraceLogConnVerbose(

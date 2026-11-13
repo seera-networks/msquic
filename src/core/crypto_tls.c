@@ -70,7 +70,6 @@ typedef enum eSniNameType {
 #define QUIC_TP_ID_ENABLE_TIMESTAMP                         0x7158          // varint
 #define QUIC_TP_ID_OBSERVED_ADDRESS                         0x9f81a176      // varint
 #define QUIC_TP_ID_SERVER_MIGRATION                         0x3e764478      // N/A
-#define QUIC_TP_ID_NAT_TRAVERSE                             0x3d7e9f0bca12fea6 // varint
 #define QUIC_TP_ID_INITIAL_MAX_PATH_ID                      0x3e // varint (draft-ietf-quic-multipath-21, suggested)
 #define QUIC_TP_ID_ALTERNATIVE_ADDRESS                      0xff0969d85cULL // varint[] (draft-munizaga-quic-alternative-server-address-02)
 #define QUIC_TP_ID_STATELESS_PUNCH                          0x5eea9e7aULL   // empty (draft-kozuka-quic-stateless-punch, provisional)
@@ -916,19 +915,6 @@ QuicCryptoTlsEncodeTransportParameters(
                 QUIC_TP_ID_OBSERVED_ADDRESS,
                 QuicVarIntSize(TransportParams->ObservedAddressRole));
     }
-    if (TransportParams->Flags & QUIC_TP_FLAG_NAT_TRAVERSE) {
-        if (IsServerTP) {
-            RequiredTPLen +=
-                TlsTransportParamLength(
-                    QUIC_TP_ID_NAT_TRAVERSE,
-                    QuicVarIntSize(TransportParams->NatTraverseConcurrencyLimit));
-        } else {
-            RequiredTPLen +=
-                TlsTransportParamLength(
-                    QUIC_TP_ID_NAT_TRAVERSE,
-                    0);
-        }
-    }
     if (TransportParams->Flags & QUIC_TP_FLAG_SERVER_MIGRATION) {
         RequiredTPLen +=
             TlsTransportParamLength(
@@ -1317,32 +1303,6 @@ QuicCryptoTlsEncodeTransportParameters(
             "TP: Observed Address (%u)",
             (uint32_t)TransportParams->ObservedAddressRole);
     }
-    if (TransportParams->Flags & QUIC_TP_FLAG_NAT_TRAVERSE) {
-        if (IsServerTP) {
-            TPBuf =
-                TlsWriteTransportParamVarInt(
-                    QUIC_TP_ID_NAT_TRAVERSE,
-                    TransportParams->NatTraverseConcurrencyLimit,
-                    TPBuf);
-            QuicTraceLogConnVerbose(
-                EncodeTPNatTraverseServer,
-                Connection,
-                "TP: NAT Traverse (%llu)",
-                TransportParams->NatTraverseConcurrencyLimit);
-        } else {
-            TPBuf =
-                TlsWriteTransportParam(
-                    QUIC_TP_ID_NAT_TRAVERSE,
-                    0,
-                    NULL,
-                    TPBuf);
-            QuicTraceLogConnVerbose(
-                EncodeTPNatTraverseClient,
-                Connection,
-                "TP: NAT Traverse");
-        }
-    }
-
     if (TransportParams->Flags & QUIC_TP_FLAG_SERVER_MIGRATION) {
         TPBuf =
             TlsWriteTransportParam(
@@ -2270,49 +2230,6 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
             break;
         }
 
-        case QUIC_TP_ID_NAT_TRAVERSE:
-            if (!IsServerTP) {
-                if (Length != 0) {
-                    QuicTraceEvent(
-                        ConnErrorStatus,
-                        "[conn][%p] ERROR, %u, %s.",
-                        Connection,
-                        Length,
-                        "Invalid length of QUIC_TP_ID_NAT_TRAVERSE");
-                    goto Exit;
-                }
-                TransportParams->Flags |= QUIC_TP_FLAG_NAT_TRAVERSE;
-                QuicTraceLogConnVerbose(
-                    DecodeTPNatTraverseServer,
-                    Connection,
-                    "TP: NAT Traverse");
-            } else {
-                QUIC_VAR_INT value = 0;
-                if (Length == 0 || !TRY_READ_VAR_INT(value)) {
-                    QuicTraceEvent(
-                        ConnErrorStatus,
-                        "[conn][%p] ERROR, %u, %s.",
-                        Connection,
-                        Length,
-                        "Invalid length of QUIC_TP_ID_NAT_TRAVERSE");
-                    goto Exit;
-                } else if (value == 0) {
-                    QuicTraceEvent(
-                        ConnError,
-                        "[conn][%p] ERROR, %s.",
-                        Connection,
-                        "Invalid value of QUIC_TP_ID_NAT_TRAVERSE");
-                    goto Exit;
-                }
-                TransportParams->Flags |= QUIC_TP_FLAG_NAT_TRAVERSE;
-                TransportParams->NatTraverseConcurrencyLimit = value;
-                QuicTraceLogConnVerbose(
-                    DecodeTPNatTraverseClient,
-                    Connection,
-                    "TP: NAT Traverse (%llu)",
-                    value);
-            }
-            break;
 
         default:
             if (QuicTpIdIsReserved(Id)) {

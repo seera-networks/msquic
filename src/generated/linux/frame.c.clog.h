@@ -1740,56 +1740,6 @@ tracepoint(CLOG_FRAME_C, FrameLogAddAddress , arg2, arg3, arg4, arg5, arg6);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for FrameLogPunchMeNowInvalid
-// [%c][%cX][%llu]   PUNCH_ME_NOW [Invalid]
-// QuicTraceLogVerbose(
-            FrameLogPunchMeNowInvalid,
-            "[%c][%cX][%llu]   PUNCH_ME_NOW [Invalid]",
-            PtkConnPre(Connection),
-            PktRxPre(Rx),
-            PacketNumber);
-// arg2 = arg2 = PtkConnPre(Connection) = arg2
-// arg3 = arg3 = PktRxPre(Rx) = arg3
-// arg4 = arg4 = PacketNumber = arg4
-----------------------------------------------------------*/
-#ifndef _clog_5_ARGS_TRACE_FrameLogPunchMeNowInvalid
-#define _clog_5_ARGS_TRACE_FrameLogPunchMeNowInvalid(uniqueId, encoded_arg_string, arg2, arg3, arg4)\
-tracepoint(CLOG_FRAME_C, FrameLogPunchMeNowInvalid , arg2, arg3, arg4);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for FrameLogPunchMeNow
-// [%c][%cX][%llu]   PUNCH_ME_NOW %llu %llu %s
-// QuicTraceLogVerbose(
-        FrameLogPunchMeNow,
-        "[%c][%cX][%llu]   PUNCH_ME_NOW %llu %llu %s",
-        PtkConnPre(Connection),
-        PktRxPre(Rx),
-        PacketNumber,
-        Frame.Round,
-        Frame.PairedSequenceNumber,
-        PunchedAddrStr.Address);
-// arg2 = arg2 = PtkConnPre(Connection) = arg2
-// arg3 = arg3 = PktRxPre(Rx) = arg3
-// arg4 = arg4 = PacketNumber = arg4
-// arg5 = arg5 = Frame.Round = arg5
-// arg6 = arg6 = Frame.PairedSequenceNumber = arg6
-// arg7 = arg7 = PunchedAddrStr.Address = arg7
-----------------------------------------------------------*/
-#ifndef _clog_8_ARGS_TRACE_FrameLogPunchMeNow
-#define _clog_8_ARGS_TRACE_FrameLogPunchMeNow(uniqueId, encoded_arg_string, arg2, arg3, arg4, arg5, arg6, arg7)\
-tracepoint(CLOG_FRAME_C, FrameLogPunchMeNow , arg2, arg3, arg4, arg5, arg6, arg7);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for FrameLogAlternativeAddressInvalid
 // [%c][%cX][%llu]   ALTERNATIVE_ADDRESS [Invalid]
 // QuicTraceLogVerbose(

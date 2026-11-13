@@ -4390,12 +4390,70 @@ QuicTestModeManual(
 // ADD_ADDRESS frames carry. So the table's remote set is just the current
 // path's, and with one path per remote outside multipath there is no pair to
 // create anything for.
+#if DEBUG
 //
-// #173 is what unblocks it: once PUNCH_ME_NOW names the address directly, the
-// parameter can be offered and the advertised set becomes table remotes. Until
-// then what is testable is the boundary itself -- that this mode does not act
-// on ALTERNATIVE_ADDRESS -- and that is what this asserts. It is also the
-// mode's first test of any kind.
+// The punch counters for one connection. Debug-only for the reason msquicp.h
+// records: the exchange leaves nothing else to observe.
+//
+static
+bool
+PunchCounters(
+    _In_ MsQuicConnection* Connection,
+    _Out_ QUIC_TEST_PUNCH_COUNTERS* Counters
+    )
+{
+    CxPlatZeroMemory(Counters, sizeof(*Counters));
+    uint32_t Length = sizeof(*Counters);
+    const QUIC_STATUS Status =
+        Connection->GetParam(
+            QUIC_PARAM_CONN_TEST_PUNCH_COUNTERS, &Length, Counters);
+    if (QUIC_FAILED(Status)) {
+        TEST_FAILURE("GetParam(PUNCH_COUNTERS) failed, 0x%x", Status);
+        return false;
+    }
+    return true;
+}
+
+//
+// Waits for the client to have sent a request, so the test does not race the
+// reconciler. Returns false if none arrives, which the caller reports.
+//
+static
+bool
+WaitForPunchRequestSent(
+    _In_ MsQuicConnection* Client
+    )
+{
+    for (uint32_t i = 0; i < 50; ++i) {
+        QUIC_TEST_PUNCH_COUNTERS Counters;
+        if (!PunchCounters(Client, &Counters)) {
+            return false;
+        }
+        if (Counters.RequestsSent > 0) {
+            return true;
+        }
+        CxPlatSleep(100);
+    }
+    return false;
+}
+#endif
+
+//
+// NAT_TRAVERSAL as a policy over the candidate pair table, which is what #173
+// made it. Before that it was a parallel mechanism on the older ADD_ADDRESS
+// and PUNCH_ME_NOW frames, and this test asserted the mode ignored
+// ALTERNATIVE_ADDRESS entirely -- the opposite of what it now asserts, because
+// the specified behaviour changed rather than the code drifting.
+//
+// The rule that separates it from AUTO is the one worth the test: a pair
+// becomes a path only where the application configured a candidate for its
+// local address. So the same advertised address is offered twice, once with no
+// candidate and once with one, and the mode has to refuse the first and punch
+// for the second.
+//
+// Needs a connection on a real interface, like the other table tests: a
+// loopback connection has no pairs at all, so both halves would hold
+// vacuously.
 //
 void
 QuicTestModeNatTraversal(
@@ -4405,53 +4463,102 @@ QuicTestModeNatTraversal(
 #else
     TableMigrationTest Test;
     MsQuicConnection* Conn = nullptr;
-    if (!Test.Start(Conn, 0, QUIC_ADD_ADDRESS_NAT_TRAVERSAL)) {
+    (void)Test.Start(Conn, 0, QUIC_ADD_ADDRESS_NAT_TRAVERSAL);
+    if (Test.Client == nullptr || Test.ServerContext.Connection == nullptr) {
+        TEST_FAILURE("Handshake did not complete in NAT_TRAVERSAL mode");
+        return;
+    }
+
+    QuicAddr Remote;
+    if (QUIC_FAILED(Test.Client->GetRemoteAddr(Remote)) ||
+        IS_LOOPBACK(Remote.SockAddr)) {
         return;
     }
 
     QUIC_ADDR OriginalRemote;
-    TEST_TRUE(TableMigrationActiveRemote(*Conn, &OriginalRemote));
-    TEST_EQUAL(1u, AltServerAddressPathCount(*Conn));
+    TEST_TRUE(TableMigrationActiveRemote(*Test.Client, &OriginalRemote));
+    TEST_EQUAL(1u, AltServerAddressPathCount(*Test.Client));
 
     //
-    // An advertised address, marked preferred. In AUTO this opens a path and
-    // migrates onto it; in MANUAL it raises an event.
+    // The server advertises an address. The client has no candidate yet, so
+    // the pair the table gains is one this mode will not open a path for.
     //
     QuicAddr Advertised;
     if (!ReconcilerAdvertise(Test.ServerContext.Connection, Test.Host, Advertised)) {
         return;
     }
+
     //
-    // The server cannot even express a preference to this client: marking an
-    // address preferred is an ALTERNATIVE_ADDRESS concept, and the extension
-    // was never negotiated. Refused rather than silently ignored, so a server
-    // that tries finds out.
+    // And the server can express a preference now, where it could not before:
+    // marking an address preferred is an ALTERNATIVE_ADDRESS concept, and this
+    // mode negotiates the extension as of #173. Asserted because the refusal
+    // it replaces was this test's first assertion.
     //
-    TEST_EQUAL(
-        QUIC_STATUS_INVALID_STATE,
+    TEST_QUIC_SUCCEEDED(
         Test.ServerContext.Connection->SetParam(
             QUIC_PARAM_CONN_PREFER_OBSERVED_ADDRESS,
             sizeof(Advertised.SockAddr),
             &Advertised.SockAddr));
 
-    CxPlatSleep(500);
+    CxPlatSleep(1000);
 
     //
-    // Neither. No path, no migration, and no report -- the client never asked
-    // the server to use this extension, so there is nothing to act on.
+    // No path for it, and no request: the pair was refused for want of a
+    // candidate. This is the half that distinguishes the mode -- AUTO would
+    // have opened a path here and probed it directly.
     //
-    TEST_EQUAL(1u, AltServerAddressPathCount(*Conn));
-    TEST_FALSE(ReconcilerHasPathTo(*Conn, &Advertised.SockAddr));
-    QUIC_ADDR Active;
-    TEST_TRUE(TableMigrationActiveRemote(*Conn, &Active));
-    TEST_TRUE(QuicAddrCompare(&Active, &OriginalRemote));
-    TEST_EQUAL(0u, Test.ClientContext.AddedCount);
+    TEST_FALSE(ReconcilerHasPathTo(*Test.Client, &Advertised.SockAddr));
+    QUIC_TEST_PUNCH_COUNTERS Counters;
+    if (!PunchCounters(Test.Client, &Counters)) {
+        return;
+    }
+    if (Counters.RequestsSent != 0) {
+        TEST_FAILURE(
+            "NAT traversal sent %u punch requests for a pair with no candidate",
+            Counters.RequestsSent);
+        return;
+    }
 
     //
-    // And the connection is unharmed by the frames it chose not to negotiate.
-    // Worth asserting: the server falls back to the older ADD_ADDRESS frames
-    // for a peer that did not offer the extension, and a client that mishandled
-    // those would abort rather than merely ignore them.
+    // Now configure one for the client's own local address. The pair becomes
+    // eligible, and adding the candidate is what re-runs reconciliation --
+    // without that the pair would stay refused, since the server has nothing
+    // further to advertise.
+    //
+    QuicAddr Local;
+    TEST_QUIC_SUCCEEDED(Test.Client->GetLocalAddr(Local));
+    QuicAddr Observed = Test.Host;
+    Observed.SetEphemeralPort();
+    QUIC_CANDIDATE_ADDRESS Candidate = { &Local.SockAddr, &Observed.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        Test.Client->SetParam(
+            QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS,
+            sizeof(Candidate),
+            &Candidate));
+
+    //
+    // The request is what says the mode acted: the path itself may or may not
+    // validate, since the punch goes to an address nothing is listening on,
+    // and this test is about the policy rather than the outcome.
+    //
+    BOOLEAN Requested = FALSE;
+    for (uint32_t i = 0; i < 50; ++i) {
+        if (!PunchCounters(Test.Client, &Counters)) {
+            return;
+        }
+        if (Counters.RequestsSent > 0) {
+            Requested = TRUE;
+            break;
+        }
+        CxPlatSleep(100);
+    }
+    if (!Requested) {
+        TEST_FAILURE("NAT traversal sent no punch request after a candidate was added");
+        return;
+    }
+
+    //
+    // And the connection is unharmed throughout.
     //
     TEST_FALSE(Test.ServerContext.ShutdownEvent.WaitTimeout(100));
     TEST_FALSE(Test.ClientContext.ShutdownEvent.WaitTimeout(100));
@@ -4553,10 +4660,16 @@ QuicTestStatelessPunchNegotiation(
     }
 
     //
-    // NAT_TRAVERSAL. This client stays on the older ADD_ADDRESS and
-    // PUNCH_ME_NOW frames and offers no alternative_address, which the draft
-    // makes a prerequisite -- so neither end has the extension, even though
-    // the server advertised it and the client received that.
+    // NAT_TRAVERSAL. As of #173 this mode is a policy over the candidate pair
+    // table rather than a parallel mechanism, so it offers
+    // alternative_address like the other modes and negotiates the punch with
+    // it. It used to assert the opposite, because the mode was then on the
+    // older ADD_ADDRESS and PUNCH_ME_NOW frames; that frame is gone and so is
+    // the reason to withhold the parameter.
+    //
+    // Still worth asserting rather than deleting: the mode reaching the same
+    // answer as AUTO is the whole point of the change, and a regression that
+    // put it back on a separate footing would show up here.
     //
     {
         TableMigrationTest Test;
@@ -4567,68 +4680,21 @@ QuicTestStatelessPunchNegotiation(
             return;
         }
 
-        BOOLEAN ClientNegotiated = TRUE;
+        BOOLEAN ClientNegotiated = FALSE;
         if (!StatelessPunchNegotiated(Test.Client, &ClientNegotiated)) {
             return;
         }
-        TEST_FALSE(ClientNegotiated);
+        TEST_TRUE(ClientNegotiated);
 
-        BOOLEAN ServerNegotiated = TRUE;
+        BOOLEAN ServerNegotiated = FALSE;
         if (!StatelessPunchNegotiated(Test.ServerContext.Connection, &ServerNegotiated)) {
             return;
         }
-        TEST_FALSE(ServerNegotiated);
+        TEST_TRUE(ServerNegotiated);
     }
 #endif
 }
 
-#if DEBUG
-//
-// The punch counters for one connection. Debug-only for the reason msquicp.h
-// records: the exchange leaves nothing else to observe.
-//
-static
-bool
-PunchCounters(
-    _In_ MsQuicConnection* Connection,
-    _Out_ QUIC_TEST_PUNCH_COUNTERS* Counters
-    )
-{
-    CxPlatZeroMemory(Counters, sizeof(*Counters));
-    uint32_t Length = sizeof(*Counters);
-    const QUIC_STATUS Status =
-        Connection->GetParam(
-            QUIC_PARAM_CONN_TEST_PUNCH_COUNTERS, &Length, Counters);
-    if (QUIC_FAILED(Status)) {
-        TEST_FAILURE("GetParam(PUNCH_COUNTERS) failed, 0x%x", Status);
-        return false;
-    }
-    return true;
-}
-
-//
-// Waits for the client to have sent a request, so the test does not race the
-// reconciler. Returns false if none arrives, which the caller reports.
-//
-static
-bool
-WaitForPunchRequestSent(
-    _In_ MsQuicConnection* Client
-    )
-{
-    for (uint32_t i = 0; i < 50; ++i) {
-        QUIC_TEST_PUNCH_COUNTERS Counters;
-        if (!PunchCounters(Client, &Counters)) {
-            return false;
-        }
-        if (Counters.RequestsSent > 0) {
-            return true;
-        }
-        CxPlatSleep(100);
-    }
-    return false;
-}
-#endif
 
 //
 // Stage 3 of #169: the client asks, waits, and validates.
@@ -4787,45 +4853,54 @@ QuicTestStatelessPunchRequest(
     TEST_EQUAL(0u, ServerCounters.RequestsSent);
 
     //
-    // NAT_TRAVERSAL on the same host, which cannot negotiate the extension --
-    // it offers no alternative_address, and the draft makes that a
-    // prerequisite. Same environment as above, so a zero here means the mode
-    // refused rather than the environment being unable to produce a request.
+    // MANUAL, which is the mode that sends no requests. The application opens
+    // paths itself, so the connection builds no table and reconciles nothing,
+    // and there is no pair for a request to be about. Same environment as
+    // above, so a zero here means the mode declined rather than the
+    // environment being unable to produce a request.
+    //
+    // This was NAT_TRAVERSAL until #173, when that mode became a policy over
+    // the table and started sending requests like AUTO -- so the negative
+    // moved to the mode that still has one. ModeNatTraversal covers what
+    // NAT_TRAVERSAL does now, including the pair it still refuses.
     //
     {
-        TableMigrationTest NatTest;
-        MsQuicConnection* NatConn = nullptr;
-        (void)NatTest.Start(NatConn, 0, QUIC_ADD_ADDRESS_NAT_TRAVERSAL);
-        if (NatTest.Client == nullptr || NatTest.ServerContext.Connection == nullptr) {
-            TEST_FAILURE("Handshake did not complete in NAT_TRAVERSAL mode");
+        TableMigrationTest ManualTest;
+        MsQuicConnection* ManualConn = nullptr;
+        (void)ManualTest.Start(ManualConn, 0, QUIC_ADD_ADDRESS_MANUAL);
+        if (ManualTest.Client == nullptr ||
+            ManualTest.ServerContext.Connection == nullptr) {
+            TEST_FAILURE("Handshake did not complete in MANUAL mode");
             return;
         }
 
-        QuicAddr NatLocal;
-        TEST_QUIC_SUCCEEDED(NatTest.Client->GetLocalAddr(NatLocal));
-        QuicAddr NatObserved = NatTest.Host;
-        NatObserved.SetEphemeralPort();
-        QUIC_CANDIDATE_ADDRESS NatCandidate =
-            { &NatLocal.SockAddr, &NatObserved.SockAddr };
+        QuicAddr ManualLocal;
+        TEST_QUIC_SUCCEEDED(ManualTest.Client->GetLocalAddr(ManualLocal));
+        QuicAddr ManualObserved = ManualTest.Host;
+        ManualObserved.SetEphemeralPort();
+        QUIC_CANDIDATE_ADDRESS ManualCandidate =
+            { &ManualLocal.SockAddr, &ManualObserved.SockAddr };
         TEST_QUIC_SUCCEEDED(
-            NatTest.Client->SetParam(
+            ManualTest.Client->SetParam(
                 QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS,
-                sizeof(NatCandidate),
-                &NatCandidate));
+                sizeof(ManualCandidate),
+                &ManualCandidate));
 
-        QuicAddr NatAdvertised;
+        QuicAddr ManualAdvertised;
         if (!ReconcilerAdvertise(
-                NatTest.ServerContext.Connection, NatTest.Host, NatAdvertised)) {
+                ManualTest.ServerContext.Connection,
+                ManualTest.Host,
+                ManualAdvertised)) {
             return;
         }
 
         CxPlatSleep(1000);
 
-        QUIC_TEST_PUNCH_COUNTERS NatCounters;
-        if (!PunchCounters(NatTest.Client, &NatCounters)) {
+        QUIC_TEST_PUNCH_COUNTERS ManualCounters;
+        if (!PunchCounters(ManualTest.Client, &ManualCounters)) {
             return;
         }
-        TEST_EQUAL(0u, NatCounters.RequestsSent);
+        TEST_EQUAL(0u, ManualCounters.RequestsSent);
     }
 #endif
 }
