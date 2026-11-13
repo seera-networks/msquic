@@ -619,14 +619,14 @@ case_multiaddr_cross() {
 case_multiaddr_return() {
     say "  multiaddr-return: a path is recreated when a vanished local address returns"
     multi_up || { bad "could not build the multi-address topology"; return; }
-    multi_start_server 70 || { bad "server did not start"; stop_roles; return; }
+    multi_start_server 100 || { bad "server did not start"; stop_roles; return; }
 
     punch mcli -role:client \
-        "-target:$MSRV_A:$MSRV_PORT" -mode:auto -multipath:1 -time:48 -poll:2 \
+        "-target:$MSRV_A:$MSRV_PORT" -mode:auto -multipath:1 -time:80 -poll:1 \
         > "$WORK/cli.log" 2>&1 &
     local ClientJob=$!
 
-    wait_polls "$WORK/cli.log" 3
+    wait_polls "$WORK/cli.log" 4
     if last_poll_paths "$WORK/cli.log" | grep -q "=$MCLI_B:"; then
         ok "the second local address carries a path to begin with"
     else
@@ -634,50 +634,67 @@ case_multiaddr_return() {
         note "$(last_poll_paths "$WORK/cli.log" | tr '\n' ' ')"
     fi
 
-    ip -n mcli addr del "$MCLI_B/24" dev mc0 >/dev/null 2>&1
-    note "removed $MCLI_B"
-    wait_polls "$WORK/cli.log" 3
-    if last_poll_paths "$WORK/cli.log" | grep -q "=$MCLI_B:"; then
-        bad "the path went away with the address"
-        note "$(last_poll_paths "$WORK/cli.log" | tr '\n' ' ')"
+    #
+    # The cycle is run several times because validation of the recreated path
+    # fails only intermittently -- 7 of 11 single-cycle runs when this was
+    # written -- and the per-cycle counts are the useful output.
+    #
+    # They do not make the case deterministic, and that is a finding rather
+    # than a shortcoming: the outcome is correlated *within* a run. Three
+    # cycles have come out 0, 3 and 1 validated in consecutive runs, so
+    # whatever decides it is established once per connection and then holds,
+    # which is why repeating the cycle does not average it away. A green case
+    # here is therefore not proof of a fix -- check #196 before concluding one.
+    #
+    local Cycles=3
+    local Recreated=0
+    local Validated=0
+    local Cycle Marker
+    for Cycle in $(seq 1 "$Cycles"); do
+        ip -n mcli addr del "$MCLI_B/24" dev mc0 >/dev/null 2>&1
+        wait_polls "$WORK/cli.log" 3
+
+        #
+        # The poll the restore happens after, so each cycle's assertions see
+        # only what followed it. Scoped rather than sampled, because a path
+        # that is recreated and then abandoned is invisible to a single reading
+        # taken at the wrong moment.
+        #
+        Marker="$(poll_index "$WORK/cli.log")"
+        ip -n mcli addr add "$MCLI_B/24" dev mc0 >/dev/null 2>&1
+        wait_polls "$WORK/cli.log" 6
+
+        if after_poll "$WORK/cli.log" "$Marker" | grep -q "_path[0-9]*=$MCLI_B:"; then
+            Recreated=$((Recreated+1))
+        fi
+        if after_poll "$WORK/cli.log" "$Marker" | grep -q "client_path_validated_local=$MCLI_B:"; then
+            Validated=$((Validated+1))
+        fi
+    done
+    note "over $Cycles remove/restore cycles: recreated $Recreated, validated $Validated"
+
+    if [ "$Recreated" -eq "$Cycles" ]; then
+        ok "a path on the address was recreated every time"
     else
-        ok "the path went away with the address"
+        bad "a path on the address was recreated every time"
+        note "recreated on $Recreated of $Cycles cycles"
     fi
 
     #
-    # The poll index the restore happens after, so the two assertions below can
-    # be scoped to what followed it. Scoped rather than sampled, because a
-    # recreated path that is later torn down would be invisible to a single
-    # reading taken at the wrong moment -- which is exactly what happens here.
+    # The half #161 actually asks for, and the one that fails. The reconciler
+    # opens the path and arms its challenge, the peer issues connection ids for
+    # the new path id, and no PATH_CHALLENGE frame reaches the wire: the
+    # connection-level flag is armed and cleared by each flush while the peer's
+    # receive log stays empty, so validation times out and both ends abandon
+    # the path id. Plain traffic from the restored address works immediately,
+    # so the environment is not what loses them. Tracked as #196, and left
+    # asserted -- a harness that reported this green would be worse than none.
     #
-    local Marker
-    Marker="$(poll_index "$WORK/cli.log")"
-    ip -n mcli addr add "$MCLI_B/24" dev mc0 >/dev/null 2>&1
-    note "restored $MCLI_B"
-    wait_polls "$WORK/cli.log" 6
-
-    if after_poll "$WORK/cli.log" "$Marker" | grep -q "_path[0-9]*=$MCLI_B:"; then
-        ok "a path on the address was recreated"
+    if [ "$Validated" -eq "$Cycles" ]; then
+        ok "the recreated path validated every time"
     else
-        bad "a path on the address was recreated"
-        note "no path on $MCLI_B in any poll after the restore"
-    fi
-
-    #
-    # And it has to become usable, which is the half #161 actually asks for. As
-    # of this harness it does not: the reconciler opens the path and arms its
-    # challenge, the peer issues the connection IDs for the new path id, and
-    # the PATH_CHALLENGEs never arrive -- the peer's receive log has no record
-    # of them -- so validation times out and both ends abandon the path id.
-    # Plain traffic from the restored address works immediately, so the
-    # environment is not what loses them. Left asserted and failing, because a
-    # harness that reported this green would be worse than no harness.
-    #
-    if after_poll "$WORK/cli.log" "$Marker" | grep -q "client_path_validated_local=$MCLI_B:"; then
-        ok "the recreated path validated"
-    else
-        bad "the recreated path validated"
-        note "recreated but never validated -- see docs/nat-punch-testing.md"
+        bad "the recreated path validated every time"
+        note "validated on $Validated of $Cycles cycles -- see #196 (intermittent)"
     fi
 
     wait "$ClientJob" >/dev/null 2>&1

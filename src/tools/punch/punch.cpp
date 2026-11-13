@@ -60,6 +60,29 @@ OnSignal(
     Stopping = 1;
 }
 
+//
+// Annotated, and that is load-bearing rather than decoration: forwarding a
+// format parameter to vprintf is -Wformat-nonliteral, which clang makes an
+// error here (-Wformat=2 -Werror) and gcc does not raise at all -- so a Linux
+// gcc build says nothing and every clang configuration fails. The attribute
+// both silences it, by telling the compiler this is a format wrapper, and
+// format-checks every Emit call site, which is the half worth having.
+//
+#if defined(__GNUC__) || defined(__clang__)
+#define PUNCH_FORMAT(FmtArg, FirstArg) \
+    __attribute__((format(printf, FmtArg, FirstArg)))
+#else
+#define PUNCH_FORMAT(FmtArg, FirstArg)
+#endif
+
+static
+void
+Emit(
+    _In_z_ const char* Format,
+    ...
+    )
+    PUNCH_FORMAT(1, 2);
+
 static
 void
 Emit(

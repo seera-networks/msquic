@@ -34,10 +34,11 @@ add_subdirectory(pcp)
 add_subdirectory(post)
 add_subdirectory(sample)
 add_subdirectory(spin)
-if(NOT WIN32)
-    # The NAT-traversal harness of #174. Linux only, and not incidentally: its
-    # relay role uses POSIX sockets directly and the environment around it is
-    # network namespaces. See docs/nat-punch-testing.md.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # The NAT-traversal harness of #174. Linux and nothing else, which is the
+    # scope rather than a convenience: the environment it exists to run in is
+    # Linux network namespaces, so there is nowhere else for it to be useful.
+    # "NOT WIN32" was wrong here -- it also builds for Darwin, iOS and Android.
     add_subdirectory(punch)
 endif()
 if(WIN32 AND (NOT QUIC_UWP_BUILD AND NOT QUIC_GAMECORE_BUILD))

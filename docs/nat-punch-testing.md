@@ -96,15 +96,23 @@ records its destination on the way out and only recorded addresses are
 forwarded in. The binding therefore still exists *only because the punch
 created it*, which is the property under test.
 
-**A path recreated for a returned local address does not validate.** In
-`multiaddr-return` the reconciler does recreate the path — a binding appears on
-the restored address and the peer issues connection IDs for the new path id —
-but its `PATH_CHALLENGE`s never reach the peer, whose receive log has no record
-of them. Validation times out after three attempts and both ends abandon the
-path id. Plain traffic from the restored address works immediately, so the
+**A path recreated for a returned local address often does not validate**
+(#196). In `multiaddr-return` the reconciler does recreate the path — a binding
+appears on the restored address and the peer issues connection IDs for the new
+path id — but no `PATH_CHALLENGE` frame reaches the wire: the connection-level
+flag is armed and cleared by each flush while the peer's receive log stays
+empty. Validation times out after three attempts and both ends abandon the path
+id. Plain traffic from the restored address works immediately, so the
 environment is not what loses them.
 
-That assertion is left **failing** rather than relaxed. A harness that reported
+It is **intermittent**: 7 of 11 single-cycle runs failed when this was written.
+The case therefore runs the remove/restore cycle three times and reports how
+many validated — but those are not independent trials. Consecutive runs have
+come out 0, 3 and 1 validated, so whatever decides it is established once per
+connection and then holds for that connection's lifetime. **A green
+`multiaddr-return` is not proof of a fix**; check #196 before concluding one.
+
+The assertion is left **failing** rather than relaxed. A harness that reported
 this green would be worse than no harness.
 
 ## Reading a run
