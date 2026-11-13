@@ -2152,7 +2152,8 @@ QuicConnPunchableClientAddress(
     _In_ QUIC_CONNECTION* Connection,
     _In_ const QUIC_ADDR* LocalAddress,
     _In_ const QUIC_ADDR* RemoteAddress,
-    _Out_ QUIC_ADDR* ClientAddress
+    _Out_ QUIC_ADDR* ClientAddress,
+    _Out_opt_ uint16_t* CandidateLocalPort
     );
 
 #if defined(__cplusplus)

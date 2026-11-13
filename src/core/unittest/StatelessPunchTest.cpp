@@ -279,7 +279,8 @@ struct PunchPairTest : public ::testing::Test {
         const QUIC_ADDR RemoteAddr = Addr(Remote, RemotePort);
         QUIC_ADDR Out;
         const BOOLEAN Result =
-            QuicConnPunchableClientAddress(&Connection, &LocalAddr, &RemoteAddr, &Out);
+            QuicConnPunchableClientAddress(
+                &Connection, &LocalAddr, &RemoteAddr, &Out, nullptr);
         if (Named != nullptr) {
             *Named = Out;
         }
@@ -417,5 +418,5 @@ TEST_F(PunchPairTest, MatchesTheLocalAddressIgnoringPort)
     QUIC_ADDR Named;
     ASSERT_TRUE(
         QuicConnPunchableClientAddress(
-            &Connection, &LocalWithPort, &RemoteAddr, &Named) != FALSE);
+            &Connection, &LocalWithPort, &RemoteAddr, &Named, nullptr) != FALSE);
 }
