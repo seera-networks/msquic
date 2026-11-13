@@ -9546,6 +9546,37 @@ QuicConnOpenNewPath(
         }
     }
 
+    //
+    // A path ID taken from the unused set carries the destination CIDs the peer
+    // issued for it and none of its own, and nothing above generates them. With
+    // a shared binding -- which multipath requires -- the branch just above
+    // registers the CIDs that already exist and generates new ones only when
+    // that registration fails; and when the binding is inherited from another
+    // path, the whole block is skipped. So a path opened for a fresh path ID
+    // could not send at all: QuicPacketBuilderInitialize refuses a path whose
+    // path ID has no source CID ("No src CID to send with"), which silently
+    // dropped the PATH_CHALLENGE the caller had just armed and left validation
+    // to time out.
+    //
+    // That was #196, and it looked intermittent because it depended on whether
+    // some unrelated event -- a MAX_PATH_ID, a key update -- happened to run
+    // QuicPathIDSetGenerateNewSourceCids over every path ID before the
+    // validation budget ran out. Whether it did was settled early in the
+    // connection and then held, which is why repeating the attempt never
+    // changed the outcome within one connection.
+    //
+    // Generated here rather than inside the branch above so the CIDs are new
+    // to every binding QuicPathIDGenerateNewSourceCid registers them with,
+    // this path's included; doing it earlier would have
+    // QuicBindingAddAllSourceConnectionIDs add them a second time. The guard
+    // keeps it to the case that needs it -- without multipath the path shares
+    // Paths[0]'s path ID, which already has its CIDs, and without a shared
+    // binding the generator is a no-op by design.
+    //
+    if (Path->PathID->SourceCids.Next == NULL) {
+        QuicPathIDGenerateNewSourceCids(Path->PathID, FALSE);
+    }
+
     QuicTraceEvent(
         ConnLocalAddrAdded,
         "[conn][%p] New Local IP: %!ADDR!",
