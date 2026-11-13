@@ -66,13 +66,23 @@ trap this whole environment exists to avoid.
 | `droppunch` | `direct`, punch dropped on the wire | Exactly one punch packet leaves; no retransmission; validation fails |
 | `multiaddr-cross` | Two local addresses, two remotes, no NAT | Four paths — the full cross product |
 | `multiaddr-return` | A local address removed and restored | The path is recreated and validates (see *Findings*) |
+| `sameport` | Two local addresses, one port, no NAT | Each keeps its own binding (#200) |
 
 `droppunch` measures the one-packet rule on the wire rather than from a
 counter: the `DROP` rule's own packet count says how many punches actually
 left, which is the evidence Appendix C.1 asks for. It reads **1**.
 
-The last two are the local-address half of #157 that #161 lists as untestable
-on a single-interface host.
+`multiaddr-cross` and `multiaddr-return` are the local-address half of #157 that
+#161 lists as untestable on a single-interface host. `sameport` covers the
+arrangement a NAT-traversal client actually ends up in: every candidate on a
+host names the port its mapping was punched for, so paths on different local
+addresses share one port number. `QuicLibraryLookupBinding` used to match an
+unconnected binding on the local port alone -- on the stated premise that such
+a binding "always uses wildcard addresses", which
+`QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` breaks by requiring a specific one --
+so the second address was handed the first's binding and sent from the wrong
+interface. That is #200, and without the fix the case shows it as two paths
+with identical local *and* remote addresses.
 
 ## Findings
 

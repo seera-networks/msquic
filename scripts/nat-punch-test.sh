@@ -58,7 +58,7 @@ Usage: scripts/nat-punch-test.sh [options]
 
   --bin <dir>    Directory holding quicpunch and libmsquic.so (a Debug build).
                  Defaults to the first build/linux/*/bin that has quicpunch.
-  --case <name>  Run one case: direct, strict, edm, droppunch,
+  --case <name>  Run one case: direct, strict, edm, droppunch, sameport,
                  multiaddr-cross, multiaddr-return. Default: all.
   --keep         Drop into a shell inside the topology when the cases finish.
   --verbose      Echo each role's output.
@@ -758,6 +758,67 @@ case_multiaddr_return() {
     multi_down
 }
 
+#
+# Two local addresses whose paths share one port number, which is what a
+# NAT-traversal client ends up with: the candidate names the port its mapping
+# was punched for, and every candidate on this host names the same one.
+#
+# QuicLibraryLookupBinding used to match an unconnected binding on the local
+# port alone, on the stated premise that such a binding "always uses wildcard
+# addresses". QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET breaks that premise -- it
+# requires a specific local address -- so the second pair was handed the first
+# address's binding, QuicConnOpenNewPath took the path's local address from it,
+# and the path then sent from the wrong interface. QuicConnHasPathForPair
+# compares the local address, so it did not recognise the result either and the
+# next pass opened another one. That is #200, and without the fix this case
+# shows it directly: two paths with identical local *and* remote addresses.
+#
+case_sameport() {
+    say "  sameport: two local addresses on one port keep their own bindings (#200)"
+    multi_up || { bad "could not build the multi-address topology"; return; }
+    multi_start_server 40 || { bad "server did not start"; stop_roles; return; }
+
+    punch mcli -role:client \
+        "-target:$MSRV_A:$MSRV_PORT" "-local:$MCLI_A:0" \
+        -mode:nat -multipath:1 \
+        "-candidate:$MCLI_A=$MCLI_A" "-candidate:$MCLI_B=$MCLI_B" \
+        -time:16 -poll:2 \
+        > "$WORK/cli.log" 2>&1
+    CLI_RC=$?
+    stop_roles
+    dump_logs
+
+    local Paths
+    Paths="$(grep -o "client_final_path[0-9]*=[^ ]*" "$WORK/cli.log" | sed 's/^[^=]*=//')"
+    note "final paths:"
+    printf '%s\n' "$Paths" | sed 's/^/            /'
+
+    if printf '%s' "$Paths" | grep -q "^$MCLI_B:"; then
+        ok "the second local address kept its own binding"
+    else
+        bad "the second local address kept its own binding"
+        note "no path with local $MCLI_B -- it was given the other address's binding"
+    fi
+
+    #
+    # The other half of the same defect: a path whose local address was
+    # overwritten is not recognised as covering its pair, so the reconciler
+    # opens another one. Duplicates are the visible result.
+    #
+    local Total Unique
+    Total="$(printf '%s\n' "$Paths" | grep -c .)"
+    Unique="$(printf '%s\n' "$Paths" | sort -u | grep -c .)"
+    if [ "$Total" = "$Unique" ]; then
+        ok "no two paths share a local and remote address ($Total paths)"
+    else
+        bad "no two paths share a local and remote address"
+        note "$Total paths, $Unique distinct"
+    fi
+
+    has "$WORK/cli.log" "client_connection_alive=1" "the connection survived"
+    multi_down
+}
+
 # --------------------------------------------------------------------------
 
 run_one() { # <name>
@@ -768,6 +829,7 @@ run_one() { # <name>
         droppunch) case_droppunch ;;
         multiaddr-cross)  case_multiaddr_cross ;;
         multiaddr-return) case_multiaddr_return ;;
+        sameport)         case_sameport ;;
         *) echo "unknown case: $1" >&2; return 1 ;;
     esac
 }
@@ -779,7 +841,7 @@ say "nat-punch-test: topology up, using $BIN"
 if [ -n "$ONLY" ]; then
     run_one "$ONLY"
 else
-    for Case in direct strict edm droppunch multiaddr-cross multiaddr-return; do
+    for Case in direct strict edm droppunch multiaddr-cross multiaddr-return sameport; do
         run_one "$Case"
     done
 fi
