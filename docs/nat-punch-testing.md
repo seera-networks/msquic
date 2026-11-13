@@ -65,7 +65,7 @@ trap this whole environment exists to avoid.
 | `edm` | Endpoint-dependent mapping | Traversal fails as the draft says it should, without stalling |
 | `droppunch` | `direct`, punch dropped on the wire | Exactly one punch packet leaves; no retransmission; validation fails |
 | `multiaddr-cross` | Two local addresses, two remotes, no NAT | Four paths — the full cross product |
-| `multiaddr-return` | A local address removed and restored | The path is recreated (see *Findings*) |
+| `multiaddr-return` | A local address removed and restored | The path is recreated and validates (see *Findings*) |
 
 `droppunch` measures the one-packet rule on the wire rather than from a
 counter: the `DROP` rule's own packet count says how many punches actually
@@ -96,24 +96,33 @@ records its destination on the way out and only recorded addresses are
 forwarded in. The binding therefore still exists *only because the punch
 created it*, which is the property under test.
 
-**A path recreated for a returned local address often does not validate**
-(#196). In `multiaddr-return` the reconciler does recreate the path — a binding
-appears on the restored address and the peer issues connection IDs for the new
-path id — but no `PATH_CHALLENGE` frame reaches the wire: the connection-level
-flag is armed and cleared by each flush while the peer's receive log stays
-empty. Validation times out after three attempts and both ends abandon the path
-id. Plain traffic from the restored address works immediately, so the
-environment is not what loses them.
+**A path recreated for a returned local address could not send its
+`PATH_CHALLENGE`** (#196). Found here, and the cause is fixed: a path ID taken
+from the unused set carried the destination CIDs the peer had issued for it and
+none of its own, because with a shared binding — which multipath requires —
+`QuicConnOpenNewPath` registered the CIDs that already existed and generated
+new ones only when that registration failed. `QuicPacketBuilderInitialize`
+refuses a path whose path ID has no source CID, so the challenge the reconciler
+had just armed was dropped with nothing said, and validation timed out three
+attempts later.
 
-It is **intermittent**: 7 of 11 single-cycle runs failed when this was written.
-The case therefore runs the remove/restore cycle three times and reports how
-many validated — but those are not independent trials. Consecutive runs have
-come out 0, 3 and 1 validated, so whatever decides it is established once per
-connection and then holds for that connection's lifetime. **A green
-`multiaddr-return` is not proof of a fix**; check #196 before concluding one.
+It looked intermittent because it depended on whether some unrelated event —
+a `MAX_PATH_ID`, a key update — happened to run
+`QuicPathIDSetGenerateNewSourceCids` over every path ID before the validation
+budget ran out, and whether it did was settled early in a connection and then
+held. `QuicConnOpenNewPath` now generates the CIDs when the path is opened, and
+`QuicSendPathChallenges` re-arms the send flag and traces when it cannot start
+a packet, so a dropped challenge is no longer silent.
 
-The assertion is left **failing** rather than relaxed. A harness that reported
-this green would be worse than no harness.
+**A residual remains.** The fix moved the rate a long way but did not close it:
+**7 of 11 runs failed before, 2 of 15 after** — one of those inside the full
+suite, one standalone — always one cycle short of validating rather than the
+wholesale failure seen before. It is not the same defect: the skip that
+produced #196 no longer occurs, and an instrumented build has never reproduced
+the remainder in 9 runs, which points at either a second and rarer path or this
+case racing the stack. The assertion is therefore left in place — it fails
+loudly if the main defect returns, and the per-cycle counts it prints say which
+cycle fell short.
 
 ## Reading a run
 

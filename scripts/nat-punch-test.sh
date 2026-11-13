@@ -564,11 +564,17 @@ wait_polls() { # <file> <n>
 }
 
 
-# Everything logged from a given poll report onwards, so an assertion can be
-# scoped to "after the address came back" without a marker line -- markers
-# written into the client's own redirect get clobbered by its buffering.
-after_poll() { # <file> <index>
-    awk -v Pat="client_poll$2_path_count" 'index($0, Pat) { Seen = 1 } Seen' "$1"
+# Everything logged between two poll reports, so each cycle's assertions see
+# only its own window. Bounded at both ends on purpose: an unbounded scan runs
+# to the end of the log, which would let a success in a later cycle count for
+# every earlier one and turn three cycles into one. Markers written into the
+# client's own redirect get clobbered by its buffering, so poll indexes are the
+# only usable boundary.
+between_polls() { # <file> <from-index> <to-index>
+    awk -v From="client_poll$2_path_count" -v To="client_poll$3_path_count" '
+        index($0, To) { exit }
+        index($0, From) { Seen = 1 }
+        Seen' "$1"
 }
 
 # The paths reported by the most recent poll.
@@ -619,10 +625,10 @@ case_multiaddr_cross() {
 case_multiaddr_return() {
     say "  multiaddr-return: a path is recreated when a vanished local address returns"
     multi_up || { bad "could not build the multi-address topology"; return; }
-    multi_start_server 100 || { bad "server did not start"; stop_roles; return; }
+    multi_start_server 130 || { bad "server did not start"; stop_roles; return; }
 
     punch mcli -role:client \
-        "-target:$MSRV_A:$MSRV_PORT" -mode:auto -multipath:1 -time:80 -poll:1 \
+        "-target:$MSRV_A:$MSRV_PORT" -mode:auto -multipath:1 -time:110 -poll:1 \
         > "$WORK/cli.log" 2>&1 &
     local ClientJob=$!
 
@@ -635,16 +641,13 @@ case_multiaddr_return() {
     fi
 
     #
-    # The cycle is run several times because validation of the recreated path
-    # fails only intermittently -- 7 of 11 single-cycle runs when this was
-    # written -- and the per-cycle counts are the useful output.
-    #
-    # They do not make the case deterministic, and that is a finding rather
-    # than a shortcoming: the outcome is correlated *within* a run. Three
-    # cycles have come out 0, 3 and 1 validated in consecutive runs, so
-    # whatever decides it is established once per connection and then holds,
-    # which is why repeating the cycle does not average it away. A green case
-    # here is therefore not proof of a fix -- check #196 before concluding one.
+    # The cycle is run several times because the failure this case found was
+    # intermittent, and the per-cycle counts are the useful output. Before the
+    # #196 fix the outcome was correlated *within* a run -- consecutive runs
+    # came out 0, 3 and 1 validated -- because whatever decided it was settled
+    # once per connection and then held, which is why repeating the cycle did
+    # not average it away. Since the fix the counts come out 3, with the
+    # occasional 2.
     #
     local Cycles=3
     local Recreated=0
@@ -652,7 +655,7 @@ case_multiaddr_return() {
     local Cycle Marker
     for Cycle in $(seq 1 "$Cycles"); do
         ip -n mcli addr del "$MCLI_B/24" dev mc0 >/dev/null 2>&1
-        wait_polls "$WORK/cli.log" 3
+        wait_polls "$WORK/cli.log" 4
 
         #
         # The poll the restore happens after, so each cycle's assertions see
@@ -662,16 +665,34 @@ case_multiaddr_return() {
         #
         Marker="$(poll_index "$WORK/cli.log")"
         ip -n mcli addr add "$MCLI_B/24" dev mc0 >/dev/null 2>&1
-        wait_polls "$WORK/cli.log" 6
+        #
+        # Long enough for the whole sequence the cycle is asserting on, not
+        # just for the paths to appear: the reconciler waits out its
+        # auto-migration hold-down, opens a path for each pair the restored
+        # address takes part in, and each of those then has to validate. Under
+        # a sanitizer build that is several seconds, and a window tight enough
+        # to clip it made this case look like it was still failing after the
+        # defect behind #196 was fixed.
+        #
+        wait_polls "$WORK/cli.log" 12
 
-        if after_poll "$WORK/cli.log" "$Marker" | grep -q "_path[0-9]*=$MCLI_B:"; then
+        #
+        # The window closes where this cycle's waiting stopped, so the next
+        # cycle's result cannot be credited to this one.
+        #
+        local End
+        End="$(poll_index "$WORK/cli.log")"
+        if between_polls "$WORK/cli.log" "$Marker" "$((End + 1))" \
+                | grep -q "_path[0-9]*=$MCLI_B:"; then
             Recreated=$((Recreated+1))
         fi
-        if after_poll "$WORK/cli.log" "$Marker" | grep -q "client_path_validated_local=$MCLI_B:"; then
+        if between_polls "$WORK/cli.log" "$Marker" "$((End + 1))" \
+                | grep -q "client_path_validated_local=$MCLI_B:"; then
             Validated=$((Validated+1))
         fi
     done
     note "over $Cycles remove/restore cycles: recreated $Recreated, validated $Validated"
+    note "validation events on $MCLI_B anywhere in the run: $(grep -c "client_path_validated_local=$MCLI_B:" "$WORK/cli.log")"
 
     if [ "$Recreated" -eq "$Cycles" ]; then
         ok "a path on the address was recreated every time"
@@ -681,20 +702,24 @@ case_multiaddr_return() {
     fi
 
     #
-    # The half #161 actually asks for, and the one that fails. The reconciler
-    # opens the path and arms its challenge, the peer issues connection ids for
-    # the new path id, and no PATH_CHALLENGE frame reaches the wire: the
-    # connection-level flag is armed and cleared by each flush while the peer's
-    # receive log stays empty, so validation times out and both ends abandon
-    # the path id. Plain traffic from the restored address works immediately,
-    # so the environment is not what loses them. Tracked as #196, and left
-    # asserted -- a harness that reported this green would be worse than none.
+    # The half #161 actually asks for. This is what found #196: a path id taken
+    # from the unused set had no source CID of its own, so the packet builder
+    # refused the path and the challenge the reconciler had just armed was
+    # dropped with nothing said. Fixed in QuicConnOpenNewPath, which now
+    # generates the CIDs when the path is opened.
+    #
+    # Still asserted, and still per cycle, for two reasons: it fails loudly if
+    # that regresses, and a residual remains -- 7 of 11 runs failed before the
+    # fix, 2 of 15 after, always a single cycle short rather than wholesale.
+    # That is not the same defect (the skip is gone, and an instrumented build
+    # has not reproduced the remainder), so the counts above are what to read
+    # when it trips.
     #
     if [ "$Validated" -eq "$Cycles" ]; then
         ok "the recreated path validated every time"
     else
         bad "the recreated path validated every time"
-        note "validated on $Validated of $Cycles cycles -- see #196 (intermittent)"
+        note "validated on $Validated of $Cycles cycles -- see #196"
     fi
 
     wait "$ClientJob" >/dev/null 2>&1
