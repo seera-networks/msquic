@@ -84,9 +84,6 @@ typedef struct QUIC_SENT_FRAME_METADATA {
             QUIC_VAR_INT Sequence;
         } ADD_ADDRESS;
         struct {
-            QUIC_VAR_INT Round;
-        } PUNCH_ME_NOW;
-        struct {
             //
             // Which path asked, so a lost request can be re-queued on it. The
             // frame carries no identifier of its own -- it is two addresses --

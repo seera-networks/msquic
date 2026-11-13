@@ -165,8 +165,7 @@ typedef enum QUIC_FRAME_TYPE {
 
     QUIC_FRAME_ADD_ADDRESS_V4       = 0x3d7e90LL,
     QUIC_FRAME_ADD_ADDRESS_V6       = 0x3d7e91LL,
-    QUIC_FRAME_PUNCH_ME_NOW_V4      = 0x3d7e92LL,
-    QUIC_FRAME_PUNCH_ME_NOW_V6      = 0x3d7e93LL,
+    /* 0x3d7e92 and 0x3d7e93 were PUNCH_ME_NOW_V4/V6, retired in #173 */
     QUIC_FRAME_REMOVE_ADDRESS       = 0x3d7e94LL,
 
     //
@@ -176,8 +175,8 @@ typedef enum QUIC_FRAME_TYPE {
     // per-address sequence number to look the request up by. The low bit
     // selects the address family, as the pair above does.
     //
-    // Separate codepoints from QUIC_FRAME_PUNCH_ME_NOW_V4/V6, which are the
-    // older mechanism this replaces: both exist until #173 retires that one.
+    // Separate codepoints from the PUNCH_ME_NOW_V4/V6 this replaced, which #173
+    // retired -- the gap left above them is deliberate.
     //
     QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 = 0x5eea90ULL,
     QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6 = 0x5eea91ULL,
@@ -221,7 +220,8 @@ CXPLAT_STATIC_ASSERT(
       X == QUIC_FRAME_RELIABLE_RESET_STREAM || \
       X == QUIC_FRAME_TIMESTAMP || \
       X == QUIC_FRAME_OBSERVED_ADDRESS_V4 || X == QUIC_FRAME_OBSERVED_ADDRESS_V6 || \
-     (X >= QUIC_FRAME_ADD_ADDRESS_V4 && X <= QUIC_FRAME_REMOVE_ADDRESS) || \
+     (X >= QUIC_FRAME_ADD_ADDRESS_V4 && X <= QUIC_FRAME_ADD_ADDRESS_V6) || \
+      X == QUIC_FRAME_REMOVE_ADDRESS || \
      (X >= QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4 && \
       X <= QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6) || \
       X == QUIC_FRAME_ALTERNATIVE_ADDRESS || \
@@ -1211,39 +1211,6 @@ QuicAddAddressFrameDecode(
         const uint8_t * const Buffer,
     _Inout_ uint16_t* Offset,
     _Out_ QUIC_ADD_ADDRESS_EX* Frame
-    );
-
-//
-// QUIC_FRAME_PUNCH_ME_NOW Encoding/Decoding
-//
-
-typedef struct QUIC_PUNCH_ME_NOW_EX {
-
-    QUIC_VAR_INT Round;
-    QUIC_VAR_INT PairedSequenceNumber;
-    QUIC_ADDR Address;
-
-} QUIC_PUNCH_ME_NOW_EX;
-
-_Success_(return != FALSE)
-BOOLEAN
-QuicPunchMeNowFrameEncode(
-    _In_ const QUIC_PUNCH_ME_NOW_EX * const Frame,
-    _Inout_ uint16_t* Offset,
-    _In_ uint16_t BufferLength,
-    _Out_writes_to_(BufferLength, *Offset)
-        uint8_t* Buffer
-    );
-
-_Success_(return != FALSE)
-BOOLEAN
-QuicPunchMeNowFrameDecode(
-    _In_ QUIC_FRAME_TYPE FrameType,
-    _In_ uint16_t BufferLength,
-    _In_reads_bytes_(BufferLength)
-        const uint8_t * const Buffer,
-    _Inout_ uint16_t* Offset,
-    _Out_ QUIC_PUNCH_ME_NOW_EX* Frame
     );
 
 //

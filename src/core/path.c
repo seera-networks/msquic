@@ -37,8 +37,6 @@ QuicPathInitialize(
     Path->InUse = TRUE;
     Path->RemoteAddressSequenceNumberValid = FALSE;
     Path->RemoteAddressSequenceNumber = QUIC_VAR_INT_MAX;
-    Path->PunchMeNowRoundValid = FALSE;
-    Path->PunchMeNowRound = QUIC_VAR_INT_MAX;
     Path->SendObservedAddress = TRUE;
     Path->MinRtt = UINT32_MAX;
     Path->Mtu = Connection->Settings.MinimumMtu;

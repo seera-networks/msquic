@@ -255,7 +255,6 @@ typedef union QUIC_CONNECTION_STATE {
         //
         BOOLEAN StatelessPunchNegotiated : 1;
 
-        BOOLEAN NatTraverseNegotiated : 1;
 
     };
 } QUIC_CONNECTION_STATE;
@@ -406,12 +405,20 @@ typedef struct QUIC_CONN_STATS {
      (Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL)
 
 //
-// Whether paths follow the candidate pair table. AUTO only. NAT_TRAVERSAL
-// joins at #173, for the reason above; until then the table would hold pairs
-// it cannot punch for.
+// Whether paths follow the candidate pair table. AUTO and, as of #173,
+// NAT_TRAVERSAL -- which is now exactly this with one extra rule: a pair
+// becomes a path only where a candidate is configured for its local address.
+// Until #173 the mode had its own machinery and the table would have held
+// pairs it could not punch for; the stateless punch names a pair by address,
+// so it can.
+//
+// MANUAL is still out, and that is the whole of what the modes differ by here:
+// the application opens paths itself and a table it never reads would cost a
+// route lookup per remote address for nothing.
 //
 #define QuicConnWantsCandidateTable(Conn) \
-    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO)
+    ((Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_AUTO || \
+     (Conn)->Settings.AddAddressMode == QUIC_ADD_ADDRESS_NAT_TRAVERSAL)
 
 typedef enum QUIC_MIGRATION_REASON {
 
@@ -616,7 +623,6 @@ typedef struct QUIC_CONNECTION {
     //
     // The concurrency limit of nat traverse attempts.
     //
-    QUIC_VAR_INT NatTraverseConcurrencyLimit;
 
     //
     // The sequence number to use for sending an add address.
@@ -727,7 +733,6 @@ typedef struct QUIC_CONNECTION {
     //
     // The sequence number to use for sending an punch me now.
     //
-    QUIC_VAR_INT PunchMeNowSequenceNumber;
 
     //
     // The most recent Retire Prior To field received in a NEW_CONNECTION_ID

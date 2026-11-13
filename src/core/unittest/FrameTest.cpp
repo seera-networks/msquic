@@ -1810,3 +1810,45 @@ TEST_F(StatelessPunchFrameTest, RejectsTooSmallBuffer)
     uint16_t Offset = 0;
     ASSERT_TRUE(QuicStatelessPunchMeNowFrameEncode(&Frame, &Offset, Needed, Buffer));
 }
+
+//
+// Which frame types this build will parse at all.
+//
+// The retired pair is the point. PUNCH_ME_NOW_V4/V6 were 0x3d7e92 and
+// 0x3d7e93, in the middle of the ADD_ADDRESS..REMOVE_ADDRESS range, so the
+// range test that covered them went on calling them known after #173 removed
+// the frame -- and a known frame type with no handler is read and ignored,
+// where an unknown one is a FRAME_ENCODING_ERROR. A peer still speaking the
+// older mechanism should be told, not humoured.
+//
+TEST(FrameKnownTest, RetiredPunchMeNowCodepointsAreNotKnown)
+{
+    //
+    // The two that remain either side of the gap.
+    //
+    ASSERT_TRUE(QUIC_FRAME_IS_KNOWN((uint64_t)QUIC_FRAME_ADD_ADDRESS_V4));
+    ASSERT_TRUE(QUIC_FRAME_IS_KNOWN((uint64_t)QUIC_FRAME_ADD_ADDRESS_V6));
+    ASSERT_TRUE(QUIC_FRAME_IS_KNOWN((uint64_t)QUIC_FRAME_REMOVE_ADDRESS));
+
+    //
+    // And the gap itself, named by value because the enumerators are gone.
+    //
+    ASSERT_FALSE(QUIC_FRAME_IS_KNOWN((uint64_t)0x3d7e92));
+    ASSERT_FALSE(QUIC_FRAME_IS_KNOWN((uint64_t)0x3d7e93));
+}
+
+//
+// The frame that replaced them is known, which is the other half of the same
+// statement: the mechanism moved rather than went away.
+//
+TEST(FrameKnownTest, StatelessPunchCodepointsAreKnown)
+{
+    ASSERT_TRUE(QUIC_FRAME_IS_KNOWN((uint64_t)QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V4));
+    ASSERT_TRUE(QUIC_FRAME_IS_KNOWN((uint64_t)QUIC_FRAME_STATELESS_PUNCH_ME_NOW_V6));
+
+    //
+    // Neither side of that pair, so the range is exactly two wide.
+    //
+    ASSERT_FALSE(QUIC_FRAME_IS_KNOWN((uint64_t)0x5eea8f));
+    ASSERT_FALSE(QUIC_FRAME_IS_KNOWN((uint64_t)0x5eea92));
+}

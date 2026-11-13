@@ -2652,8 +2652,7 @@ QuicCryptoEncodeServerTicket(
         QUIC_TP_FLAG_INITIAL_MAX_STRM_DATA_UNI |
         QUIC_TP_FLAG_INITIAL_MAX_STRMS_BIDI |
         QUIC_TP_FLAG_INITIAL_MAX_STRMS_UNI |
-        QUIC_TP_FLAG_OBSERVED_ADDRESS |
-        QUIC_TP_FLAG_NAT_TRAVERSE);
+        QUIC_TP_FLAG_OBSERVED_ADDRESS);
 
     EncodedHSTP =
         QuicCryptoTlsEncodeTransportParameters(

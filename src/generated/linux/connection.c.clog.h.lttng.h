@@ -2491,6 +2491,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileCreateHeldDownFor,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileSkippedUnpunchablePair
+// [conn][%p] NAT traversal skipped a pair with no configured candidate
+// QuicTraceLogConnVerbose(
+                ReconcileSkippedUnpunchablePair,
+                Connection,
+                "NAT traversal skipped a pair with no configured candidate");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileSkippedUnpunchablePair,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ReconcileMigrateHeldDown
 // [conn][%p] Reconciler held down migrating for %llu us
 // QuicTraceLogConnVerbose(

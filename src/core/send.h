@@ -147,8 +147,14 @@ QuicPacketTypeToEncryptLevelV2(
 #define QUIC_CONN_SEND_FLAG_UNI_STREAMS_BLOCKED     0x00020000ULL
 #define QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS        0x00040000ULL
 #define QUIC_CONN_SEND_FLAG_ADD_ADDRESS             0x00080000ULL
-#define QUIC_CONN_SEND_FLAG_PUNCH_ME_NOW            0x00100000ULL
-#define QUIC_CONN_SEND_FLAG_PUNCH_YOU_NOW           0x00200000ULL
+//
+// 0x00100000 and 0x00200000 were PUNCH_ME_NOW and PUNCH_YOU_NOW, the older
+// NAT-traversal punch request and the probe a server answered it with. Both
+// went with the frame in #173, and the bits are deliberately left unused
+// rather than reassigned: the next flag should take 0x200000000 and keep the
+// numbering a record of what was here, which is what made the 32-bit
+// exhaustion that forced SendFlags to 64 bits legible in the first place.
+//
 #define QUIC_CONN_SEND_FLAG_REMOVE_ADDRESS          0x00400000ULL
 #define QUIC_CONN_SEND_FLAG_PATH_ABANDON            0x00800000ULL
 #define QUIC_CONN_SEND_FLAG_PATH_BACKUP             0x01000000ULL

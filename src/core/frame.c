@@ -1893,107 +1893,6 @@ QuicAddAddressFrameDecode(
     return TRUE;
 }
 
-_Success_(return != FALSE)
-BOOLEAN
-QuicPunchMeNowFrameEncode(
-    _In_ const QUIC_PUNCH_ME_NOW_EX * const Frame,
-    _Inout_ uint16_t* Offset,
-    _In_ uint16_t BufferLength,
-    _Out_writes_to_(BufferLength, *Offset)
-        uint8_t* Buffer
-    )
-{
-    if (QuicAddrGetFamily(&Frame->Address) == QUIC_ADDRESS_FAMILY_INET) {
-        const uint16_t RequiredLength =
-            QuicVarIntSize(QUIC_FRAME_PUNCH_ME_NOW_V4) +
-            QuicVarIntSize(Frame->Round) +
-            QuicVarIntSize(Frame->PairedSequenceNumber) +
-            sizeof(Frame->Address.Ipv4.sin_addr) +
-            sizeof(Frame->Address.Ipv4.sin_port);
-
-        if (BufferLength < *Offset + RequiredLength) {
-            return FALSE;
-        }
-
-        Buffer = Buffer + *Offset;
-        Buffer = QuicVarIntEncode(QUIC_FRAME_PUNCH_ME_NOW_V4, Buffer);
-        Buffer = QuicVarIntEncode(Frame->Round, Buffer);
-        Buffer = QuicVarIntEncode(Frame->PairedSequenceNumber, Buffer);
-        CxPlatCopyMemory(Buffer, &Frame->Address.Ipv4.sin_addr, sizeof(Frame->Address.Ipv4.sin_addr));
-        Buffer += sizeof(Frame->Address.Ipv4.sin_addr);
-        CxPlatCopyMemory(Buffer, &Frame->Address.Ipv4.sin_port, sizeof(Frame->Address.Ipv4.sin_port));
-        *Offset += RequiredLength;
-
-    } else {
-        const uint16_t RequiredLength =
-            QuicVarIntSize(QUIC_FRAME_PUNCH_ME_NOW_V6) +
-            QuicVarIntSize(Frame->Round) +
-            QuicVarIntSize(Frame->PairedSequenceNumber) +
-            sizeof(Frame->Address.Ipv6.sin6_addr) +
-            sizeof(Frame->Address.Ipv6.sin6_port);
-
-        if (BufferLength < *Offset + RequiredLength) {
-            return FALSE;
-        }
-
-        Buffer = Buffer + *Offset;
-        Buffer = QuicVarIntEncode(QUIC_FRAME_PUNCH_ME_NOW_V6, Buffer);
-        Buffer = QuicVarIntEncode(Frame->Round, Buffer);
-        Buffer = QuicVarIntEncode(Frame->PairedSequenceNumber, Buffer);
-        CxPlatCopyMemory(Buffer, &Frame->Address.Ipv6.sin6_addr, sizeof(Frame->Address.Ipv6.sin6_addr));
-        Buffer += sizeof(Frame->Address.Ipv6.sin6_addr);
-        CxPlatCopyMemory(Buffer, &Frame->Address.Ipv6.sin6_port, sizeof(Frame->Address.Ipv6.sin6_port));
-        *Offset += RequiredLength;
-    }
-
-    return TRUE;
-}
-
-_Success_(return != FALSE)
-BOOLEAN
-QuicPunchMeNowFrameDecode(
-    _In_ QUIC_FRAME_TYPE FrameType,
-    _In_ uint16_t BufferLength,
-    _In_reads_bytes_(BufferLength)
-        const uint8_t * const Buffer,
-    _Inout_ uint16_t* Offset,
-    _Out_ QUIC_PUNCH_ME_NOW_EX* Frame
-    )
-{
-    if (!QuicVarIntDecode(BufferLength, Buffer, Offset, &Frame->Round)) {
-        return FALSE;
-    }
-
-    if (!QuicVarIntDecode(BufferLength, Buffer, Offset, &Frame->PairedSequenceNumber)) {
-        return FALSE;
-    }
-
-    if (FrameType == QUIC_FRAME_PUNCH_ME_NOW_V4) {
-        if (BufferLength < *Offset + sizeof(Frame->Address.Ipv4.sin_addr) + sizeof(Frame->Address.Ipv4.sin_port)) {
-            return FALSE;
-        }
-        CxPlatZeroMemory(&Frame->Address.Ipv4, sizeof(Frame->Address.Ipv4));
-        Frame->Address.Ipv4.sin_family = QUIC_ADDRESS_FAMILY_INET;
-        CxPlatCopyMemory(&Frame->Address.Ipv4.sin_addr, Buffer + *Offset, sizeof(Frame->Address.Ipv4.sin_addr));
-        *Offset += sizeof(Frame->Address.Ipv4.sin_addr);
-        CxPlatCopyMemory(&Frame->Address.Ipv4.sin_port, Buffer + *Offset, sizeof(Frame->Address.Ipv4.sin_port));
-        *Offset += sizeof(Frame->Address.Ipv4.sin_port);
-
-    } else {
-        if (BufferLength < *Offset + sizeof(Frame->Address.Ipv6.sin6_addr) + sizeof(Frame->Address.Ipv6.sin6_port)) {
-            return FALSE;
-        }
-        CxPlatZeroMemory(&Frame->Address.Ipv6, sizeof(Frame->Address.Ipv6));
-        Frame->Address.Ipv6.sin6_family = QUIC_ADDRESS_FAMILY_INET6;
-        CxPlatCopyMemory(&Frame->Address.Ipv6.sin6_addr, Buffer + *Offset, sizeof(Frame->Address.Ipv6.sin6_addr));
-        *Offset += sizeof(Frame->Address.Ipv6.sin6_addr);
-        CxPlatCopyMemory(&Frame->Address.Ipv6.sin6_port, Buffer + *Offset, sizeof(Frame->Address.Ipv6.sin6_port));
-        *Offset += sizeof(Frame->Address.Ipv6.sin6_port);
-    }
-
-    return TRUE;
-}
-
 //
 // One entry's encoded length. CURRENT_PATH carries only its type; the address
 // entries carry a priority hint and a fixed-width address and port.
@@ -3638,44 +3537,6 @@ QuicFrameLogAddAddress(
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 static BOOLEAN
-QuicFrameLogPunchMeNow(
-    _In_opt_ QUIC_CONNECTION* Connection,
-    _In_ BOOLEAN Rx,
-    _In_ uint64_t PacketNumber,
-    _In_ uint16_t PacketLength,
-    _In_reads_bytes_(PacketLength)
-        const uint8_t * const Packet,
-    _Inout_ uint16_t* Offset,
-    _In_ QUIC_VAR_INT FrameType
-    )
-{
-    QUIC_PUNCH_ME_NOW_EX Frame;
-    if (!QuicPunchMeNowFrameDecode(FrameType, PacketLength, Packet, Offset, &Frame)) {
-        QuicTraceLogVerbose(
-            FrameLogPunchMeNowInvalid,
-            "[%c][%cX][%llu]   PUNCH_ME_NOW [Invalid]",
-            PtkConnPre(Connection),
-            PktRxPre(Rx),
-            PacketNumber);
-        return FALSE;
-    }
-
-    QUIC_ADDR_STR PunchedAddrStr;
-    QuicAddrToString(&Frame.Address, &PunchedAddrStr);
-    QuicTraceLogVerbose(
-        FrameLogPunchMeNow,
-        "[%c][%cX][%llu]   PUNCH_ME_NOW %llu %llu %s",
-        PtkConnPre(Connection),
-        PktRxPre(Rx),
-        PacketNumber,
-        Frame.Round,
-        Frame.PairedSequenceNumber,
-        PunchedAddrStr.Address);
-    return TRUE;
-}
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-static BOOLEAN
 QuicFrameLogAlternativeAddress(
     _In_opt_ QUIC_CONNECTION* Connection,
     _In_ BOOLEAN Rx,
@@ -4084,13 +3945,6 @@ QuicFrameLog(
     case QUIC_FRAME_ADD_ADDRESS_V4:
     case QUIC_FRAME_ADD_ADDRESS_V6:
         if (!QuicFrameLogAddAddress(Connection, Rx, PacketNumber, PacketLength, Packet, Offset, FrameType)) {
-            return FALSE;
-        }
-        break;
-
-    case QUIC_FRAME_PUNCH_ME_NOW_V4:
-    case QUIC_FRAME_PUNCH_ME_NOW_V6:
-        if (!QuicFrameLogPunchMeNow(Connection, Rx, PacketNumber, PacketLength, Packet, Offset, FrameType)) {
             return FALSE;
         }
         break;

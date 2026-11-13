@@ -158,7 +158,6 @@ typedef struct QUIC_TRANSPORT_PARAMETERS {
     uint32_t VersionInfoLength;
     const uint8_t* VersionInfo;
 
-    QUIC_VAR_INT NatTraverseConcurrencyLimit;
 
     //
     // The initial maximum number of paths allowed.

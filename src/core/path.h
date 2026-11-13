@@ -158,31 +158,10 @@ typedef struct QUIC_PATH {
     BOOLEAN RemoteAddressSequenceNumberValid : 1;
 
     //
-    // Indicates whether we tries to do NAT traversal
-    //
-    BOOLEAN NatTraversal : 1;
-
-    //
-    // The add address needs to be sent out.
-    //
-    BOOLEAN SendPunchMeNow : 1;
-
-    //
-    // Indicates whether the punch me now round number is valid.
-    //
-    BOOLEAN PunchMeNowRoundValid : 1;
-
-    //
     // A draft-kozuka-quic-stateless-punch request is queued for this path:
     // the client asking the server to send a packet towards PunchClientAddress
     // from this path's remote address, so the NAT in front of the client opens
     // a mapping before the client's own PATH_CHALLENGE arrives.
-    //
-    // Distinct from SendPunchMeNow above, which is the older NAT-traversal
-    // frame. The two never coexist on one connection -- a NAT_TRAVERSAL client
-    // does not offer alternative_address and so cannot negotiate this -- but
-    // they are different frames with different contents, so they get different
-    // state rather than sharing it.
     //
     BOOLEAN SendStatelessPunch : 1;
 
@@ -228,8 +207,6 @@ typedef struct QUIC_PATH {
     CXPLAT_ROUTE Route;
 
     QUIC_VAR_INT RemoteAddressSequenceNumber;
-
-    QUIC_VAR_INT PunchMeNowRound;
 
     //
     // Where the server should send its punch packet: this client's address as
