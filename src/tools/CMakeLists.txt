@@ -34,6 +34,12 @@ add_subdirectory(pcp)
 add_subdirectory(post)
 add_subdirectory(sample)
 add_subdirectory(spin)
+if(NOT WIN32)
+    # The NAT-traversal harness of #174. Linux only, and not incidentally: its
+    # relay role uses POSIX sockets directly and the environment around it is
+    # network namespaces. See docs/nat-punch-testing.md.
+    add_subdirectory(punch)
+endif()
 if(WIN32 AND (NOT QUIC_UWP_BUILD AND NOT QUIC_GAMECORE_BUILD))
     add_subdirectory(execution)
     add_subdirectory(etw)
