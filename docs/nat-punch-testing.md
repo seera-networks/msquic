@@ -61,7 +61,7 @@ trap this whole environment exists to avoid.
 | Case | Configuration | Expectation |
 | --- | --- | --- |
 | `direct` | EIM, address-dependent filtering | A direct path validates; the server sees the client's public mapping |
-| `strict` | EIM, address-and-port-dependent filtering | Traversal fails, connection survives (see *Findings*) |
+| `strict` | EIM, plain conntrack filtering | The probe leaves from the advertised port (#198) |
 | `edm` | Endpoint-dependent mapping | Traversal fails as the draft says it should, without stalling |
 | `droppunch` | `direct`, punch dropped on the wire | Exactly one punch packet leaves; no retransmission; validation fails |
 | `multiaddr-cross` | Two local addresses, two remotes, no NAT | Four paths — the full cross product |
@@ -76,25 +76,39 @@ on a single-interface host.
 
 ## Findings
 
-**The client probes from a mapping it did not advertise.** The reconciler opens
-a path with `QuicAddrSetPort(&Local, 0)` (`connection.c`), so the direct path
-uses a fresh socket, and under endpoint-independent mapping a fresh socket gets
-a fresh public port. The client advertises the mapping of the socket its
-relayed connection uses, the server punches towards that, and the probe then
-arrives from a different port.
+**The client probes from the mapping it advertised** — which it did not always
+do. The reconciler opened the path with `QuicAddrSetPort(&Local, 0)`, so the
+probe left from a fresh socket and, under endpoint-independent mapping, a fresh
+public port; the peer had punched towards the mapping of the socket the relayed
+connection uses. Behind a NAT that filters on address *and* port — what
+conntrack does — every `PATH_CHALLENGE` was dropped. That was #198, reported
+from a real testbed, and the reconciler now binds the path to the port the
+candidate registered. The `strict` case asserts it.
 
-So traversal needs the server's NAT to filter on address rather than on address
-and port. That is a documented NAT behaviour and RFC 4787's REQ-8 recommends
-the looser end of it, so the `direct` case is realistic — but it is a real
-constraint, and `strict` pins it: with the filtering plain conntrack gives, the
-punch is sent, answered, and cannot help. Making the two coincide would mean
-carrying the candidate's port into the path, which is a design change rather
-than a fix.
+Three things a NAT-traversal client must do for that to work, none of them
+obvious and all of them now in `quicpunch`:
+
+- **Share its UDP binding.** The direct path has to leave from the port that
+  already carries the relayed path, so the two paths share one socket. Without
+  sharing, `QuicLibraryGetBinding` finds the port in use, declines to share,
+  and the path cannot be opened at all -- the reconciler then never queues the
+  punch request and the mechanism is silently inert.
+- **Use an unconnected socket** (`QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET`). A
+  connected socket has a remote of its own and can carry only that peer, so the
+  direct path cannot ride the punched port.
+- **Name a specific local address.** An unconnected socket has no remote to
+  take one from, and `QuicConnOpenNewPath` refuses a wildcard.
 
 `direct` emulates address-dependent filtering with `xt_recent`: the punch
 records its destination on the way out and only recorded addresses are
 forwarded in. The binding therefore still exists *only because the punch
 created it*, which is the property under test.
+
+`strict` leaves plain conntrack in place and asserts the 5-tuple rather than the
+validation: this emulation does not yet get the client's NAT to reuse its
+mapping for a second destination, so end-to-end traversal there is still
+unproven. The part #198 was about -- which port the probe leaves from -- is what
+it checks, and it fails if that regresses.
 
 **A path recreated for a returned local address could not send its
 `PATH_CHALLENGE`** (#196). Found here, and the cause is fixed: a path ID taken

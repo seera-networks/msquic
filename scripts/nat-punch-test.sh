@@ -331,6 +331,7 @@ run_client() { # <seconds> [extra args...]
     local Seconds="$1"; shift
     punch cli -role:client \
         "-target:$PUB:$RELAY_PORT" \
+        "-local:$CLI_PRIV:0" \
         "-candidate:$CLI_PRIV=$CNAT_WAN" \
         "-time:$Seconds" "$@" \
         > "$WORK/cli.log" 2>&1
@@ -410,24 +411,52 @@ case_direct() {
 }
 
 #
-# The same, with the filtering plain conntrack gives. This case is not a
-# should-work that fails: it pins a real limitation, that the reconciler probes
-# from a socket whose mapping is not the one the client advertised. Asserted so
-# that it is a known property rather than something rediscovered later.
+# The same, with the filtering plain conntrack gives -- which is what every
+# failing scenario in #198 had. The probe has to leave from the mapping the
+# request named, and that is what this asserts.
 #
 case_strict() {
-    say "  strict: address-and-port-dependent filtering (documents a limitation)"
+    say "  strict: the probe leaves from the mapping the peer punched (#198)"
     cnat_rules; snat_base eim
-    start_roles 30
-    run_client 15
+    start_roles 30 || { bad "roles did not start"; stop_roles; return; }
+    run_client 15 -poll:1
     stop_roles
     dump_logs
 
-    [ "$CLI_RC" = "2" ] && ok "traversal did not succeed (exit 2)" \
-        || { bad "traversal did not succeed"; note "exit=$CLI_RC"; }
-    counter_at_least "$WORK/cli.log" "client_requests_sent" 1 "the client still asked"
-    counter_at_least "$WORK/srv.log" "server_final_punches_sent" 1 "the server still answered"
-    hasnt "$WORK/cli.log" "client_direct_path=1" "no direct path was claimed"
+    #
+    # #198: the reconciler used to open the direct path on a fresh ephemeral
+    # binding, so the probe left from a 5-tuple nobody had punched. The port it
+    # must use is the one the candidate registered, which here is the
+    # connection's own -- so the relayed path and the direct one share a
+    # binding, and the probe comes out of the mapping the request named.
+    #
+    # Asserted on the path's local address rather than on the path validating,
+    # because this emulation does not yet get the client NAT to reuse its
+    # mapping for a second destination; the 5-tuple the probe uses is the part
+    # #198 was about and the part this can prove.
+    #
+    local Port Pair
+    Port="$(grep -o "client_local=[^ ]*" "$WORK/cli.log" | tail -1 | sed 's/.*://')"
+    Pair="$(grep -o "client_poll[0-9]*_path[0-9]*=[^ ]*->$SNAT_WAN:$PUNCH_PORT" "$WORK/cli.log" | head -1)"
+    note "advertised local port: ${Port:-unknown}"
+    note "direct path seen: ${Pair:-none}"
+
+    counter_at_least "$WORK/cli.log" "client_requests_sent" 1 "the client asked for a punch"
+    counter_at_least "$WORK/srv.log" "server_final_punches_sent" 1 "the server answered"
+
+    if [ -n "$Pair" ]; then
+        ok "a path to the advertised address was opened"
+    else
+        bad "a path to the advertised address was opened"
+    fi
+
+    if [ -n "$Port" ] && printf '%s' "$Pair" | grep -q "=$CLI_PRIV:$Port->"; then
+        ok "it probes from the advertised port, not a fresh one"
+    else
+        bad "it probes from the advertised port, not a fresh one"
+        note "wanted local $CLI_PRIV:$Port in: ${Pair:-none}"
+    fi
+
     has "$WORK/cli.log" "client_connection_alive=1" "the relayed connection survived"
 }
 
