@@ -11585,12 +11585,25 @@ QuicConnPunchableClientAddress(
 // instead, so an unopenable pair is left for a later pass rather than turned
 // into a path that cannot speak.
 //
-// Asked of both configurations. Without multipath the new path shares
-// Paths[0]'s path id, which has CIDs -- but having CIDs is not having an
-// *unused* one, and a client that has migrated has retired one per move, which
-// the hold-down comment below notes can outrun the peer's issuance. The frame
-// is multipath-only, so there is nothing to ask there; the retry and the
-// NEW_CONNECTION_ID pickup are what get the path opened.
+// Multipath only, and deliberately. Without it the new path shares Paths[0]'s
+// path id, where the deferral in QuicConnOpenNewPath is answered on its own:
+// the peer owes a replacement for every CID the connection retires, and
+// QuicPathIDAssignCids arms the challenge the moment one arrives. There is
+// also no frame to ask with -- PATH_CIDS_BLOCKED is multipath-only -- so
+// declining here would buy nothing and cost a hold-down.
+//
+// Asking in both configurations was tried and is worse. At the path limit the
+// pool is briefly empty by construction (QUIC_MAX_PATH_COUNT equals
+// QUIC_ACTIVE_CONNECTION_ID_LIMIT, so four paths hold all four CIDs), and a
+// swap frees a slot before the retired CID has been replaced. The pass then
+// declines, and the retry is paced by the hold-down: on a Windows CI machine
+// PathReconcilerSwapAtPathLimit deferred once a second for five seconds and
+// the address the server had just advertised still had no path. Creating it
+// and letting the pickup arm it is both faster and what that test asserts.
+//
+// What the multipath case has and this one does not is a shortage on a path id
+// nothing is obliged to resolve, which is #196: no CID is owed for a path id
+// that has never had one, and nothing was asking.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -11602,7 +11615,7 @@ QuicConnReconcileCanOpenPath(
 {
     *NoPathID = FALSE;
     if (!Connection->State.MultipathNegotiated) {
-        return QuicPathIDGetUnusedDestCid(Connection->Paths[0].PathID) != NULL;
+        return TRUE;
     }
 
     QUIC_PATHID* PathID = QuicPathIDSetGetUnusedPathID(&Connection->PathIDs);
