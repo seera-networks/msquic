@@ -72,6 +72,15 @@ typedef struct QUIC_SENT_FRAME_METADATA {
             QUIC_VAR_INT Sequence;
         } PATH_AVAILABLE;
         struct {
+            //
+            // Which path ID this asked for. Recorded so a lost request re-asks
+            // for that path ID alone: re-scanning for every path ID still
+            // short would duplicate requests the peer already has whenever one
+            // of several frames was the one that went missing.
+            //
+            uint32_t PathID;
+        } PATH_CIDS_BLOCKED;
+        struct {
             void* ClientContext;
         } DATAGRAM;
         struct {

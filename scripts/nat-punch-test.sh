@@ -51,6 +51,8 @@ BIN=""
 ONLY=""
 KEEP=0
 VERBOSE=0
+KEEPLOGS=""
+CURCASE=""
 
 usage() {
     cat <<EOF
@@ -62,6 +64,10 @@ Usage: scripts/nat-punch-test.sh [options]
                  multiaddr-cross, multiaddr-return. Default: all.
   --keep         Drop into a shell inside the topology when the cases finish.
   --verbose      Echo each role's output.
+  --keep-logs <dir>
+                 Copy each role's log into <dir>/<case>-<role>.log as the case
+                 finishes, so a run that fails can be read afterwards. With a
+                 tracing build this is how a failing case gets diagnosed.
   --help         This text.
 
 Exit status is the number of failed cases.
@@ -74,6 +80,7 @@ while [ $# -gt 0 ]; do
         --case) ONLY="${2:-}"; shift 2 ;;
         --keep) KEEP=1; shift ;;
         --verbose) VERBOSE=1; shift ;;
+        --keep-logs) KEEPLOGS="${2:-}"; shift 2 ;;
         --help|-h) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -133,6 +140,21 @@ has() {
 }
 hasnt() {
     if grep -q -- "$2" "$1"; then bad "$3"; note "unwanted /$2/ in $(basename "$1")"; else ok "$3"; fi
+}
+
+#
+# "does stdin contain this", instead of `grep -q` at the end of a pipeline.
+#
+# grep -q exits at its first match and closes the pipe, which kills the
+# producer with SIGPIPE -- and `set -o pipefail` above then reports the
+# pipeline as failed even though the pattern matched. It only bites when the
+# producer still has output to write, so it hid on small logs and appeared on
+# the large ones a tracing build produces: the worst way for it to behave, and
+# it made this script report "recreated 0 of 3" for cycles whose paths were
+# plainly there.
+#
+stdin_has() { # <pattern>
+    [ "$(grep -c -- "$1")" -gt 0 ]
 }
 
 netns() { ip netns exec "$1" "${@:2}"; }
@@ -365,6 +387,19 @@ stop_roles() {
 }
 
 dump_logs() {
+    if [ -n "$KEEPLOGS" ]; then
+        mkdir -p "$KEEPLOGS"
+        #
+        # Named per case. Every case calls this, so a single name per role
+        # would leave only the last case's logs -- and the run worth reading
+        # afterwards is usually the one that failed early.
+        #
+        local Log
+        for Log in relay srv cli; do
+            [ -f "$WORK/$Log.log" ] &&
+                cp "$WORK/$Log.log" "$KEEPLOGS/${CURCASE:-case}-$Log.log"
+        done
+    fi
     [ "$VERBOSE" = "1" ] || return 0
     for Log in relay srv cli; do
         [ -f "$WORK/$Log.log" ] || continue
@@ -450,7 +485,7 @@ case_strict() {
         bad "a path to the advertised address was opened"
     fi
 
-    if [ -n "$Port" ] && printf '%s' "$Pair" | grep -q "=$CLI_PRIV:$Port->"; then
+    if [ -n "$Port" ] && printf '%s' "$Pair" | stdin_has "=$CLI_PRIV:$Port->"; then
         ok "it probes from the advertised port, not a fresh one"
     else
         bad "it probes from the advertised port, not a fresh one"
@@ -631,17 +666,17 @@ case_multiaddr_cross() {
     note "final paths:"
     printf '%s\n' "$Paths" | sed 's/^/            /'
 
-    if printf '%s' "$Paths" | grep -q "=$MCLI_A:"; then
+    if printf '%s' "$Paths" | stdin_has "=$MCLI_A:"; then
         ok "a path on the first local address"
     else
         bad "a path on the first local address"
     fi
-    if printf '%s' "$Paths" | grep -q "=$MCLI_B:"; then
+    if printf '%s' "$Paths" | stdin_has "=$MCLI_B:"; then
         ok "a path on the second local address"
     else
         bad "a path on the second local address"
     fi
-    if printf '%s' "$Paths" | grep -q "\->$MSRV_B:"; then
+    if printf '%s' "$Paths" | stdin_has "\->$MSRV_B:"; then
         ok "a path to the advertised remote"
     else
         bad "a path to the advertised remote"
@@ -662,7 +697,7 @@ case_multiaddr_return() {
     local ClientJob=$!
 
     wait_polls "$WORK/cli.log" 4
-    if last_poll_paths "$WORK/cli.log" | grep -q "=$MCLI_B:"; then
+    if last_poll_paths "$WORK/cli.log" | stdin_has "=$MCLI_B:"; then
         ok "the second local address carries a path to begin with"
     else
         bad "the second local address carries a path to begin with"
@@ -681,6 +716,7 @@ case_multiaddr_return() {
     local Cycles=3
     local Recreated=0
     local Validated=0
+    local Windows=""
     local Cycle Marker
     for Cycle in $(seq 1 "$Cycles"); do
         ip -n mcli addr del "$MCLI_B/24" dev mc0 >/dev/null 2>&1
@@ -694,16 +730,35 @@ case_multiaddr_return() {
         #
         Marker="$(poll_index "$WORK/cli.log")"
         ip -n mcli addr add "$MCLI_B/24" dev mc0 >/dev/null 2>&1
+
         #
-        # Long enough for the whole sequence the cycle is asserting on, not
-        # just for the paths to appear: the reconciler waits out its
-        # auto-migration hold-down, opens a path for each pair the restored
-        # address takes part in, and each of those then has to validate. Under
-        # a sanitizer build that is several seconds, and a window tight enough
-        # to clip it made this case look like it was still failing after the
-        # defect behind #196 was fixed.
+        # Waited for the path to appear rather than for a fixed number of
+        # polls, because the reconciler retries. Since #196 it declines to
+        # open a path whose path id has no destination CID and comes back a
+        # hold-down later, so "not yet" is a legitimate intermediate state and
+        # how many intervals it takes depends on when the peer issues CIDs. A
+        # fixed count turned that into a failure under load.
         #
-        wait_polls "$WORK/cli.log" 12
+        # Bounded so three cycles fit inside the client's own lifetime:
+        # 4 + 3 * (4 + 20 + 6) = 94 polls of a second each against -time:110.
+        # Overrunning it would kill the client mid-cycle and score the cycle a
+        # failure for the wrong reason.
+        local Appeared=0 Waited=0
+        while [ "$Waited" -lt 20 ]; do
+            if last_poll_paths "$WORK/cli.log" | stdin_has "=$MCLI_B:"; then
+                Appeared=1
+                break
+            fi
+            wait_polls "$WORK/cli.log" 1 || break
+            Waited=$((Waited+1))
+        done
+        [ "$Appeared" = "1" ] || note "cycle $Cycle: no path on $MCLI_B within 20 polls"
+
+        #
+        # Then a few more for the challenge and response, which is a round
+        # trip on a path that has only just been opened.
+        #
+        wait_polls "$WORK/cli.log" 6
 
         #
         # The window closes where this cycle's waiting stopped, so the next
@@ -711,12 +766,17 @@ case_multiaddr_return() {
         #
         local End
         End="$(poll_index "$WORK/cli.log")"
+        Windows="$Windows [$Marker,$((End + 1)))"
         if between_polls "$WORK/cli.log" "$Marker" "$((End + 1))" \
-                | grep -q "_path[0-9]*=$MCLI_B:"; then
+                | stdin_has "_path[0-9]*=$MCLI_B:"; then
             Recreated=$((Recreated+1))
         fi
-        if between_polls "$WORK/cli.log" "$Marker" "$((End + 1))" \
-                | grep -q "client_path_validated_local=$MCLI_B:"; then
+        local InWindow Everywhere
+        InWindow="$(between_polls "$WORK/cli.log" "$Marker" "$((End + 1))" \
+            | grep -c "client_path_validated_local=$MCLI_B:")"
+        Everywhere="$(grep -c "client_path_validated_local=$MCLI_B:" "$WORK/cli.log")"
+        note "cycle $Cycle: window [$Marker,$((End + 1))) saw $InWindow, file had $Everywhere at that moment"
+        if [ "$InWindow" -gt 0 ]; then
             Validated=$((Validated+1))
         fi
     done
@@ -749,6 +809,23 @@ case_multiaddr_return() {
     else
         bad "the recreated path validated every time"
         note "validated on $Validated of $Cycles cycles -- see #196"
+        #
+        # Which it was is the whole question, and a count cannot answer it: a
+        # validation that happened outside a cycle's window is this case being
+        # impatient, while one that never happened at all is the stack. So the
+        # positions go in the report -- each validation's poll index against
+        # the windows that were examined.
+        #
+        note "diagnosis:"
+        local Line Idx
+        while IFS= read -r Line; do
+            Idx="$(printf '%s' "$Line" | grep -oE 'client_poll[0-9]+' | tail -1 | grep -oE '[0-9]+')"
+            note "    validation seen after poll ${Idx:-?}"
+        done < <(awk -v Pat="client_path_validated_local=$MCLI_B:" '
+                    /client_poll[0-9]+_path_count/ { Last = $0 }
+                    index($0, Pat) { print Last }' "$WORK/cli.log")
+        note "    windows examined: $Windows"
+        note "    last poll in the run: $(poll_index "$WORK/cli.log")"
     fi
 
     wait "$ClientJob" >/dev/null 2>&1
@@ -793,7 +870,7 @@ case_sameport() {
     note "final paths:"
     printf '%s\n' "$Paths" | sed 's/^/            /'
 
-    if printf '%s' "$Paths" | grep -q "^$MCLI_B:"; then
+    if printf '%s' "$Paths" | stdin_has "^$MCLI_B:"; then
         ok "the second local address kept its own binding"
     else
         bad "the second local address kept its own binding"
@@ -898,7 +975,7 @@ case_observed() {
     # The second local address is the one that used to go unreported: nothing
     # raised the flag for a path that was added rather than activated.
     #
-    if printf '%s' "$Reports" | grep -q "@$MCLI_B:"; then
+    if printf '%s' "$Reports" | stdin_has "@$MCLI_B:"; then
         ok "the second local address was reported too"
     else
         bad "the second local address was reported too"
@@ -911,6 +988,7 @@ case_observed() {
 # --------------------------------------------------------------------------
 
 run_one() { # <name>
+    CURCASE="$1"
     case "$1" in
         direct)    case_direct ;;
         strict)    case_strict ;;

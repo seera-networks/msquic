@@ -1064,6 +1064,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, RecvStatelessReset,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PeerCidsBlocked
+// [conn][%p] Peer is out of CIDs for path ID %llu; issuing more
+// QuicTraceLogConnInfo(
+                    PeerCidsBlocked,
+                    Connection,
+                    "Peer is out of CIDs for path ID %llu; issuing more",
+                    (unsigned long long)Frame.PathID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = (unsigned long long)Frame.PathID = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PeerCidsBlocked,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for HandshakeConfirmedFrame
 // [conn][%p] Handshake confirmed (frame)
 // QuicTraceLogConnInfo(
@@ -1299,6 +1322,45 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, BoundAddressWildcardForQtip,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileRemovedPath,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileDeferredNoDestCid
+// [conn][%p] Reconciler has no destination CID for a new path; retrying later
+// QuicTraceLogConnInfo(
+                ReconcileDeferredNoDestCid,
+                Connection,
+                "Reconciler has no destination CID for a new path; retrying later");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileDeferredNoPathID
+// [conn][%p] Reconciler has no unused path ID for a new path; retrying later
+// QuicTraceLogConnInfo(
+                    ReconcileDeferredNoPathID,
+                    Connection,
+                    "Reconciler has no unused path ID for a new path; retrying later");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileDeferredNoPathID,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(

@@ -645,6 +645,33 @@ QuicSendStatelessPunchPending(
     return FALSE;
 }
 
+//
+// Whether any path ID still has a PATH_CIDS_BLOCKED to send. Needed for the
+// same reason the two above are, with one addition: a blocked path ID can be
+// freed while its frame is still queued -- abandoned by the validation timer,
+// say -- and then nothing would ever take the connection flag down, so every
+// later flush would build a packet for a frame that no longer has a subject.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicSendPathCidsBlockedPending(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    BOOLEAN Pending = FALSE;
+    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+    QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
+    for (uint8_t i = 0; i < PathIDCount; ++i) {
+        if (QuicPathIDHasCidsBlockedToSend(PathIDs[i])) {
+            Pending = TRUE;
+        }
+        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+    }
+    return Pending;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicSendWriteFrames(
@@ -1390,6 +1417,80 @@ QuicSendWriteFrames(
                 }
             } else {
                 RanOutOfRoom = TRUE;
+            }
+        }
+
+        if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED)) {
+
+            //
+            // One path ID per frame, because the frame names one. The
+            // connection flag stays up while any other path ID is still
+            // blocked, so the next packet carries the next one.
+            //
+            // Written here rather than in a per-path function like the
+            // challenges: what the frame is about is a path ID's connection
+            // IDs, not a path's 4-tuple, so it does not matter which path it
+            // travels on -- and a blocked path ID may have no path to travel
+            // on at all, which is the case it exists for.
+            //
+            QUIC_PATHID* Blocked = NULL;
+            uint8_t BlockedCount = 0;
+            QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+            uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+            QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
+            for (uint8_t i = 0; i < PathIDCount; ++i) {
+                if (QuicPathIDHasCidsBlockedToSend(PathIDs[i])) {
+                    ++BlockedCount;
+                    if (Blocked == NULL) {
+                        Blocked = PathIDs[i];
+                        continue;
+                    }
+                }
+                QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+            }
+
+            if (Blocked == NULL) {
+                //
+                // Every blocked path ID has since been served or gone away.
+                //
+                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED;
+            } else {
+                QUIC_PATH_CIDS_BLOCKED_EX Frame;
+                Frame.PathID = Blocked->ID;
+                Frame.NextSequenceNumber =
+                    QuicPathIDNextDestCidSequenceNumber(Blocked);
+
+                if (QuicPathCidsBlockedFrameEncode(
+                        &Frame,
+                        &Builder->DatagramLength,
+                        AvailableBufferLength,
+                        Builder->Datagram->Buffer)) {
+
+                    Blocked->Flags.SendCidsBlocked = FALSE;
+                    //
+                    // Cleared only when this was the last one, so the flag
+                    // carries the rest. Counted by the scan above, which has
+                    // already looked at every path ID.
+                    //
+                    if (BlockedCount == 1) {
+                        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED;
+                    }
+
+                    Builder->Metadata->Frames[Builder->Metadata->FrameCount].PATH_CIDS_BLOCKED.PathID =
+                        (uint32_t)Frame.PathID;
+
+                    QuicPathIDRelease(Blocked, QUIC_PATHID_REF_LOOKUP);
+                    if (QuicPacketBuilderAddFrame(
+                            Builder, QUIC_FRAME_PATH_CIDS_BLOCKED, TRUE)) {
+                        return TRUE;
+                    }
+                    Blocked = NULL;
+                } else {
+                    RanOutOfRoom = TRUE;
+                }
+                if (Blocked != NULL) {
+                    QuicPathIDRelease(Blocked, QUIC_PATHID_REF_LOOKUP);
+                }
             }
         }
 
@@ -2281,6 +2382,18 @@ QuicSendFlush(
     //
     if (QuicSendStatelessPunchPending(Connection)) {
         Send->SendFlags |= QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW;
+    }
+
+    //
+    // Lowered here rather than only by the writer, because the path ID whose
+    // frame it stands for can be freed before the frame is written. Only
+    // lowered: raising it is QuicPathIDSetCidsBlocked's job, and doing it here
+    // would risk raising it for a packet the writer cannot put the frame in --
+    // it writes only at 1-RTT.
+    //
+    if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED) &&
+        !QuicSendPathCidsBlockedPending(Connection)) {
+        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED;
     }
 
     QUIC_PATH* Path;
