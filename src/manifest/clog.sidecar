@@ -10710,6 +10710,22 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "PeerCidsBlocked": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Peer is out of CIDs for path ID %llu; issuing more",
+      "UniqueId": "PeerCidsBlocked",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "PeerConnFCBlocked": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Peer Connection FC blocked (%llu)",
@@ -11723,6 +11739,18 @@
         }
       ],
       "macroName": "QuicTraceLogConnVerbose"
+    },
+    "ReconcileDeferredNoDestCid": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler has no destination CID for a new path; retrying later",
+      "UniqueId": "ReconcileDeferredNoDestCid",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
     },
     "ReconcileMigrateAbandoned": {
       "ModuleProperites": {},
@@ -19198,6 +19226,11 @@
         "EncodingString": "[conn][%p] Path[%hhu] validation timed out"
       },
       {
+        "UniquenessHash": "07c6e591-41d5-b391-ece1-1661dbb3e9f8",
+        "TraceID": "PeerCidsBlocked",
+        "EncodingString": "[conn][%p] Peer is out of CIDs for path ID %llu; issuing more"
+      },
+      {
         "UniquenessHash": "1d828295-7cdc-fd81-10d0-7bc5ca9f0ce7",
         "TraceID": "PeerConnFCBlocked",
         "EncodingString": "[conn][%p] Peer Connection FC blocked (%llu)"
@@ -19551,6 +19584,11 @@
         "UniquenessHash": "6c84760e-697e-511a-7eeb-14ea7d78d4c2",
         "TraceID": "ReconcileCreateHeldDownFor",
         "EncodingString": "[conn][%p] Reconciler held down opening paths for %llu us"
+      },
+      {
+        "UniquenessHash": "c993beb7-b05c-66d6-7fa7-677e5604cfb1",
+        "TraceID": "ReconcileDeferredNoDestCid",
+        "EncodingString": "[conn][%p] Reconciler has no destination CID for a new path; retrying later"
       },
       {
         "UniquenessHash": "4e629e20-48c1-7e50-e8e0-623b9071339d",

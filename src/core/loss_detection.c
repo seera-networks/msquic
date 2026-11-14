@@ -1121,6 +1121,28 @@ QuicLossDetectionRetransmitFrames(
                     QUIC_CONN_SEND_FLAG_PATHS_BLOCKED);
             break;
 
+        case QUIC_FRAME_PATH_CIDS_BLOCKED: {
+            //
+            // The shortage is still the shortage until the peer answers it, so
+            // a lost frame has to go again. Asked of the current state rather
+            // than of the lost frame: which path ID it named is not recorded
+            // in the sent-packet metadata, and the useful question is which
+            // path IDs are short *now* -- the peer may have served the one
+            // this frame was about and left another waiting.
+            //
+            QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+            uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+            QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
+            for (uint8_t j = 0; j < PathIDCount; ++j) {
+                if (QuicPathIDGetUnusedDestCid(PathIDs[j]) == NULL) {
+                    QuicPathIDSetCidsBlocked(PathIDs[j]);
+                    NewDataQueued = TRUE;
+                }
+                QuicPathIDRelease(PathIDs[j], QUIC_PATHID_REF_LOOKUP);
+            }
+            break;
+        }
+
         case QUIC_FRAME_HANDSHAKE_DONE:
             NewDataQueued |=
                 QuicSendSetSendFlag(

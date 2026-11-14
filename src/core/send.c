@@ -1393,6 +1393,82 @@ QuicSendWriteFrames(
             }
         }
 
+        if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED)) {
+
+            //
+            // One path ID per frame, because the frame names one. The
+            // connection flag stays up while any other path ID is still
+            // blocked, so the next packet carries the next one.
+            //
+            // Written here rather than in a per-path function like the
+            // challenges: what the frame is about is a path ID's connection
+            // IDs, not a path's 4-tuple, so it does not matter which path it
+            // travels on -- and a blocked path ID may have no path to travel
+            // on at all, which is the case it exists for.
+            //
+            QUIC_PATHID* Blocked = NULL;
+            QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+            uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+            QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
+            for (uint8_t i = 0; i < PathIDCount; ++i) {
+                if (Blocked == NULL && PathIDs[i]->Flags.SendCidsBlocked) {
+                    Blocked = PathIDs[i];
+                } else {
+                    QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+                }
+            }
+
+            if (Blocked == NULL) {
+                //
+                // Every blocked path ID has since been served or gone away.
+                //
+                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED;
+            } else {
+                QUIC_PATH_CIDS_BLOCKED_EX Frame;
+                Frame.PathID = Blocked->ID;
+                Frame.NextSequenceNumber =
+                    QuicPathIDNextDestCidSequenceNumber(Blocked);
+
+                if (QuicPathCidsBlockedFrameEncode(
+                        &Frame,
+                        &Builder->DatagramLength,
+                        AvailableBufferLength,
+                        Builder->Datagram->Buffer)) {
+
+                    Blocked->Flags.SendCidsBlocked = FALSE;
+                    //
+                    // Cleared only when this was the last one, so the flag
+                    // carries the rest.
+                    //
+                    BOOLEAN More = FALSE;
+                    QUIC_PATHID* Rest[QUIC_ACTIVE_PATH_ID_LIMIT];
+                    uint8_t RestCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+                    QuicPathIDSetGetPathIDs(&Connection->PathIDs, Rest, &RestCount);
+                    for (uint8_t i = 0; i < RestCount; ++i) {
+                        if (Rest[i]->Flags.SendCidsBlocked) {
+                            More = TRUE;
+                        }
+                        QuicPathIDRelease(Rest[i], QUIC_PATHID_REF_LOOKUP);
+                    }
+                    if (!More) {
+                        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED;
+                    }
+
+                    QuicPathIDRelease(Blocked, QUIC_PATHID_REF_LOOKUP);
+                    if (QuicPacketBuilderAddFrame(
+                            Builder, QUIC_FRAME_PATH_CIDS_BLOCKED, TRUE)) {
+                        return TRUE;
+                    }
+                    Blocked = NULL;
+                } else {
+                    RanOutOfRoom = TRUE;
+                }
+                if (Blocked != NULL) {
+                    QuicPathIDRelease(Blocked, QUIC_PATHID_REF_LOOKUP);
+                }
+            }
+        }
+
         if (Send->SendFlags & QUIC_CONN_SEND_FLAG_ACK_FREQUENCY) {
 
             QUIC_ACK_FREQUENCY_EX Frame;

@@ -35,6 +35,15 @@ typedef union QUIC_PATHID_FLAGS {
         BOOLEAN PeerBlocked             : 1;    // The path id is blocked by peer restriction.
         BOOLEAN PathRemovedIndicated    : 1;    // PATH_REMOVED has been given to the application.
         BOOLEAN RemovedAddressesValid   : 1;    // Removed*Address hold the detached path's addresses.
+        //
+        // A PATH_CIDS_BLOCKED for this path ID needs to go out: something
+        // wanted a destination CID for it and there was none unused.
+        //
+        // On the path ID rather than the path, because the shortage is the
+        // path ID's -- the path that wanted one may not exist yet, which is
+        // exactly the case that cannot be opened without it.
+        //
+        BOOLEAN SendCidsBlocked         : 1;
     };
 } QUIC_PATHID_FLAGS;
 
@@ -403,6 +412,18 @@ QuicPathIDGetSourceCidFromBuf(
     }
     return NULL;
 }
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_VAR_INT
+QuicPathIDNextDestCidSequenceNumber(
+    _In_ const QUIC_PATHID* PathID
+    );
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicPathIDSetCidsBlocked(
+    _In_ QUIC_PATHID* PathID
+    );
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_CID_LIST_ENTRY*

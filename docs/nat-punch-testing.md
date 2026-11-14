@@ -138,15 +138,33 @@ held. `QuicConnOpenNewPath` now generates the CIDs when the path is opened, and
 `QuicSendPathChallenges` re-arms the send flag and traces when it cannot start
 a packet, so a dropped challenge is no longer silent.
 
-**A residual remains.** The fix moved the rate a long way but did not close it:
-**7 of 11 runs failed before, 2 of 15 after** — one of those inside the full
-suite, one standalone — always one cycle short of validating rather than the
-wholesale failure seen before. It is not the same defect: the skip that
-produced #196 no longer occurs, and an instrumented build has never reproduced
-the remainder in 9 runs, which points at either a second and rarer path or this
-case racing the stack. The assertion is therefore left in place — it fails
-loudly if the main defect returns, and the per-cycle counts it prints say which
-cycle fell short.
+**The residual had a second cause, now fixed too.** The source CIDs were only
+half of it. A path whose *path id* had no unused destination CID had its
+challenge deferred -- `QuicConnOpenNewPath` says as much -- and nothing asked
+the peer for one, because `PATH_CIDS_BLOCKED`, the frame that exists to ask,
+had no writer and a receive handler that decoded it and dropped it. So the
+deferral waited on an event nothing requested, and a restored address got a
+usable path only when the peer happened to issue CIDs for reasons of its own.
+
+The reconciler now declines to open a path it could not use, asks, and comes
+back a hold-down later; the peer answers by issuing CIDs for that path id. In a
+traced run the deferral went from firing 88 times and never resolving to firing
+two or three times, each answered at once.
+
+Finding it needed two things worth keeping. `--keep-logs` preserves each role's
+log, and the case prints per cycle both what its own window saw and what the
+whole file held at that moment -- which is how "the window was too tight" gets
+told apart from "nothing happened". It also waits for the path to *appear*
+rather than for a fixed number of polls, because a retrying reconciler makes
+"not yet" a legitimate state.
+
+One of the measurements along the way was wrong, and the reason is worth
+recording: the script runs under `set -o pipefail`, and assertions that ended
+in `… | grep -q` reported failure on a *match*, because `grep -q` exits at the
+first hit and the producer dies of SIGPIPE. It only bites when the producer
+still has output to write, so it hid on small logs and surfaced on a tracing
+build's large ones. Use `grep -c` into a variable at the end of a pipeline, not
+`grep -q`.
 
 ## Reading a run
 
