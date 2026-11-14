@@ -37,6 +37,7 @@ set(SOURCES
     pathid_set.c
     pathid.c
     path.c
+    qmux.c
     range.c
     recv_buffer.c
     registration.c

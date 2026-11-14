@@ -248,6 +248,7 @@ typedef struct QUIC_RX_PACKET QUIC_RX_PACKET;
 //
 #define QUIC_DEFAULT_STREAM_RECV_BUFFER_SIZE    0x1000  // 4096
 
+#define QX_DEFAULT_SEND_BUFFER_SIZE             (0x4000 - 2) // 16382
 //
 // The default connection flow control window value, in bytes.
 //
@@ -742,14 +743,21 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_TP_FLAG_SERVER_MIGRATION                       0x08000000
 #define QUIC_TP_FLAG_INITIAL_MAX_PATH_ID                    0x20000000
 //
-// 0x40000000 is deliberately skipped: the QMux branch uses it for
-// QX_TP_FLAG_MAX_RECORD_SIZE, and taking it here would re-conflict on every
-// merge of this branch into that one.
+// The bit seera-main deliberately skips for this branch, which is why this
+// merge did not have to renumber it.
 //
+#define QX_TP_FLAG_MAX_RECORD_SIZE                          0x40000000
 #define QUIC_TP_FLAG_ALTERNATIVE_ADDRESS                    0x80000000
 //
 // Which is where Flags ran out of 32 bits, so it is a uint64_t now and this
 // is the first parameter above the old boundary.
+//
+// Neither flag below bit 32 needs a ULL suffix for the one site that clears
+// one (QuicCryptoTlsCleanupTransportParameters, on VERSION_NEGOTIATION):
+// 0x00080000 and 0x40000000 both fit in int, so ~ yields a negative int that
+// sign-extends and leaves the high bits alone. 0x80000000 does not fit, so it
+// is unsigned and ~ zero-extends -- ALTERNATIVE_ADDRESS would silently clear
+// STATELESS_PUNCH if anything ever cleared it that way. Nothing does today.
 //
 #define QUIC_TP_FLAG_STATELESS_PUNCH                        0x100000000ULL
 
@@ -767,6 +775,7 @@ CXPLAT_STATIC_ASSERT(
 #define QUIC_TP_ACTIVE_CONNECTION_ID_LIMIT_DEFAULT          2
 #define QUIC_TP_ACTIVE_CONNECTION_ID_LIMIT_MIN              2
 
+#define QX_TP_MAX_RECORD_SIZE_DEFAULT                      (0x4000 - 2)
 //
 // Max allowed value of a MAX_STREAMS frame or transport parameter.
 // Any larger value would allow a max stream ID that cannot be expressed

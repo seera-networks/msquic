@@ -615,6 +615,12 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestMultipathPathsAreMeasured);
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 #endif // QUIC_TEST_DATAPATH_HOOKS_ENABLED
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+    RegisterTestFunction(QuicTestQMuxConnect);
+    RegisterTestFunction(QuicTestQMuxStreamData);
+    RegisterTestFunction(QuicTestQMuxKeepAlive);
+    RegisterTestFunction(QuicTestQMuxDatagramBurst);
+#endif // QUIC_API_ENABLE_PREVIEW_FEATURES
     RegisterTestFunction(QuicTestChangeMaxStreamID);
 #if QUIC_TEST_DATAPATH_HOOKS_ENABLED
     RegisterTestFunction(QuicTestLoadBalancedHandshake);

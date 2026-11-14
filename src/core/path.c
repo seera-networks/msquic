@@ -663,12 +663,15 @@ QuicConnChoosePath(
         }
     }
 
+    //
+    // QMux connections have no PathID to report.
+    //
     QuicTraceLogConnInfo(
         PathChosen,
         Connection,
         "Path[%hhu][PathID][%u] Chosen",
         Path->ID,
-        Path->PathID->ID);
+        Path->PathID == NULL ? 0 : Path->PathID->ID);
 
     return Path;
 }

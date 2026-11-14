@@ -132,9 +132,9 @@ TRACEPOINT_EVENT(CLOG_SEND_C, MtuProbeTruncated,
 // Decoder Ring for EcnValidationUnknown
 // [conn][%p] ECN unknown.
 // QuicTraceLogConnInfo(
-                    EcnValidationUnknown,
-                    Connection,
-                    "ECN unknown.");
+                        EcnValidationUnknown,
+                        Connection,
+                        "ECN unknown.");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_SEND_C, EcnValidationUnknown,

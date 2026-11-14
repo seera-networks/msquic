@@ -118,15 +118,17 @@ QuicSendCanSendFlagsNow(
     )
 {
     QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
-    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): False positive: embedded Send is valid.
-    if (Connection->Crypto.TlsState.WriteKey < QUIC_PACKET_KEY_1_RTT) {
-        if (Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_0_RTT] != NULL &&
-            CxPlatListIsEmpty(&Send->SendStreams)) {
-            return TRUE;
-        }
-        if ((!Connection->State.Started && QuicConnIsClient(Connection)) ||
-            !(Send->SendFlags & QUIC_CONN_SEND_FLAG_ALLOWED_HANDSHAKE)) {
-            return FALSE;
+    if (!QuicConnIsQMux(Connection)) {
+        // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): False positive: embedded Send is valid.
+        if (Connection->Crypto.TlsState.WriteKey < QUIC_PACKET_KEY_1_RTT) {
+            if (Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_0_RTT] != NULL &&
+                CxPlatListIsEmpty(&Send->SendStreams)) {
+                return TRUE;
+            }
+            if ((!Connection->State.Started && QuicConnIsClient(Connection)) ||
+                !(Send->SendFlags & QUIC_CONN_SEND_FLAG_ALLOWED_HANDSHAKE)) {
+                return FALSE;
+            }
         }
     }
     return TRUE;
@@ -421,7 +423,8 @@ QuicSendSetSendFlag(
         !!(SendFlags & (QUIC_CONN_SEND_FLAG_CONNECTION_CLOSE | QUIC_CONN_SEND_FLAG_APPLICATION_CLOSE));
 
     const BOOLEAN CanSetFlag =
-        !QuicConnIsClosed(Connection) || (!Connection->State.ClosedSilently && IsCloseFrame);
+        (!QuicConnIsQMux(Connection) && (!QuicConnIsClosed(Connection) || (!Connection->State.ClosedSilently && IsCloseFrame))) ||
+        (QuicConnIsQMux(Connection) && (QuicConnGetQMux(Connection)->TlsState.HandshakeComplete || QuicConnGetQMux(Connection)->PermitEarlyData));
 
     if (SendFlags & QUIC_CONN_SEND_FLAG_ACK && Send->DelayedAckTimerActive) {
         QuicConnTimerCancel(Connection, QUIC_CONN_TIMER_ACK_DELAY);
@@ -660,7 +663,12 @@ QuicSendWriteFrames(
     uint8_t PrevFrameCount = Builder->Metadata->FrameCount;
     BOOLEAN RanOutOfRoom = FALSE;
 
-    BOOLEAN IsCongestionControlBlocked = !QuicPacketBuilderHasAllowance(Builder);
+    //
+    // QMux connections run over TCP and have no PathID, and therefore no
+    // congestion control of their own, so they are never CC blocked.
+    //
+    BOOLEAN IsCongestionControlBlocked =
+        !QuicConnIsQMux(Connection) && !QuicPacketBuilderHasAllowance(Builder);
 
     BOOLEAN Is1RttEncryptionLevel =
         Builder->Metadata->Flags.KeyType == QUIC_PACKET_KEY_1_RTT ||
@@ -674,13 +682,93 @@ QuicSendWriteFrames(
     // specific frames.
     //
 
-    BOOLEAN WroteAckFrames;
-    if (QuicSendWritePathAckFrames(Connection, Builder, TRUE, &WroteAckFrames)) {
-        RanOutOfRoom = TRUE;
-        goto Exit;
+    if (!QuicConnIsQMux(Connection)) {
+        BOOLEAN WroteAckFrames;
+        if (QuicSendWritePathAckFrames(Connection, Builder, TRUE, &WroteAckFrames)) {
+            RanOutOfRoom = TRUE;
+            goto Exit;
+        }
     }
 
-    if (!IsCongestionControlBlocked &&
+    if (QuicConnIsQMux(Connection) &&
+        Send->SendFlags & QUIC_CONN_SEND_FLAG_QX_TRANSPORT_PARAMETERS
+    ) {
+        QUIC_TRANSPORT_PARAMETERS LocalTP = { 0 };
+        QUIC_STATUS Status = QuicConnGenerateLocalTransportParameters(Connection, &LocalTP);
+        if (QUIC_FAILED(Status)) {
+            goto Exit;
+        }
+        QX_TRANSPORT_PARAMETERS_EX Frame = { 0 };
+        Frame.TP = QuicCryptoTlsEncodeTransportParameters(
+            Connection,
+            QuicConnIsServer(Connection),
+            &LocalTP,
+            NULL,
+            (uint32_t *)&Frame.Length);
+        if (Frame.TP == NULL) {
+            // XXX - This is a failure case that we should handle better.
+            QuicCryptoTlsCleanupTransportParameters(&LocalTP);
+            goto Exit;
+        }
+        if (QxTransportParametersFrameEncode(
+                &Frame,
+                &Builder->DatagramLength,
+                AvailableBufferLength,
+                Builder->Datagram->Buffer)) {
+            if (QuicPacketBuilderAddFrame(Builder, QX_FRAME_TRANSPORT_PARAMETERS, FALSE)) {
+                CXPLAT_FREE(Frame.TP, QUIC_POOL_TLS_TRANSPARAMS);
+                QuicCryptoTlsCleanupTransportParameters(&LocalTP);
+                return TRUE;
+            }
+            Connection->State.LocalTPSent = TRUE;
+            Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_QX_TRANSPORT_PARAMETERS;
+        } else {
+            RanOutOfRoom = TRUE;
+        }
+        CXPLAT_FREE(Frame.TP, QUIC_POOL_TLS_TRANSPARAMS);
+        QuicCryptoTlsCleanupTransportParameters(&LocalTP);
+    }
+
+    if (QuicConnIsQMux(Connection) &&
+        Send->SendFlags & QUIC_CONN_SEND_FLAG_QX_PING
+    ) {
+        QUIC_QMUX* QMux = QuicConnGetQMux(Connection);
+        QX_PING_EX Frame = { QMux->NextPingSequenceNumber++, FALSE };
+        if (QxPingFrameEncode(
+                &Frame,
+                &Builder->DatagramLength,
+                AvailableBufferLength,
+                Builder->Datagram->Buffer)) {
+            if (QuicPacketBuilderAddFrame(Builder, QX_FRAME_PING, FALSE)) {
+                return TRUE;
+            }
+            Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_QX_PING;
+        } else {
+            RanOutOfRoom = TRUE;
+        }
+    }
+
+    if (QuicConnIsQMux(Connection) &&
+        Send->SendFlags & QUIC_CONN_SEND_FLAG_QX_PING_RESPONSE
+    ) {
+        QUIC_QMUX* QMux = QuicConnGetQMux(Connection);
+        QX_PING_EX Frame = { QMux->RecvPingSequenceNumber, TRUE };
+        if (QxPingFrameEncode(
+                &Frame,
+                &Builder->DatagramLength,
+                AvailableBufferLength,
+                Builder->Datagram->Buffer)) {
+            if (QuicPacketBuilderAddFrame(Builder, QX_FRAME_PING_1, FALSE)) {
+                return TRUE;
+            }
+            Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_QX_PING_RESPONSE;
+        } else {
+            RanOutOfRoom = TRUE;
+        }
+    }
+
+    if (!QuicConnIsQMux(Connection) &&
+        !IsCongestionControlBlocked &&
         Send->SendFlags & QUIC_CONN_SEND_FLAG_CRYPTO) {
         if (QuicCryptoWriteFrames(&Connection->Crypto, Builder)) {
             if (Builder->Metadata->FrameCount == QUIC_MAX_FRAMES_PER_PACKET) {
@@ -691,7 +779,7 @@ QuicSendWriteFrames(
         }
     }
 
-    if (Send->SendFlags & (QUIC_CONN_SEND_FLAG_CONNECTION_CLOSE | QUIC_CONN_SEND_FLAG_APPLICATION_CLOSE)) {
+    if ((Send->SendFlags & (QUIC_CONN_SEND_FLAG_CONNECTION_CLOSE | QUIC_CONN_SEND_FLAG_APPLICATION_CLOSE))) {
         BOOLEAN IsApplicationClose =
             !!(Send->SendFlags & QUIC_CONN_SEND_FLAG_APPLICATION_CLOSE);
         if (Connection->State.ClosedRemotely) {
@@ -706,7 +794,7 @@ QuicSendWriteFrames(
         QUIC_VAR_INT CloseErrorCode = Connection->CloseErrorCode;
         char* CloseReasonPhrase = Connection->CloseReasonPhrase;
 
-        if (IsApplicationClose && ! Is1RttEncryptionLevel) {
+        if (!QuicConnIsQMux(Connection) && IsApplicationClose && ! Is1RttEncryptionLevel) {
             //
             // A CONNECTION_CLOSE of type 0x1d MUST be replaced by a CONNECTION_CLOSE of
             // type 0x1c when sending the frame in Initial or Handshake packets. Otherwise,
@@ -743,9 +831,11 @@ QuicSendWriteFrames(
             // WriteKey is 0-RTT, the frame just got written at Initial and
             // that is the only level it can ever go out at.
             //
-            if (Connection->Crypto.TlsState.WriteKey == QUIC_PACKET_KEY_0_RTT ||
+            if (QuicConnIsQMux(Connection) || 
+                Connection->Crypto.TlsState.WriteKey == QUIC_PACKET_KEY_0_RTT ||
                 Builder->Key->Type == Connection->Crypto.TlsState.WriteKey) {
                 CXPLAT_DBG_ASSERT(
+                   QuicConnIsQMux(Connection) || 
                    Connection->Crypto.TlsState.WriteKey != QUIC_PACKET_KEY_0_RTT ||
                    Builder->Key->Type == QUIC_PACKET_KEY_INITIAL);
                 Send->SendFlags &= ~(QUIC_CONN_SEND_FLAG_CONNECTION_CLOSE | QUIC_CONN_SEND_FLAG_APPLICATION_CLOSE);
@@ -760,7 +850,7 @@ QuicSendWriteFrames(
         return TRUE;
     }
 
-    if (IsCongestionControlBlocked) {
+    if (!QuicConnIsQMux(Connection) && IsCongestionControlBlocked) {
         //
         // Everything below this is not allowed to be sent while CC blocked.
         //
@@ -885,9 +975,10 @@ QuicSendWriteFrames(
         }
     }
 
-    if (Is1RttEncryptionLevel) {
-        if (Builder->Metadata->Flags.KeyType == QUIC_PACKET_KEY_1_RTT &&
-            Send->SendFlags & QUIC_CONN_SEND_FLAG_HANDSHAKE_DONE) {
+    if (QuicConnIsQMux(Connection) || Is1RttEncryptionLevel) {
+        if (!QuicConnIsQMux(Connection) &&
+            Builder->Metadata->Flags.KeyType == QUIC_PACKET_KEY_1_RTT &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_HANDSHAKE_DONE)) {
 
             if (Builder->DatagramLength < AvailableBufferLength) {
                 Builder->Datagram->Buffer[Builder->DatagramLength++] = QUIC_FRAME_HANDSHAKE_DONE;
@@ -901,7 +992,8 @@ QuicSendWriteFrames(
             }
         }
 
-        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS) {
+        if (!QuicConnIsQMux(Connection) &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS)) {
 
             //
             // One frame carrying the server's whole advertised set, per
@@ -999,7 +1091,8 @@ QuicSendWriteFrames(
             }
         }
 
-        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_ADD_ADDRESS) {
+        if (!QuicConnIsQMux(Connection) &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_ADD_ADDRESS)) {
 
             CXPLAT_LIST_ENTRY* Entry;
             for (Entry = Connection->BoundAddresses.Flink;
@@ -1058,7 +1151,8 @@ QuicSendWriteFrames(
             }
         }
 
-        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_REMOVE_ADDRESS) {
+        if (!QuicConnIsQMux(Connection) &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_REMOVE_ADDRESS)) {
 
             CXPLAT_LIST_ENTRY* Entry;
             for (Entry = Connection->BoundAddresses.Flink;
@@ -1105,7 +1199,8 @@ QuicSendWriteFrames(
             }
         }
 
-        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW) {
+        if (!QuicConnIsQMux(Connection) &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW)) {
 
             //
             // One request per packet, and this one is a correctness
@@ -1317,7 +1412,8 @@ QuicSendWriteFrames(
             }
         }
 
-        if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_NEW_CONNECTION_ID)) {
+        if (!QuicConnIsQMux(Connection) &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_NEW_CONNECTION_ID)) {
             BOOLEAN HasMoreCidsToSend = FALSE;
             BOOLEAN MaxFrameLimitHit = FALSE;
             if (!QuicPathIDSetWriteNewConnectionIDFrame(
@@ -1336,7 +1432,8 @@ QuicSendWriteFrames(
             }
         }
 
-        if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_RETIRE_CONNECTION_ID)) {
+        if (!QuicConnIsQMux(Connection) &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_RETIRE_CONNECTION_ID)) {
             BOOLEAN HasMoreCidsToSend = FALSE;
             BOOLEAN MaxFrameLimitHit = FALSE;
             if (!QuicPathIDSetWriteRetireConnectionIDFrame(
@@ -1393,7 +1490,8 @@ QuicSendWriteFrames(
             }
         }
 
-        if (Send->SendFlags & QUIC_CONN_SEND_FLAG_ACK_FREQUENCY) {
+        if (!QuicConnIsQMux(Connection) &&
+            (Send->SendFlags & QUIC_CONN_SEND_FLAG_ACK_FREQUENCY)) {
 
             QUIC_ACK_FREQUENCY_EX Frame;
             Frame.SequenceNumber = Connection->SendAckFreqSeqNum;
@@ -1471,7 +1569,7 @@ QuicSendCanSendStreamNow(
 
     QUIC_CONNECTION* Connection = Stream->Connection;
 
-    if (Connection->Crypto.TlsState.WriteKey == QUIC_PACKET_KEY_1_RTT) {
+    if (QuicConnIsQMux(Connection) || Connection->Crypto.TlsState.WriteKey == QUIC_PACKET_KEY_1_RTT) {
         return QuicStreamCanSendNow(Stream, FALSE);
     }
 
@@ -1501,7 +1599,6 @@ QuicSendGetNextStream(
         //
 
         QUIC_STREAM* Stream = CXPLAT_CONTAINING_RECORD(Entry, QUIC_STREAM, SendLink);
-
         //
         // Make sure, given the current state of the connection and the stream,
         // that we can use the stream to frame a packet.
@@ -2293,7 +2390,7 @@ QuicSendFlush(
 
     CXPLAT_DBG_ASSERT(!Connection->State.HandleClosed);
 
-    if (!CxPlatIsRouteReady(Connection, Path)) {
+    if (!QuicConnIsQMux(Connection) && !CxPlatIsRouteReady(Connection, Path)) {
         return TRUE;
     }
 
@@ -2304,7 +2401,7 @@ QuicSendFlush(
     }
     QuicConnRemoveOutFlowBlockedReason(Connection, QUIC_FLOW_BLOCKED_SCHEDULING);
 
-    if (Path->DestCid == NULL) {
+    if (!QuicConnIsQMux(Connection) && Path->DestCid == NULL) {
         return TRUE;
     }
 
@@ -2323,10 +2420,17 @@ QuicSendFlush(
         return TRUE;
     }
 
+    if (QuicConnIsQMux(Connection) &&
+        !QuicConnGetQMux(Connection)->TlsState.HandshakeComplete &&
+        !QuicConnGetQMux(Connection)->PermitEarlyData) {
+        return TRUE;
+    }
+
     //
     // Connection CID changes on idle state after an amount of time
     //
-    if (Connection->Settings.DestCidUpdateIdleTimeoutMs != 0 &&
+    if (!QuicConnIsQMux(Connection) && 
+        Connection->Settings.DestCidUpdateIdleTimeoutMs != 0 &&
         Send->LastFlushTimeValid &&
         CxPlatTimeDiff64(Send->LastFlushTime, TimeNow) >= MS_TO_US(Connection->Settings.DestCidUpdateIdleTimeoutMs)) {
         //
@@ -2356,7 +2460,7 @@ QuicSendFlush(
     // Send path challenges.
     // `QuicSendPathChallenges` might re-queue a path challenge immediately.
     //
-    if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_CHALLENGE) {
+    if (!QuicConnIsQMux(Connection) && Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_CHALLENGE) {
         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CHALLENGE;
         QuicSendPathChallenges(Send);
     }
@@ -2389,7 +2493,14 @@ QuicSendFlush(
     // resumption ticket processed before Start. Without the test
     // QuicSendObservedAddresses would assert on the missing write key.
     //
-    if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS) &&
+    // QMux is excluded the way it is at the other sites that reach a path's
+    // path ID. The loop's own PathID == NULL test would keep a QMux
+    // connection safe, but it re-raises the flag when it skips -- so without
+    // this the flag would stay set for the life of the connection and every
+    // flush would walk the paths for nothing.
+    //
+    if (!QuicConnIsQMux(Connection) &&
+        (Send->SendFlags & QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS) &&
         Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_1_RTT] != NULL) {
         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
         QuicSendObservedAddresses(Send);
@@ -2449,26 +2560,28 @@ QuicSendFlush(
     }
     _Analysis_assume_(Builder.Metadata != NULL);
 
-    if (Builder.Path->EcnValidationState == ECN_VALIDATION_CAPABLE) {
-        Builder.EcnEctSet = TRUE;
-    } else if (Builder.Path->EcnValidationState == ECN_VALIDATION_TESTING) {
-        if (Builder.Path->EcnTestingEndingTime != 0) {
-            if (!CxPlatTimeAtOrBefore64(TimeNow, Builder.Path->EcnTestingEndingTime)) {
-                Builder.Path->EcnValidationState = ECN_VALIDATION_UNKNOWN;
-                QuicTraceLogConnInfo(
-                    EcnValidationUnknown,
-                    Connection,
-                    "ECN unknown.");
+    if (!QuicConnIsQMux(Connection)) {
+        if (Builder.Path->EcnValidationState == ECN_VALIDATION_CAPABLE) {
+            Builder.EcnEctSet = TRUE;
+        } else if (Builder.Path->EcnValidationState == ECN_VALIDATION_TESTING) {
+            if (Builder.Path->EcnTestingEndingTime != 0) {
+                if (!CxPlatTimeAtOrBefore64(TimeNow, Builder.Path->EcnTestingEndingTime)) {
+                    Builder.Path->EcnValidationState = ECN_VALIDATION_UNKNOWN;
+                    QuicTraceLogConnInfo(
+                        EcnValidationUnknown,
+                        Connection,
+                        "ECN unknown.");
+                }
+            } else {
+                uint64_t ThreePtosInUs =
+                    QuicLossDetectionComputeProbeTimeout(
+                        &Connection->Paths[0].PathID->LossDetection,
+                        &Connection->Paths[0],
+                        QUIC_CLOSE_PTO_COUNT);
+                Builder.Path->EcnTestingEndingTime = TimeNow + ThreePtosInUs;
             }
-        } else {
-            uint64_t ThreePtosInUs =
-                QuicLossDetectionComputeProbeTimeout(
-                    &Connection->Paths[0].PathID->LossDetection,
-                    &Connection->Paths[0],
-                    QUIC_CLOSE_PTO_COUNT);
-            Builder.Path->EcnTestingEndingTime = TimeNow + ThreePtosInUs;
+            Builder.EcnEctSet = TRUE;
         }
-        Builder.EcnEctSet = TRUE;
     }
 
     QuicTraceEvent(
@@ -2488,7 +2601,8 @@ QuicSendFlush(
     uint32_t StreamPacketCount = 0;
     do {
 
-        if (Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
+        if (!QuicConnIsQMux(Connection) &&
+            Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
             QuicTraceLogConnVerbose(
                 AmplificationProtectionBlocked,
                 Connection,
@@ -2498,10 +2612,10 @@ QuicSendFlush(
         }
 
         uint64_t SendFlags = Send->SendFlags;
-        if (Connection->Crypto.TlsState.WriteKey < QUIC_PACKET_KEY_1_RTT) {
+        if (!QuicConnIsQMux(Connection) && Connection->Crypto.TlsState.WriteKey < QUIC_PACKET_KEY_1_RTT) {
             SendFlags &= QUIC_CONN_SEND_FLAG_ALLOWED_HANDSHAKE;
         }
-        if (Path->Allowance != UINT32_MAX) {
+        if (!QuicConnIsQMux(Connection) && Path->Allowance != UINT32_MAX) {
             //
             // Don't try to send datagrams until the peer's source address has
             // been validated because they might not fit in the limited space.
@@ -2509,7 +2623,7 @@ QuicSendFlush(
             SendFlags &= ~QUIC_CONN_SEND_FLAG_DATAGRAM;
         }
 
-        if (!QuicPacketBuilderHasAllowance(&Builder)) {
+        if (!QuicConnIsQMux(Connection) && !QuicPacketBuilderHasAllowance(&Builder)) {
             //
             // While we are CC blocked, very few things are still allowed to
             // be sent. If those are queued then we can still send.
@@ -2577,12 +2691,14 @@ QuicSendFlush(
                 break;
             }
 
-            //
-            // Write any ACK frames if we have them.
-            //
-            BOOLEAN WroteAckFrames;
-            QuicSendWritePathAckFrames(Connection, &Builder, FALSE, &WroteAckFrames);
-            WrotePacketFrames |= WroteAckFrames;
+            if (!QuicConnIsQMux(Connection)) {
+                //
+                // Write any ACK frames if we have them.
+                //
+                BOOLEAN WroteAckFrames;
+                QuicSendWritePathAckFrames(Connection, &Builder, FALSE, &WroteAckFrames);
+                WrotePacketFrames |= WroteAckFrames;
+            }
 
             //
             // Write the stream frames.
@@ -2625,7 +2741,8 @@ QuicSendFlush(
             // We now have enough data in the current packet that we should
             // finalize it.
             //
-            if (!QuicPacketBuilderFinalize(&Builder, !WrotePacketFrames || FlushBatchedDatagrams)) {
+            if ((!QuicConnIsQMux(Connection) && !QuicPacketBuilderFinalize(&Builder, !WrotePacketFrames || FlushBatchedDatagrams)) ||
+                (QuicConnIsQMux(Connection) && !QuicPacketBuilderQMuxFinalize(&Builder, !WrotePacketFrames || FlushBatchedDatagrams))) {
                 //
                 // Don't have any more space to send.
                 //
@@ -2647,7 +2764,11 @@ QuicSendFlush(
         //
         // Final send, if there is anything left over.
         //
-        QuicPacketBuilderFinalize(&Builder, TRUE);
+        if (!QuicConnIsQMux(Connection)) {
+            QuicPacketBuilderFinalize(&Builder, TRUE);
+        } else {
+            QuicPacketBuilderQMuxFinalize(&Builder, TRUE);
+        }
         CXPLAT_DBG_ASSERT(Builder.SendData == NULL);
     }
 
