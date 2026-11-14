@@ -1251,6 +1251,24 @@ tracepoint(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for ReconcileDeferredNoPathID
+// [conn][%p] Reconciler has no unused path ID for a new path; retrying later
+// QuicTraceLogConnInfo(
+                    ReconcileDeferredNoPathID,
+                    Connection,
+                    "Reconciler has no unused path ID for a new path; retrying later");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileDeferredNoPathID
+#define _clog_3_ARGS_TRACE_ReconcileDeferredNoPathID(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileDeferredNoPathID , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ReconcileAddPathFailed
 // [conn][%p] Reconciler could not open a path, status=0x%x
 // QuicTraceLogConnInfo(

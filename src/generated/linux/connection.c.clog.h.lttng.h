@@ -1350,6 +1350,26 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid,
 
 
 
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileDeferredNoPathID
+// [conn][%p] Reconciler has no unused path ID for a new path; retrying later
+// QuicTraceLogConnInfo(
+                    ReconcileDeferredNoPathID,
+                    Connection,
+                    "Reconciler has no unused path ID for a new path; retrying later");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileDeferredNoPathID,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
 /*----------------------------------------------------------
 // Decoder Ring for ReconcileAddPathFailed
 // [conn][%p] Reconciler could not open a path, status=0x%x

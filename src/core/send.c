@@ -645,6 +645,33 @@ QuicSendStatelessPunchPending(
     return FALSE;
 }
 
+//
+// Whether any path ID still has a PATH_CIDS_BLOCKED to send. Needed for the
+// same reason the two above are, with one addition: a blocked path ID can be
+// freed while its frame is still queued -- abandoned by the validation timer,
+// say -- and then nothing would ever take the connection flag down, so every
+// later flush would build a packet for a frame that no longer has a subject.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicSendPathCidsBlockedPending(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    BOOLEAN Pending = FALSE;
+    QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
+    uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
+    QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
+    for (uint8_t i = 0; i < PathIDCount; ++i) {
+        if (PathIDs[i]->Flags.SendCidsBlocked) {
+            Pending = TRUE;
+        }
+        QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+    }
+    return Pending;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicSendWriteFrames(
@@ -2357,6 +2384,18 @@ QuicSendFlush(
     //
     if (QuicSendStatelessPunchPending(Connection)) {
         Send->SendFlags |= QUIC_CONN_SEND_FLAG_STATELESS_PUNCH_ME_NOW;
+    }
+
+    //
+    // Lowered here rather than only by the writer, because the path ID whose
+    // frame it stands for can be freed before the frame is written. Only
+    // lowered: raising it is QuicPathIDSetCidsBlocked's job, and doing it here
+    // would risk raising it for a packet the writer cannot put the frame in --
+    // it writes only at 1-RTT.
+    //
+    if ((Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED) &&
+        !QuicSendPathCidsBlockedPending(Connection)) {
+        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED;
     }
 
     QUIC_PATH* Path;

@@ -6954,6 +6954,17 @@ QuicConnRecvFrames(
                 QuicConnAssignPathIDs(Connection);
             }
 
+            //
+            // Whatever was waiting on a CID for this path ID is no longer
+            // waiting, so the request for one comes down. Done before the
+            // assignment below rather than after, because the assignment is
+            // not the only thing that was waiting: the reconciler was too, and
+            // it has no path yet to assign to.
+            //
+            if (QuicPathIDGetUnusedDestCid(PathID) != NULL) {
+                QuicPathIDClearCidsBlocked(PathID);
+            }
+
             if (QuicPathIDAssignCids(PathID)) {
                 QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CHALLENGE);
             }
@@ -7447,15 +7458,26 @@ QuicConnRecvFrames(
             // and dropped it -- so a peer in that state had no way out.
             //
             // The path ID is one of ours from the peer's point of view, so it
-            // is looked up as a peer-used id. Not created if missing: a
-            // shortage on a path ID that does not exist here is nothing this
-            // side can act on, and CreateIfMissing would let the frame
-            // conjure state.
+            // is looked up as a peer-used id, and created if it is not here
+            // yet -- as NEW_CONNECTION_ID does, and for a sharper reason.
+            // Looking one up without creating it is not a quiet miss:
+            // QuicPathIDSetGetPathIDForPeer answers a path ID inside the
+            // announced limit but not yet created with PROTOCOL_VIOLATION,
+            // which would end the connection. This frame is the one most
+            // exposed to that. The peer sends it about a path ID it holds and
+            // we have nothing provisioned on; our own NEW_CONNECTION_ID for
+            // that path ID is queued at creation, but if the packet carrying
+            // it is lost or arrives second, the shortage report gets here
+            // first and finds a path ID that does not exist yet.
+            //
+            // Creating costs nothing new: the id is within MaxPathID, the
+            // limit this side announced, so the peer could create it here with
+            // a NEW_CONNECTION_ID of its own at any time.
             //
             BOOLEAN FatalError = FALSE;
             QUIC_PATHID* PathID =
                 QuicPathIDSetGetPathIDForPeer(
-                    &Connection->PathIDs, Frame.PathID, FALSE, &FatalError);
+                    &Connection->PathIDs, Frame.PathID, TRUE, &FatalError);
             if (FatalError) {
                 return FALSE;
             }
@@ -11498,15 +11520,6 @@ QuicConnPunchableClientAddress(
 }
 
 //
-// Without it only one local address is in use at a time, so a second path is a
-// validation candidate rather than somewhere traffic goes. One per remote
-// address is therefore the limit: a pair that differs from an existing path
-// only in its local address is a migration, which is stage 4's decision to
-// make from the table's head and not something to pre-open a path for. That
-// limit is also what the advertised-address behaviour has always been -- one
-// probe path per address the server advertises -- so this keeps it rather than
-// multiplying it by the host's address count.
-//
 // Whether a path opened now could send anything.
 //
 // QuicConnOpenNewPath takes an unused destination CID for the path's path ID
@@ -11529,9 +11542,11 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 static
 BOOLEAN
 QuicConnReconcileCanOpenPath(
-    _In_ QUIC_CONNECTION* Connection
+    _In_ QUIC_CONNECTION* Connection,
+    _Out_ BOOLEAN* NoPathID
     )
 {
+    *NoPathID = FALSE;
     if (!Connection->State.MultipathNegotiated) {
         return TRUE;
     }
@@ -11540,8 +11555,11 @@ QuicConnReconcileCanOpenPath(
     if (PathID == NULL) {
         //
         // No path id either, which QuicConnOpenNewPath would turn into a
-        // failure of its own. Nothing to open.
+        // failure of its own. Nothing to open -- and told apart from the CID
+        // shortage by the caller, because the two want different things of the
+        // peer: MAX_PATH_ID for this one, connection IDs for the other.
         //
+        *NoPathID = TRUE;
         return FALSE;
     }
 
@@ -11561,6 +11579,15 @@ QuicConnReconcileCanOpenPath(
     return HasDestCid;
 }
 
+//
+// Without it only one local address is in use at a time, so a second path is a
+// validation candidate rather than somewhere traffic goes. One per remote
+// address is therefore the limit: a pair that differs from an existing path
+// only in its local address is a migration, which is stage 4's decision to
+// make from the table's head and not something to pre-open a path for. That
+// limit is also what the advertised-address behaviour has always been -- one
+// probe path per address the server advertises -- so this keeps it rather than
+// multiplying it by the host's address count.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -11668,6 +11695,45 @@ QuicConnReconcileCreatePaths(
         }
 
         //
+        // Asked before the path is made, not after: undoing a half-opened path
+        // means releasing a path id that QuicPathRemove does not return to the
+        // unused set, so each retry would burn one -- and the undo asserts on
+        // a fully opened path, which is not the half-added slot it is written
+        // for.
+        //
+        // Broken out of rather than skipped. Without a CID for one path id
+        // there is rarely one for the next, and the timer armed here is what
+        // brings the pass back once the peer has issued some.
+        //
+        // The retry interval is the hold-down window, or the default when the
+        // application has turned the window off -- which it may, but not into
+        // a reason to spin. Nothing goes on the wire per retry either way:
+        // QuicPathIDSetCidsBlocked asks once per shortage, not once per
+        // attempt.
+        //
+        BOOLEAN NoPathID = FALSE;
+        if (!QuicConnReconcileCanOpenPath(Connection, &NoPathID)) {
+            if (NoPathID) {
+                QuicTraceLogConnInfo(
+                    ReconcileDeferredNoPathID,
+                    Connection,
+                    "Reconciler has no unused path ID for a new path; retrying later");
+            } else {
+                QuicTraceLogConnInfo(
+                    ReconcileDeferredNoDestCid,
+                    Connection,
+                    "Reconciler has no destination CID for a new path; retrying later");
+            }
+            QuicConnTimerSet(
+                Connection,
+                QUIC_CONN_TIMER_RECONCILE,
+                MS_TO_US((uint64_t)(Connection->Settings.AutoMigrationHoldDownMs != 0 ?
+                    Connection->Settings.AutoMigrationHoldDownMs :
+                    QUIC_DEFAULT_AUTO_MIGRATION_HOLD_DOWN_MS)));
+            break;
+        }
+
+        //
         // The port the candidate registered, where there is one, rather than
         // an ephemeral one.
         //
@@ -11695,32 +11761,6 @@ QuicConnReconcileCreatePaths(
         // connected socket already holds, fail EADDRINUSE, and take
         // QuicConnAddPath down with it -- so no path and no punch request at
         // all, which is worse than probing from the wrong port.
-        //
-        //
-        // Asked before the path is made, not after: undoing a half-opened path
-        // means releasing a path id that QuicPathRemove does not return to the
-        // unused set, so each retry would burn one -- and the undo asserts on
-        // a fully opened path, which is not the half-added slot it is written
-        // for.
-        //
-        // Broken out of rather than skipped. Without a CID for one path id
-        // there is rarely one for the next, and the timer armed here is what
-        // brings the pass back once the peer has issued some.
-        //
-        if (!QuicConnReconcileCanOpenPath(Connection)) {
-            QuicTraceLogConnInfo(
-                ReconcileDeferredNoDestCid,
-                Connection,
-                "Reconciler has no destination CID for a new path; retrying later");
-            QuicConnTimerSet(
-                Connection,
-                QUIC_CONN_TIMER_RECONCILE,
-                MS_TO_US((uint64_t)(Connection->Settings.AutoMigrationHoldDownMs != 0 ?
-                    Connection->Settings.AutoMigrationHoldDownMs :
-                    QUIC_DEFAULT_AUTO_MIGRATION_HOLD_DOWN_MS)));
-            break;
-        }
-
         QUIC_ADDR Local = Pair->LocalAddress;
         QuicAddrSetPort(
             &Local,

@@ -52,6 +52,7 @@ ONLY=""
 KEEP=0
 VERBOSE=0
 KEEPLOGS=""
+CURCASE=""
 
 usage() {
     cat <<EOF
@@ -64,9 +65,9 @@ Usage: scripts/nat-punch-test.sh [options]
   --keep         Drop into a shell inside the topology when the cases finish.
   --verbose      Echo each role's output.
   --keep-logs <dir>
-                 Copy each role's log into <dir> as it finishes, so a run that
-                 fails can be read afterwards. With a tracing build this is
-                 how a failing case gets diagnosed.
+                 Copy each role's log into <dir>/<case>-<role>.log as the case
+                 finishes, so a run that fails can be read afterwards. With a
+                 tracing build this is how a failing case gets diagnosed.
   --help         This text.
 
 Exit status is the number of failed cases.
@@ -388,9 +389,15 @@ stop_roles() {
 dump_logs() {
     if [ -n "$KEEPLOGS" ]; then
         mkdir -p "$KEEPLOGS"
+        #
+        # Named per case. Every case calls this, so a single name per role
+        # would leave only the last case's logs -- and the run worth reading
+        # afterwards is usually the one that failed early.
+        #
         local Log
         for Log in relay srv cli; do
-            [ -f "$WORK/$Log.log" ] && cp "$WORK/$Log.log" "$KEEPLOGS/$Log.log"
+            [ -f "$WORK/$Log.log" ] &&
+                cp "$WORK/$Log.log" "$KEEPLOGS/${CURCASE:-case}-$Log.log"
         done
     fi
     [ "$VERBOSE" = "1" ] || return 0
@@ -732,8 +739,12 @@ case_multiaddr_return() {
         # how many intervals it takes depends on when the peer issues CIDs. A
         # fixed count turned that into a failure under load.
         #
+        # Bounded so three cycles fit inside the client's own lifetime:
+        # 4 + 3 * (4 + 20 + 6) = 94 polls of a second each against -time:110.
+        # Overrunning it would kill the client mid-cycle and score the cycle a
+        # failure for the wrong reason.
         local Appeared=0 Waited=0
-        while [ "$Waited" -lt 30 ]; do
+        while [ "$Waited" -lt 20 ]; do
             if last_poll_paths "$WORK/cli.log" | stdin_has "=$MCLI_B:"; then
                 Appeared=1
                 break
@@ -741,7 +752,7 @@ case_multiaddr_return() {
             wait_polls "$WORK/cli.log" 1 || break
             Waited=$((Waited+1))
         done
-        [ "$Appeared" = "1" ] || note "cycle $Cycle: no path on $MCLI_B within 30 polls"
+        [ "$Appeared" = "1" ] || note "cycle $Cycle: no path on $MCLI_B within 20 polls"
 
         #
         # Then a few more for the challenge and response, which is a round
@@ -977,6 +988,7 @@ case_observed() {
 # --------------------------------------------------------------------------
 
 run_one() { # <name>
+    CURCASE="$1"
     case "$1" in
         direct)    case_direct ;;
         strict)    case_strict ;;

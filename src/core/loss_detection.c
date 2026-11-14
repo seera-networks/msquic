@@ -1130,13 +1130,24 @@ QuicLossDetectionRetransmitFrames(
             // path IDs are short *now* -- the peer may have served the one
             // this frame was about and left another waiting.
             //
+            // A path ID is re-asked for only if its own request is still
+            // outstanding, which is not the same as its having no spare CID.
+            // A working path holds its CID locally and so has no unused one;
+            // re-asking on that basis would announce shortages that do not
+            // exist, one frame per path ID, every time any such frame was
+            // lost.
+            //
             QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
             uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
             QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
             for (uint8_t j = 0; j < PathIDCount; ++j) {
-                if (QuicPathIDGetUnusedDestCid(PathIDs[j]) == NULL) {
-                    QuicPathIDSetCidsBlocked(PathIDs[j]);
-                    NewDataQueued = TRUE;
+                if (PathIDs[j]->Flags.CidsBlocked &&
+                    !PathIDs[j]->Flags.SendCidsBlocked) {
+                    PathIDs[j]->Flags.SendCidsBlocked = TRUE;
+                    NewDataQueued |=
+                        QuicSendSetSendFlag(
+                            &Connection->Send,
+                            QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED);
                 }
                 QuicPathIDRelease(PathIDs[j], QUIC_PATHID_REF_LOOKUP);
             }

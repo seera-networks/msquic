@@ -152,7 +152,7 @@ traced run the deferral went from firing 88 times and never resolving to firing
 two or three times, each answered at once.
 
 Finding it needed two things worth keeping. `--keep-logs` preserves each role's
-log, and the case prints per cycle both what its own window saw and what the
+log per case, and the case prints per cycle both what its own window saw and what the
 whole file held at that moment -- which is how "the window was too tight" gets
 told apart from "nothing happened". It also waits for the path to *appear*
 rather than for a fixed number of polls, because a retrying reconciler makes

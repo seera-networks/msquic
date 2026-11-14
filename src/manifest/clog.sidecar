@@ -11752,6 +11752,18 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "ReconcileDeferredNoPathID": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Reconciler has no unused path ID for a new path; retrying later",
+      "UniqueId": "ReconcileDeferredNoPathID",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
     "ReconcileMigrateAbandoned": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Reconciler lost the path it was migrating onto",

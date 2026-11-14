@@ -562,7 +562,7 @@ QuicPathIDNextDestCidSequenceNumber(
 // there, every retry found no CID, and nothing asked.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
-void
+BOOLEAN
 QuicPathIDSetCidsBlocked(
     _In_ QUIC_PATHID* PathID
     )
@@ -573,14 +573,41 @@ QuicPathIDSetCidsBlocked(
         // Without multipath there is one CID space and NEW_CONNECTION_ID
         // covers it; this frame has no meaning.
         //
-        return;
+        return FALSE;
     }
-    if (PathID->Flags.SendCidsBlocked) {
-        return;
+    if (PathID->Flags.CidsBlocked) {
+        //
+        // Already asked and not yet answered, so asking again says nothing
+        // new. Callers that retry -- the reconciler does, every hold-down --
+        // get here on every attempt, and one frame per attempt would be both
+        // noise and, being ack-eliciting, a reason the connection could never
+        // idle out while the peer stayed unable to help.
+        //
+        // Loss is handled where loss is handled: the retransmit path re-raises
+        // SendCidsBlocked from this bit.
+        //
+        return FALSE;
     }
+    PathID->Flags.CidsBlocked = TRUE;
     PathID->Flags.SendCidsBlocked = TRUE;
     QuicSendSetSendFlag(
         &Connection->Send, QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED);
+    return TRUE;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicPathIDClearCidsBlocked(
+    _In_ QUIC_PATHID* PathID
+    )
+{
+    PathID->Flags.CidsBlocked = FALSE;
+    //
+    // A frame queued but not yet written is dropped with it. The connection
+    // flag is left to QuicSendFlush, which lowers it when no path ID has one
+    // waiting -- clearing it here would silence the path IDs that still do.
+    //
+    PathID->Flags.SendCidsBlocked = FALSE;
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
