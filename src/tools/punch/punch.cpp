@@ -548,6 +548,11 @@ RunServer(
     if (Multipath != 0) {
         Settings.SetMultipathEnabled(true);
     }
+    //
+    // The reports a NAT-traversal peer learns its own public mapping from, and
+    // the half this side provides.
+    //
+    Settings.SetSendObservedAddressReports(true);
 
     QUIC_CERTIFICATE_FILE CertFile = { KeyArg, CertArg };
     QUIC_CREDENTIAL_CONFIG Cred {};
@@ -636,6 +641,19 @@ ClientConnectionCallback(
     case QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED:
         EmitAddr("client_local_address_changed", Event->LOCAL_ADDRESS_CHANGED.Address);
         break;
+
+    case QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS: {
+        //
+        // Printed as the pair, because the pairing is the thing: the receiver
+        // takes the local address from the path the frame arrived on, so a
+        // report sent on the wrong path reports the wrong local address.
+        //
+        QUIC_ADDR_STR Local = { 0 }, Observed = { 0 };
+        QuicAddrToString(Event->NOTIFY_OBSERVED_ADDRESS.LocalAddress, &Local);
+        QuicAddrToString(Event->NOTIFY_OBSERVED_ADDRESS.ObservedAddress, &Observed);
+        Emit("client_observed=%s@%s", Observed.Address, Local.Address);
+        break;
+    }
 
     case QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED:
         EmitAddr("client_peer_address_changed", Event->PEER_ADDRESS_CHANGED.Address);
@@ -752,6 +770,12 @@ RunClient(
     if (Multipath != 0) {
         Settings.SetMultipathEnabled(true);
     }
+    //
+    // Asking for the reports is what lets this side see what the peer observes
+    // it as, which is where a candidate's observed address comes from in a
+    // real deployment.
+    //
+    Settings.SetReceiveObservedAddressReports(true);
 
     QUIC_CREDENTIAL_CONFIG Cred {};
     Cred.Type = QUIC_CREDENTIAL_TYPE_NONE;

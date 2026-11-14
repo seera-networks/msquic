@@ -37,7 +37,29 @@ QuicPathInitialize(
     Path->InUse = TRUE;
     Path->RemoteAddressSequenceNumberValid = FALSE;
     Path->RemoteAddressSequenceNumber = QUIC_VAR_INT_MAX;
+    //
+    // Every new path wants its observed address reported, and the connection
+    // flag has to go up with it or nothing will look. Raised here, at the one
+    // place every path is created, rather than at each of the three creation
+    // sites: QuicConnGetPathForPacket makes a path when a packet arrives from
+    // a 4-tuple the connection has none for, which is how a peer whose local
+    // address changed is first seen, and that is exactly the case that used to
+    // go unreported -- the path asked for a report and only
+    // QuicPathSetActive, on a migration that had not happened, ever raised the
+    // flag.
+    //
+    // Gated on negotiation, like QuicPathSetActive's own raise. For the
+    // initial path at connection setup the gate is closed and the two sites in
+    // QuicConnProcessPeerTransportParameters raise it instead, once the peer
+    // has asked for reports. QuicSendInitialize runs before this, so the send
+    // state is there to set.
+    //
     Path->SendObservedAddress = TRUE;
+    if (Connection->State.ObservedAddressNegotiated) {
+        QuicSendSetSendFlag(
+            &Connection->Send,
+            QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS);
+    }
     Path->MinRtt = UINT32_MAX;
     Path->Mtu = Connection->Settings.MinimumMtu;
     Path->SmoothedRtt = MS_TO_US(Connection->Settings.InitialRttMs);
