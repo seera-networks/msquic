@@ -1124,32 +1124,34 @@ QuicLossDetectionRetransmitFrames(
         case QUIC_FRAME_PATH_CIDS_BLOCKED: {
             //
             // The shortage is still the shortage until the peer answers it, so
-            // a lost frame has to go again. Asked of the current state rather
-            // than of the lost frame: which path ID it named is not recorded
-            // in the sent-packet metadata, and the useful question is which
-            // path IDs are short *now* -- the peer may have served the one
-            // this frame was about and left another waiting.
+            // a lost frame has to go again -- for the path ID it named, which
+            // the metadata records, and not for every path ID still short.
+            // Several can be short at once, each with a frame of its own in
+            // flight; re-asking for all of them because one packet was lost
+            // would duplicate requests the peer already has.
             //
-            // A path ID is re-asked for only if its own request is still
-            // outstanding, which is not the same as its having no spare CID.
-            // A working path holds its CID locally and so has no unused one;
-            // re-asking on that basis would announce shortages that do not
-            // exist, one frame per path ID, every time any such frame was
-            // lost.
+            // Asked of the shortage rather than of the CID list: a path ID is
+            // re-asked for only if its own request is still outstanding, which
+            // is not the same as its having no spare CID. A working path holds
+            // its CID locally and so has no unused one.
             //
-            QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
-            uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
-            QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
-            for (uint8_t j = 0; j < PathIDCount; ++j) {
-                if (PathIDs[j]->Flags.CidsBlocked &&
-                    !PathIDs[j]->Flags.SendCidsBlocked) {
-                    PathIDs[j]->Flags.SendCidsBlocked = TRUE;
+            BOOLEAN FatalError = FALSE;
+            QUIC_PATHID* PathID =
+                QuicPathIDSetGetPathIDForLocal(
+                    &Connection->PathIDs,
+                    Packet->Frames[i].PATH_CIDS_BLOCKED.PathID,
+                    &FatalError);
+            CXPLAT_DBG_ASSERT(!FatalError);
+            if (PathID != NULL) {
+                if (PathID->Flags.CidsBlocked &&
+                    !PathID->Flags.SendCidsBlocked) {
+                    PathID->Flags.SendCidsBlocked = TRUE;
                     NewDataQueued |=
                         QuicSendSetSendFlag(
                             &Connection->Send,
                             QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED);
                 }
-                QuicPathIDRelease(PathIDs[j], QUIC_PATHID_REF_LOOKUP);
+                QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
             }
             break;
         }

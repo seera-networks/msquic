@@ -452,6 +452,26 @@ QuicPathIDClearCidsBlocked(
     _In_ QUIC_PATHID* PathID
     );
 
+//
+// Whether this path ID still has a PATH_CIDS_BLOCKED to put on the wire. A
+// path ID being torn down does not ask for connection IDs -- the peer cannot
+// have been asked for a path ID it has been told to abandon -- and the
+// abandon can come from either side, so the question is asked of the flags
+// rather than cleared at each of the places a path ID can start dying.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+QUIC_INLINE
+BOOLEAN
+QuicPathIDHasCidsBlockedToSend(
+    _In_ const QUIC_PATHID* PathID
+    )
+{
+    return
+        PathID->Flags.SendCidsBlocked &&
+        !PathID->Flags.Abandoned &&
+        !PathID->Flags.Closed;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_CID_LIST_ENTRY*
 QuicPathIDGetUnusedDestCid(

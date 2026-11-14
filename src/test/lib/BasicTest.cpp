@@ -826,18 +826,12 @@ void QuicTestUnconnectedSocketActivatePath(const FamilyArgs& Params)
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(AfterAddr));
     TEST_EQUAL(MovedAddr.GetPort(), AfterAddr.GetPort());
 
-    //
-    // The remote address survives the move. An unconnected socket has none to
-    // read back, so taking it from the binding would leave the path with the
-    // zero address and nowhere to send.
-    //
     QuicAddr PeerAfterAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PeerAfterAddr));
     TEST_EQUAL(PeerAddr.GetPort(), PeerAfterAddr.GetPort());
-    TEST_FALSE(QuicAddrIsWildCard(&PeerAfterAddr.SockAddr));
 
     //
-    // And the moved binding is still one that a second remote address can be
+    // The moved binding is still one that a second remote address can be
     // reached through, which a connected socket would not be.
     //
     QuicAddr Peer2Addr = PeerAddr;
@@ -851,6 +845,28 @@ void QuicTestUnconnectedSocketActivatePath(const FamilyArgs& Params)
         TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(StillAfterAddr));
         TEST_EQUAL(AfterAddr.GetPort(), StillAfterAddr.GetPort());
     }
+
+    //
+    // Last, a move that changes the remote address as well, which is the only
+    // way to reach the code that used to read the remote address back from the
+    // binding. An unconnected socket has none to read, so the path would be
+    // left with the zero address and nowhere to send. Done last because the
+    // connection is pointed at a server that knows nothing about it.
+    //
+    QuicAddr MovedAgainAddr = ClientAddr;
+    Status = QUIC_STATUS_SUCCESS;
+    Try = 0;
+    do {
+        MovedAgainAddr.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam = { &MovedAgainAddr.SockAddr, &Peer2Addr.SockAddr };
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    QuicAddr PeerMovedAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PeerMovedAddr));
+    TEST_FALSE(QuicAddrIsWildCard(&PeerMovedAddr.SockAddr));
+    TEST_EQUAL(Peer2Addr.GetPort(), PeerMovedAddr.GetPort());
 }
 
 struct SharedBindingPathContext {

@@ -664,7 +664,7 @@ QuicSendPathCidsBlockedPending(
     uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
     QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
     for (uint8_t i = 0; i < PathIDCount; ++i) {
-        if (PathIDs[i]->Flags.SendCidsBlocked) {
+        if (QuicPathIDHasCidsBlockedToSend(PathIDs[i])) {
             Pending = TRUE;
         }
         QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
@@ -1434,15 +1434,19 @@ QuicSendWriteFrames(
             // on at all, which is the case it exists for.
             //
             QUIC_PATHID* Blocked = NULL;
+            uint8_t BlockedCount = 0;
             QUIC_PATHID* PathIDs[QUIC_ACTIVE_PATH_ID_LIMIT];
             uint8_t PathIDCount = QUIC_ACTIVE_PATH_ID_LIMIT;
             QuicPathIDSetGetPathIDs(&Connection->PathIDs, PathIDs, &PathIDCount);
             for (uint8_t i = 0; i < PathIDCount; ++i) {
-                if (Blocked == NULL && PathIDs[i]->Flags.SendCidsBlocked) {
-                    Blocked = PathIDs[i];
-                } else {
-                    QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
+                if (QuicPathIDHasCidsBlockedToSend(PathIDs[i])) {
+                    ++BlockedCount;
+                    if (Blocked == NULL) {
+                        Blocked = PathIDs[i];
+                        continue;
+                    }
                 }
+                QuicPathIDRelease(PathIDs[i], QUIC_PATHID_REF_LOOKUP);
             }
 
             if (Blocked == NULL) {
@@ -1465,21 +1469,15 @@ QuicSendWriteFrames(
                     Blocked->Flags.SendCidsBlocked = FALSE;
                     //
                     // Cleared only when this was the last one, so the flag
-                    // carries the rest.
+                    // carries the rest. Counted by the scan above, which has
+                    // already looked at every path ID.
                     //
-                    BOOLEAN More = FALSE;
-                    QUIC_PATHID* Rest[QUIC_ACTIVE_PATH_ID_LIMIT];
-                    uint8_t RestCount = QUIC_ACTIVE_PATH_ID_LIMIT;
-                    QuicPathIDSetGetPathIDs(&Connection->PathIDs, Rest, &RestCount);
-                    for (uint8_t i = 0; i < RestCount; ++i) {
-                        if (Rest[i]->Flags.SendCidsBlocked) {
-                            More = TRUE;
-                        }
-                        QuicPathIDRelease(Rest[i], QUIC_PATHID_REF_LOOKUP);
-                    }
-                    if (!More) {
+                    if (BlockedCount == 1) {
                         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED;
                     }
+
+                    Builder->Metadata->Frames[Builder->Metadata->FrameCount].PATH_CIDS_BLOCKED.PathID =
+                        (uint32_t)Frame.PathID;
 
                     QuicPathIDRelease(Blocked, QUIC_PATHID_REF_LOOKUP);
                     if (QuicPacketBuilderAddFrame(

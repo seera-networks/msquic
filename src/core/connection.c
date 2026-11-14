@@ -7436,6 +7436,15 @@ QuicConnRecvFrames(
         }
 
         case QUIC_FRAME_PATH_CIDS_BLOCKED: {
+            if (!Connection->State.MultipathNegotiated) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Received PATH_CIDS_BLOCKED frame when not negotiated");
+                QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+                return FALSE;
+            }
             QUIC_PATH_CIDS_BLOCKED_EX Frame;
             if (!QuicPathCidsBlockedFrameDecode(PayloadLength, Payload, &Offset, &Frame)) {
                 QuicTraceEvent(
@@ -11576,8 +11585,12 @@ QuicConnPunchableClientAddress(
 // instead, so an unopenable pair is left for a later pass rather than turned
 // into a path that cannot speak.
 //
-// Only multipath can be short: without it the new path shares Paths[0]'s path
-// id, which already has its CIDs.
+// Asked of both configurations. Without multipath the new path shares
+// Paths[0]'s path id, which has CIDs -- but having CIDs is not having an
+// *unused* one, and a client that has migrated has retired one per move, which
+// the hold-down comment below notes can outrun the peer's issuance. The frame
+// is multipath-only, so there is nothing to ask there; the retry and the
+// NEW_CONNECTION_ID pickup are what get the path opened.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -11589,7 +11602,7 @@ QuicConnReconcileCanOpenPath(
 {
     *NoPathID = FALSE;
     if (!Connection->State.MultipathNegotiated) {
-        return TRUE;
+        return QuicPathIDGetUnusedDestCid(Connection->Paths[0].PathID) != NULL;
     }
 
     QUIC_PATHID* PathID = QuicPathIDSetGetUnusedPathID(&Connection->PathIDs);
