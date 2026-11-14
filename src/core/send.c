@@ -993,40 +993,6 @@ QuicSendWriteFrames(
         }
 
         if (!QuicConnIsQMux(Connection) &&
-            (Send->SendFlags & QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS)) {
-            // TODO - Support sending on more than just active path
-            if (Connection->Paths[0].SendObservedAddress) {
-                QUIC_OBSERVED_ADDRESS_EX Frame;
-                Frame.SequenceNumber = Connection->ObservedAddressSequenceNumber;
-                Frame.Address = Connection->Paths[0].Route.RemoteAddress;
-
-                if (QuicObservedAddressFrameEncode(
-                        &Frame,
-                        &Builder->DatagramLength,
-                        AvailableBufferLength,
-                        Builder->Datagram->Buffer)) {
-
-                    Connection->Paths[0].SendObservedAddress = FALSE;
-                    Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
-                    Builder->Metadata->Frames[
-                        Builder->Metadata->FrameCount].OBSERVED_ADDRESS.Sequence =
-                            Connection->ObservedAddressSequenceNumber++;
-                    if (QuicPacketBuilderAddFrame(
-                            Builder,
-                            QuicAddrGetFamily(&Connection->Paths[0].Route.RemoteAddress) == QUIC_ADDRESS_FAMILY_INET ?
-                                QUIC_FRAME_OBSERVED_ADDRESS_V4 : QUIC_FRAME_OBSERVED_ADDRESS_V6,
-                            TRUE)) {
-                        return TRUE;
-                    }
-                } else {
-                    RanOutOfRoom = TRUE;
-                }
-            } else {
-                Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
-            }
-        }
-
-        if (!QuicConnIsQMux(Connection) &&
             (Send->SendFlags & QUIC_CONN_SEND_FLAG_ALTERNATIVE_ADDRESS)) {
 
             //
@@ -2142,6 +2108,148 @@ QuicSendPathChallenges(
 }
 
 //
+// This function sends an observed-address report out on each path that
+// currently needs one, on the path it describes.
+//
+// Like a path response it cannot be piggybacked onto whatever packet the flush
+// happened to build, and for a sharper reason than symmetry: the receiver
+// pairs the address in the frame with the local address of the path it arrived
+// on -- QUIC_CONNECTION_EVENT_NOTIFY_OBSERVED_ADDRESS is raised with
+// `&Path->Route.LocalAddress` taken from the receive path -- so a report that
+// travels on a different path tells the peer the wrong thing about the wrong
+// address of its own.
+//
+// This used to read Paths[0] alone, with a "TODO - Support sending on more
+// than just active path" against it, and clear the connection flag when that
+// path had nothing to send -- which discarded every other path's pending
+// report. A peer whose address changed therefore never learned its new
+// mapping: the server made a path for the new 4-tuple, QuicPathInitialize
+// marked that path as needing a report, and nothing ever sent one.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicSendObservedAddresses(
+    _In_ QUIC_SEND* Send
+    )
+{
+#pragma warning(push)
+#pragma warning(disable:6001) // Using uninitialized memory
+    QUIC_CONNECTION* Connection = QuicSendGetConnection(Send);
+
+    CXPLAT_DBG_ASSERT(Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_1_RTT] != NULL);
+
+    for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
+
+        QUIC_PATH* Path = &Connection->Paths[i];
+        if (!Path->SendObservedAddress) {
+            continue;
+        }
+
+        //
+        // A path can be in this array before it is open: QuicConnAddPath
+        // leaves one pending with UINT32_MAX of allowance until
+        // QuicConnOpenNewPaths runs at handshake confirmation, and
+        // QuicConnGetPathForPacket can leave one with no destination CID when
+        // there is none unused to give it. SendChallenge and SendResponse are
+        // only ever set on an opened path, so their loops need no such test;
+        // SendObservedAddress is set by QuicPathInitialize, which runs first.
+        //
+        // Nothing here can run on a half-built path -- CxPlatIsRouteReady
+        // reads Path->Binding->Socket, QuicPacketBuilderInitialize reads
+        // Path->PathID->SourceCids and QuicPacketBuilderPrepare reads
+        // Path->DestCid->CID -- so the flag is kept and the report waits for
+        // the path to finish opening.
+        //
+        if (Path->Binding == NULL ||
+            Path->PathID == NULL ||
+            Path->DestCid == NULL) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
+            continue;
+        }
+
+        if (Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
+            //
+            // Amplification-blocked. Kept rather than dropped: the caller
+            // cleared the flag, and nothing else re-raises it when the
+            // allowance grows -- QuicPathSetAllowance only queues a flush --
+            // so a bare continue would leave SendObservedAddress set with
+            // nothing that would ever send it, which is the failure this
+            // whole change is about.
+            //
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
+            continue;
+        }
+
+        if (!CxPlatIsRouteReady(Connection, Path)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
+            continue;
+        }
+
+        QUIC_PACKET_BUILDER Builder = { 0 };
+        if (!QuicPacketBuilderInitialize(&Builder, Connection, Path)) {
+            //
+            // Kept rather than dropped, the way #197 had to teach the path
+            // challenges: the caller clears the flag before calling this, so a
+            // bare continue abandons a report the path is still waiting on and
+            // leaves no trace of having done so. Re-raising the flag without
+            // QuicSendSetSendFlag arms the next flush without scheduling one,
+            // so this cannot spin.
+            //
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
+            continue;
+        }
+        _Analysis_assume_(Builder.Metadata != NULL);
+
+        if (!QuicPacketBuilderPrepareForControlFrames(
+                &Builder, FALSE, QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS)) {
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
+            QuicPacketBuilderCleanup(&Builder);
+            continue;
+        }
+
+        const uint16_t AvailableBufferLength =
+            (uint16_t)Builder.Datagram->Length - Builder.EncryptionOverhead;
+
+        QUIC_OBSERVED_ADDRESS_EX Frame;
+        Frame.SequenceNumber = Connection->ObservedAddressSequenceNumber;
+        Frame.Address = Path->Route.RemoteAddress;
+
+        if (QuicObservedAddressFrameEncode(
+                &Frame,
+                &Builder.DatagramLength,
+                AvailableBufferLength,
+                Builder.Datagram->Buffer)) {
+
+            Builder.Metadata->Frames[
+                Builder.Metadata->FrameCount].OBSERVED_ADDRESS.Sequence =
+                    Connection->ObservedAddressSequenceNumber++;
+
+            BOOLEAN Result =
+                QuicPacketBuilderAddFrame(
+                    &Builder,
+                    QuicAddrGetFamily(&Path->Route.RemoteAddress) == QUIC_ADDRESS_FAMILY_INET ?
+                        QUIC_FRAME_OBSERVED_ADDRESS_V4 : QUIC_FRAME_OBSERVED_ADDRESS_V6,
+                    TRUE);
+            UNREFERENCED_PARAMETER(Result);
+
+            Path->SendObservedAddress = FALSE;
+        } else {
+            //
+            // No room for the frame, which an amplification-limited datagram
+            // and a long peer connection ID can produce together.
+            // SendObservedAddress stays set and the flag goes back up, so the
+            // report is retried once there is room for it.
+            //
+            Send->SendFlags |= QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
+        }
+
+        QuicPacketBuilderFinalize(&Builder, TRUE);
+        QuicPacketBuilderCleanup(&Builder);
+    }
+#pragma warning(pop)
+}
+
+//
 // This function sends a path response frame out on each path that currently
 // needs one sent. A PATH_RESPONSE must be sent on the same network path the
 // corresponding PATH_CHALLENGE was received on (RFC 9000, Section 8.2.2), so -
@@ -2366,6 +2474,36 @@ QuicSendFlush(
     if (Send->SendFlags & QUIC_CONN_SEND_FLAG_PATH_RESPONSE) {
         Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_PATH_RESPONSE;
         QuicSendPathResponses(Send);
+    }
+
+    //
+    // Send observed-address reports.
+    // Each has to leave on the path it describes, because the receiver pairs
+    // the address in the frame with the local address of the path it arrived
+    // on -- so like path challenges these cannot ride the packet built for
+    // whichever path this flush chose. `QuicSendObservedAddresses` might
+    // re-queue a report if a route isn't ready or there is no room for it.
+    //
+    // Held back until 1-RTT keys exist, which the old call site got for free
+    // by living inside QuicSendWriteFrames' Is1RttEncryptionLevel branch.
+    // OBSERVED_ADDRESS is deliberately not in QUIC_CONN_SEND_FLAG_ALLOWED_HANDSHAKE,
+    // but that mask is applied further down, after this -- and the flag can
+    // genuinely be raised before the handshake finishes, because
+    // QuicConnProcessPeerTransportParameters raises it, including from a
+    // resumption ticket processed before Start. Without the test
+    // QuicSendObservedAddresses would assert on the missing write key.
+    //
+    // QMux is excluded the way it is at the other sites that reach a path's
+    // path ID. The loop's own PathID == NULL test would keep a QMux
+    // connection safe, but it re-raises the flag when it skips -- so without
+    // this the flag would stay set for the life of the connection and every
+    // flush would walk the paths for nothing.
+    //
+    if (!QuicConnIsQMux(Connection) &&
+        (Send->SendFlags & QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS) &&
+        Connection->Crypto.TlsState.WriteKeys[QUIC_PACKET_KEY_1_RTT] != NULL) {
+        Send->SendFlags &= ~QUIC_CONN_SEND_FLAG_OBSERVED_ADDRESS;
+        QuicSendObservedAddresses(Send);
     }
 
     //

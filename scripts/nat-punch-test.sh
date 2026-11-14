@@ -58,7 +58,7 @@ Usage: scripts/nat-punch-test.sh [options]
 
   --bin <dir>    Directory holding quicpunch and libmsquic.so (a Debug build).
                  Defaults to the first build/linux/*/bin that has quicpunch.
-  --case <name>  Run one case: direct, strict, edm, droppunch, sameport,
+  --case <name>  Run one case: direct, strict, edm, droppunch, sameport, observed,
                  multiaddr-cross, multiaddr-return. Default: all.
   --keep         Drop into a shell inside the topology when the cases finish.
   --verbose      Echo each role's output.
@@ -819,6 +819,95 @@ case_sameport() {
     multi_down
 }
 
+#
+# An observed-address report per path, each describing the path it arrives on.
+#
+# The receiver pairs the address in the frame with the local address of the
+# path it arrived on, so a report has to leave on the path it describes. The
+# writer used to read Paths[0] alone and clear the connection flag when that
+# path had nothing to send, and only QuicPathSetActive ever raised the flag --
+# so a path created for a peer whose address had changed asked for a report
+# (QuicPathInitialize sets that) and never got one. A peer could not learn the
+# mapping of a new local address, which is what kept a direct path from being
+# rebuilt after the address moved.
+#
+# No NAT here, so every observed address should equal the local address of its
+# own path: the pairing is what is being checked, and anything other than 1:1
+# means a report went out on the wrong path or not at all.
+#
+case_observed() {
+    say "  observed: one address report per path, on the path it describes"
+    multi_up || { bad "could not build the multi-address topology"; return; }
+    multi_start_server 40 || { bad "server did not start"; stop_roles; return; }
+
+    punch mcli -role:client \
+        "-target:$MSRV_A:$MSRV_PORT" "-local:$MCLI_A:0" \
+        -mode:auto -multipath:1 -time:18 -poll:4 \
+        > "$WORK/cli.log" 2>&1
+    CLI_RC=$?
+    stop_roles
+    dump_logs
+
+    local Paths Reports
+    #
+    # Distinct local endpoints on both sides. A report names a local endpoint,
+    # not a path, and two paths can share one: a punchable pair reuses the
+    # candidate's port (#199), so the same local ip:port can carry paths to
+    # two different remotes. This case runs in AUTO where that does not arise,
+    # but comparing distinct-to-distinct keeps the assertion meaning what it
+    # says if it ever does.
+    #
+    Paths="$(grep -o "client_final_path[0-9]*=[^ ]*" "$WORK/cli.log" | sed 's/^[^=]*=//; s/->.*//' | sort -u)"
+    Reports="$(grep -o "client_observed=[^ ]*" "$WORK/cli.log" | sed 's/^[^=]*=//' | sort -u)"
+    note "paths:   $(printf '%s' "$Paths" | tr '\n' ' ')"
+    note "reports: $(printf '%s' "$Reports" | tr '\n' ' ')"
+
+    local PathCount ReportCount
+    PathCount="$(printf '%s\n' "$Paths" | grep -c .)"
+    ReportCount="$(printf '%s\n' "$Reports" | grep -c .)"
+
+    if [ "$ReportCount" = "$PathCount" ]; then
+        ok "one report per local endpoint ($ReportCount of $PathCount)"
+    else
+        bad "one report per local endpoint"
+        note "$ReportCount reports for $PathCount local endpoints"
+    fi
+
+    #
+    # And each report names its own path's local address. With no NAT in the
+    # way the observed half must equal the local half, so a report that
+    # travelled on another path shows up as a mismatch.
+    #
+    local Bad=0 R
+    for R in $Reports; do
+        local Observed Local
+        Observed="${R%@*}"
+        Local="${R#*@}"
+        if [ "$Observed" != "$Local" ]; then
+            Bad=$((Bad+1))
+            note "mismatched: observed $Observed but arrived on $Local"
+        fi
+    done
+    if [ "$Bad" = "0" ] && [ "$ReportCount" != "0" ]; then
+        ok "every report describes the path it arrived on"
+    else
+        bad "every report describes the path it arrived on"
+    fi
+
+    #
+    # The second local address is the one that used to go unreported: nothing
+    # raised the flag for a path that was added rather than activated.
+    #
+    if printf '%s' "$Reports" | grep -q "@$MCLI_B:"; then
+        ok "the second local address was reported too"
+    else
+        bad "the second local address was reported too"
+    fi
+
+    has "$WORK/cli.log" "client_connection_alive=1" "the connection survived"
+    multi_down
+}
+
 # --------------------------------------------------------------------------
 
 run_one() { # <name>
@@ -830,6 +919,7 @@ run_one() { # <name>
         multiaddr-cross)  case_multiaddr_cross ;;
         multiaddr-return) case_multiaddr_return ;;
         sameport)         case_sameport ;;
+        observed)         case_observed ;;
         *) echo "unknown case: $1" >&2; return 1 ;;
     esac
 }
@@ -841,7 +931,7 @@ say "nat-punch-test: topology up, using $BIN"
 if [ -n "$ONLY" ]; then
     run_one "$ONLY"
 else
-    for Case in direct strict edm droppunch multiaddr-cross multiaddr-return sameport; do
+    for Case in direct strict edm droppunch multiaddr-cross multiaddr-return sameport observed; do
         run_one "$Case"
     done
 fi
