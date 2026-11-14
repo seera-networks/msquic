@@ -10187,12 +10187,44 @@ QuicConnActivatePath(
         return QUIC_STATUS_NOT_FOUND;
     }
 
+    if (Connection->State.UnconnectedSocket &&
+        QuicAddrIsWildCard(Param->LocalAddress)) {
+        //
+        // The same rule QuicConnOpenNewPath applies, for the same reason: a
+        // connected socket takes its source address from the kernel when it is
+        // connected, an unconnected one does not, so the caller has to name the
+        // address to send from. AUTO migration always names one.
+        //
+        QuicTraceEvent(
+            ConnError,
+            "[conn][%p] ERROR, %s.",
+            Connection,
+            "Unconnected socket requires a specific local address");
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
     // If the path doesn't exist, we try to create and activate it.
     QUIC_BINDING* OldBinding = Connection->Paths[0].Binding;
 
     CXPLAT_UDP_CONFIG UdpConfig = {0};
     UdpConfig.LocalAddress = Param->LocalAddress;
-    UdpConfig.RemoteAddress = Param->RemoteAddress;
+    //
+    // Passing no remote address leaves the socket unconnected, which is what
+    // lets a single binding carry connections to different remote addresses --
+    // the same test the two other binding sites apply, and missing here.
+    //
+    // A connection that asked for an unconnected socket asked for it for the
+    // life of the connection, not for the paths it happened to open first.
+    // Migrating it onto a connected socket silently withdraws what the
+    // application configured: a second connection that wants the same local
+    // address and port no longer finds an unconnected binding to share, opens
+    // its own on the same 4-tuple, and the peer's datagrams are delivered to
+    // whichever socket the OS prefers. In #203 that was the connected one,
+    // which dropped them all as "No matching client connection" and left a
+    // punched direct path unvalidated for the rest of the connection's life.
+    //
+    UdpConfig.RemoteAddress =
+        Connection->State.UnconnectedSocket ? NULL : Param->RemoteAddress;
     UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
     UdpConfig.InterfaceIndex = 0;
 #ifdef QUIC_COMPARTMENT_ID
@@ -10277,9 +10309,18 @@ QuicConnActivatePath(
             Connection,
             CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.RemoteAddress), &Connection->Paths[0].Route.RemoteAddress));
 
-        QuicBindingGetRemoteAddress(
-            Connection->Paths[0].Binding,
-            &Connection->Paths[0].Route.RemoteAddress);
+        if (Connection->State.UnconnectedSocket) {
+            //
+            // An unconnected socket has no remote address to read back: the
+            // datapath would hand out the zero address and the path would lose
+            // the peer it is for. The caller named it, so it comes from there.
+            //
+            Connection->Paths[0].Route.RemoteAddress = *Param->RemoteAddress;
+        } else {
+            QuicBindingGetRemoteAddress(
+                Connection->Paths[0].Binding,
+                &Connection->Paths[0].Route.RemoteAddress);
+        }
 
         QuicTraceEvent(
             ConnRemoteAddrAdded,
