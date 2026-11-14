@@ -1121,6 +1121,41 @@ QuicLossDetectionRetransmitFrames(
                     QUIC_CONN_SEND_FLAG_PATHS_BLOCKED);
             break;
 
+        case QUIC_FRAME_PATH_CIDS_BLOCKED: {
+            //
+            // The shortage is still the shortage until the peer answers it, so
+            // a lost frame has to go again -- for the path ID it named, which
+            // the metadata records, and not for every path ID still short.
+            // Several can be short at once, each with a frame of its own in
+            // flight; re-asking for all of them because one packet was lost
+            // would duplicate requests the peer already has.
+            //
+            // Asked of the shortage rather than of the CID list: a path ID is
+            // re-asked for only if its own request is still outstanding, which
+            // is not the same as its having no spare CID. A working path holds
+            // its CID locally and so has no unused one.
+            //
+            BOOLEAN FatalError = FALSE;
+            QUIC_PATHID* PathID =
+                QuicPathIDSetGetPathIDForLocal(
+                    &Connection->PathIDs,
+                    Packet->Frames[i].PATH_CIDS_BLOCKED.PathID,
+                    &FatalError);
+            CXPLAT_DBG_ASSERT(!FatalError);
+            if (PathID != NULL) {
+                if (PathID->Flags.CidsBlocked &&
+                    !PathID->Flags.SendCidsBlocked) {
+                    PathID->Flags.SendCidsBlocked = TRUE;
+                    NewDataQueued |=
+                        QuicSendSetSendFlag(
+                            &Connection->Send,
+                            QUIC_CONN_SEND_FLAG_PATH_CIDS_BLOCKED);
+                }
+                QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
+            }
+            break;
+        }
+
         case QUIC_FRAME_HANDSHAKE_DONE:
             NewDataQueued |=
                 QuicSendSetSendFlag(

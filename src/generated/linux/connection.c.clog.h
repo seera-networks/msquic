@@ -997,6 +997,26 @@ tracepoint(CLOG_CONNECTION_C, RecvStatelessReset , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PeerCidsBlocked
+// [conn][%p] Peer is out of CIDs for path ID %llu; issuing more
+// QuicTraceLogConnInfo(
+                    PeerCidsBlocked,
+                    Connection,
+                    "Peer is out of CIDs for path ID %llu; issuing more",
+                    (unsigned long long)Frame.PathID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = (unsigned long long)Frame.PathID = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PeerCidsBlocked
+#define _clog_4_ARGS_TRACE_PeerCidsBlocked(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PeerCidsBlocked , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for HandshakeConfirmedFrame
 // [conn][%p] Handshake confirmed (frame)
 // QuicTraceLogConnInfo(
@@ -1206,6 +1226,42 @@ tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
 #ifndef _clog_3_ARGS_TRACE_ReconcileRemovedPath
 #define _clog_3_ARGS_TRACE_ReconcileRemovedPath(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, ReconcileRemovedPath , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileDeferredNoDestCid
+// [conn][%p] Reconciler has no destination CID for a new path; retrying later
+// QuicTraceLogConnInfo(
+                ReconcileDeferredNoDestCid,
+                Connection,
+                "Reconciler has no destination CID for a new path; retrying later");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileDeferredNoDestCid
+#define _clog_3_ARGS_TRACE_ReconcileDeferredNoDestCid(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileDeferredNoPathID
+// [conn][%p] Reconciler has no unused path ID for a new path; retrying later
+// QuicTraceLogConnInfo(
+                    ReconcileDeferredNoPathID,
+                    Connection,
+                    "Reconciler has no unused path ID for a new path; retrying later");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileDeferredNoPathID
+#define _clog_3_ARGS_TRACE_ReconcileDeferredNoPathID(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileDeferredNoPathID , arg1);\
 
 #endif
 

@@ -721,6 +721,154 @@ void QuicTestUnconnectedSocketAddPathAfterStart(const FamilyArgs& Params)
     }
 }
 
+//
+// Migrating the active path must leave the socket unconnected. The flag is the
+// application's for the life of the connection, not for the paths it opened
+// first: a connection moved onto a connected socket no longer offers an
+// unconnected binding for its local address and port, so a second connection
+// that wants to share it opens its own on the same 4-tuple and the two then
+// split the peer's datagrams between them -- #203, where the direct path never
+// came back after the host was renumbered.
+//
+void QuicTestUnconnectedSocketActivatePath(const FamilyArgs& Params)
+{
+    const int Family = Params.Family;
+    const QUIC_ADDRESS_FAMILY QuicAddrFamily =
+        (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+
+    MsQuicRegistration Registration(true);
+    TEST_QUIC_SUCCEEDED(Registration.GetInitStatus());
+
+    if (QuicTestUnconnectedSocketUnavailable(Registration)) {
+        return;
+    }
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSelfSignedCredConfig);
+    TEST_QUIC_SUCCEEDED(ServerConfiguration.GetInitStatus());
+
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", MsQuicCredentialConfig());
+    TEST_QUIC_SUCCEEDED(ClientConfiguration.GetInitStatus());
+
+    //
+    // A second server, so the path added after the move has a remote address
+    // the migrated socket could not have reached had it been connected.
+    //
+    MsQuicAutoAcceptListener Listener1(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener1.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener1.Start("MsQuicTest"));
+    QuicAddr Server1Addr;
+    TEST_QUIC_SUCCEEDED(Listener1.GetLocalAddr(Server1Addr));
+
+    MsQuicAutoAcceptListener Listener2(Registration, ServerConfiguration, MsQuicConnection::NoOpCallback);
+    TEST_QUIC_SUCCEEDED(Listener2.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Listener2.Start("MsQuicTest"));
+    QuicAddr Server2Addr;
+    TEST_QUIC_SUCCEEDED(Listener2.GetLocalAddr(Server2Addr));
+
+    TEST_NOT_EQUAL(Server1Addr.GetPort(), Server2Addr.GetPort());
+
+    QuicAddr LocalAddr(QuicAddrFamily, true);
+    if (UseDuoNic) {
+        QuicAddrSetToDuoNic(&LocalAddr.SockAddr);
+    }
+
+    MsQuicConnection Connection(Registration);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(Connection.SetShareUdpBinding());
+    TEST_QUIC_SUCCEEDED(Connection.SetUnconnectedUdpSocket());
+    TEST_QUIC_SUCCEEDED(Connection.SetLocalAddr(LocalAddr));
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QuicAddrFamily,
+            QUIC_TEST_LOOPBACK_FOR_AF(QuicAddrFamily),
+            Server1Addr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Connection.HandshakeComplete);
+
+    //
+    // Activating a path waits for the handshake to be confirmed.
+    //
+    CxPlatSleep(100);
+
+    QuicAddr ClientAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ClientAddr));
+    QuicAddr PeerAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PeerAddr));
+
+    //
+    // A wildcard local address is rejected here as it is on an added path: an
+    // unconnected socket has no source address of its own to send from.
+    //
+    {
+        QuicAddr WildcardLocalAddr(QuicAddrFamily);
+        QUIC_PATH_PARAM PathParam = { &WildcardLocalAddr.SockAddr, &PeerAddr.SockAddr };
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_INVALID_PARAMETER,
+            Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam));
+    }
+
+    //
+    // The move itself: a local address that has no path yet, so the active path
+    // is recreated on a new binding.
+    //
+    QuicAddr MovedAddr = ClientAddr;
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    int Try = 0;
+    do {
+        MovedAddr.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam = { &MovedAddr.SockAddr, &PeerAddr.SockAddr };
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    QuicAddr AfterAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(AfterAddr));
+    TEST_EQUAL(MovedAddr.GetPort(), AfterAddr.GetPort());
+
+    QuicAddr PeerAfterAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PeerAfterAddr));
+    TEST_EQUAL(PeerAddr.GetPort(), PeerAfterAddr.GetPort());
+
+    //
+    // The moved binding is still one that a second remote address can be
+    // reached through, which a connected socket would not be.
+    //
+    QuicAddr Peer2Addr = PeerAddr;
+    Peer2Addr.SetPort(Server2Addr.GetPort());
+    {
+        QUIC_PATH_PARAM PathParam = { &AfterAddr.SockAddr, &Peer2Addr.SockAddr };
+        TEST_QUIC_SUCCEEDED(
+            Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam));
+
+        QuicAddr StillAfterAddr;
+        TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(StillAfterAddr));
+        TEST_EQUAL(AfterAddr.GetPort(), StillAfterAddr.GetPort());
+    }
+
+    //
+    // Last, a move that changes the remote address as well, which is the only
+    // way to reach the code that used to read the remote address back from the
+    // binding. An unconnected socket has none to read, so the path would be
+    // left with the zero address and nowhere to send. Done last because the
+    // connection is pointed at a server that knows nothing about it.
+    //
+    QuicAddr MovedAgainAddr = ClientAddr;
+    Status = QUIC_STATUS_SUCCESS;
+    Try = 0;
+    do {
+        MovedAgainAddr.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam = { &MovedAgainAddr.SockAddr, &Peer2Addr.SockAddr };
+        Status = Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    QuicAddr PeerMovedAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PeerMovedAddr));
+    TEST_FALSE(QuicAddrIsWildCard(&PeerMovedAddr.SockAddr));
+    TEST_EQUAL(Peer2Addr.GetPort(), PeerMovedAddr.GetPort());
+}
+
 struct SharedBindingPathContext {
     CxPlatEvent ServerConnectedEvent;
     CxPlatEvent ClientPeerStreamEvent;

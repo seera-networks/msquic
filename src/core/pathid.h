@@ -35,6 +35,26 @@ typedef union QUIC_PATHID_FLAGS {
         BOOLEAN PeerBlocked             : 1;    // The path id is blocked by peer restriction.
         BOOLEAN PathRemovedIndicated    : 1;    // PATH_REMOVED has been given to the application.
         BOOLEAN RemovedAddressesValid   : 1;    // Removed*Address hold the detached path's addresses.
+        //
+        // Something wanted a destination CID for this path ID and there was
+        // none unused, and the peer has not answered yet.
+        //
+        // On the path ID rather than the path, because the shortage is the
+        // path ID's -- the path that wanted one may not exist yet, which is
+        // exactly the case that cannot be opened without it.
+        //
+        // Two bits, because the shortage and the frame are not the same
+        // thing. CidsBlocked is the shortage, and lasts until a CID for this
+        // path ID arrives; SendCidsBlocked is one frame waiting to be
+        // written, and the writer takes it down. Asking once per shortage
+        // rather than once per attempt is what the frame is for -- a
+        // reconciler that retries every hold-down must not put a frame on the
+        // wire every hold-down, least of all an ack-eliciting one, which
+        // would hold the idle timeout open for as long as the peer stayed
+        // unable to help.
+        //
+        BOOLEAN CidsBlocked             : 1;
+        BOOLEAN SendCidsBlocked         : 1;
     };
 } QUIC_PATHID_FLAGS;
 
@@ -402,6 +422,54 @@ QuicPathIDGetSourceCidFromBuf(
         }
     }
     return NULL;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_VAR_INT
+QuicPathIDNextDestCidSequenceNumber(
+    _In_ const QUIC_PATHID* PathID
+    );
+
+//
+// Records that this path ID has no destination CID to give out and asks the
+// peer for more. Returns whether a frame was newly queued, which is a caller's
+// cue to flush; a shortage already outstanding queues nothing.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+BOOLEAN
+QuicPathIDSetCidsBlocked(
+    _In_ QUIC_PATHID* PathID
+    );
+
+//
+// The shortage is over: a destination CID for this path ID arrived. Drops the
+// request with it, so a frame still unwritten is not sent asking for what the
+// connection now has.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+void
+QuicPathIDClearCidsBlocked(
+    _In_ QUIC_PATHID* PathID
+    );
+
+//
+// Whether this path ID still has a PATH_CIDS_BLOCKED to put on the wire. A
+// path ID being torn down does not ask for connection IDs -- the peer cannot
+// have been asked for a path ID it has been told to abandon -- and the
+// abandon can come from either side, so the question is asked of the flags
+// rather than cleared at each of the places a path ID can start dying.
+//
+_IRQL_requires_max_(DISPATCH_LEVEL)
+QUIC_INLINE
+BOOLEAN
+QuicPathIDHasCidsBlockedToSend(
+    _In_ const QUIC_PATHID* PathID
+    )
+{
+    return
+        PathID->Flags.SendCidsBlocked &&
+        !PathID->Flags.Abandoned &&
+        !PathID->Flags.Closed;
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
