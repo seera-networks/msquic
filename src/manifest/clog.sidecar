@@ -827,6 +827,26 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "CandidatePolicyExcludedLocals": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Policy excluded %u of %u local addresses",
+      "UniqueId": "CandidatePolicyExcludedLocals",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
     "CertCapiFormattedChain": {
       "ModuleProperites": {},
       "TraceString": "[cert] Successfully formatted chain of %u certificate(s)",

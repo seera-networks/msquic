@@ -61,7 +61,7 @@ Usage: scripts/nat-punch-test.sh [options]
   --bin <dir>    Directory holding quicpunch and libmsquic.so (a Debug build).
                  Defaults to the first build/linux/*/bin that has quicpunch.
   --case <name>  Run one case: direct, strict, edm, droppunch, sameport, observed,
-                 multiaddr-cross, multiaddr-return. Default: all.
+                 multiaddr-cross, multiaddr-return, policy. Default: all.
   --keep         Drop into a shell inside the topology when the cases finish.
   --verbose      Echo each role's output.
   --keep-logs <dir>
@@ -686,6 +686,56 @@ case_multiaddr_cross() {
     multi_down
 }
 
+#
+# An address the application excluded by policy is not used, and the other one
+# still is (#207).
+#
+# The multi-address topology is the only place this can be shown: with one
+# local address, "the policy worked" and "there was nothing to pair with" look
+# identical. Here the client has two, excludes one, and the table has to come
+# out with pairs on exactly the other.
+#
+case_policy() {
+    say "  policy: an excluded local address produces no paths (#207)"
+    multi_up || { bad "could not build the multi-address topology"; return; }
+    multi_start_server 40 || { bad "server did not start"; stop_roles; return; }
+
+    punch mcli -role:client \
+        "-target:$MSRV_A:$MSRV_PORT" -mode:auto -multipath:1 -time:16 -poll:2 \
+        "-exclude:$MCLI_B/32" \
+        > "$WORK/cli.log" 2>&1
+    CLI_RC=$?
+    stop_roles
+    dump_logs
+
+    has "$WORK/cli.log" "client_exclude=$MCLI_B/32" "the policy was accepted"
+
+    local Paths
+    Paths="$(grep -o "client_final_path[0-9]*=[^ ]*" "$WORK/cli.log")"
+    note "final paths:"
+    printf '%s\n' "$Paths" | sed 's/^/            /'
+
+    if printf '%s' "$Paths" | stdin_has "=$MCLI_A:"; then
+        ok "the address left alone still has a path"
+    else
+        bad "the address left alone still has a path"
+    fi
+
+    #
+    # The whole point. Without the filter the cross product puts a path on this
+    # address too, which is what the multiaddr-cross case asserts.
+    #
+    if printf '%s' "$Paths" | stdin_has "=$MCLI_B:"; then
+        bad "the excluded address has no path"
+        note "a path was opened on $MCLI_B despite the policy"
+    else
+        ok "the excluded address has no path"
+    fi
+
+    has "$WORK/cli.log" "client_connection_alive=1" "the connection survived"
+    multi_down
+}
+
 case_multiaddr_return() {
     say "  multiaddr-return: a path is recreated when a vanished local address returns"
     multi_up || { bad "could not build the multi-address topology"; return; }
@@ -996,6 +1046,7 @@ run_one() { # <name>
         droppunch) case_droppunch ;;
         multiaddr-cross)  case_multiaddr_cross ;;
         multiaddr-return) case_multiaddr_return ;;
+        policy)           case_policy ;;
         sameport)         case_sameport ;;
         observed)         case_observed ;;
         *) echo "unknown case: $1" >&2; return 1 ;;
@@ -1009,7 +1060,7 @@ say "nat-punch-test: topology up, using $BIN"
 if [ -n "$ONLY" ]; then
     run_one "$ONLY"
 else
-    for Case in direct strict edm droppunch multiaddr-cross multiaddr-return sameport observed; do
+    for Case in direct strict edm droppunch multiaddr-cross multiaddr-return sameport observed policy; do
         run_one "$Case"
     done
 fi

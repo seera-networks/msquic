@@ -1253,6 +1253,18 @@ TEST(Basic, PathReconcilerKeepsApplicationPath) {
 #endif
 }
 
+TEST(Basic, LocalAddressPolicy) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestLocalAddressPolicy needs QUIC_PARAM_CONN_TEST_PATH_ADDRESSES, which is debug only.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestLocalAddressPolicy is user-mode only.";
+    }
+    TestLogger Logger("QuicTestLocalAddressPolicy");
+    QuicTestLocalAddressPolicy();
+#endif
+}
+
 TEST(Basic, TableMigration) {
 #if !DEBUG
     GTEST_SKIP() << "QuicTestTableMigration needs debug-only parameters.";

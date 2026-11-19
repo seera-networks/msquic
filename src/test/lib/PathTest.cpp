@@ -3464,6 +3464,199 @@ QuicTestPathReconcilerSwapAtPathLimit(
 }
 
 //
+// #207: an address the application excluded is not used.
+//
+// The two halves that matter are that an excluded address loses its paths and
+// that removing the policy gets them back, and that excluding the address the
+// connection is *on* does not take the connection with it -- a deny list is
+// allowed to be careless, and the stack is not allowed to strand itself over
+// it.
+//
+void
+QuicTestLocalAddressPolicy(
+    )
+{
+#if !DEBUG
+    //
+    // Reads the paths' endpoints through a debug-only parameter.
+    //
+#else
+    AltServerAddressTestContext ServerContext;
+    AltServerAddressTestContext ClientContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicSettings ClientSettings;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, AltServerAddressTestContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(
+        Registration, CleanUpManual, AltServerAddressTestContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    //
+    // Nothing registered yet, which the list parameter has to be able to say.
+    //
+    uint32_t Length = 0;
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, nullptr));
+    TEST_EQUAL(0u, Length);
+
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QUIC_ADDRESS_FAMILY_INET,
+            QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(ClientContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
+
+    CxPlatSleep(100);
+
+    //
+    // A real host address for the server to advertise, so that the reconciler
+    // has a pair to open a path for. The path's local address is whatever
+    // routing says reaches that address, which is the address the policy below
+    // excludes -- read back rather than assumed.
+    //
+    QuicAddr Host;
+    if (!AltServerAddressHostAddress(Host)) {
+        return;
+    }
+    QuicAddr Advertised;
+    if (!ReconcilerAdvertise(ServerContext.Connection, Host, Advertised)) {
+        return;
+    }
+    TEST_TRUE(ReconcilerWaitForPathTo(Connection, &Advertised.SockAddr, true));
+
+    QUIC_TEST_PATH_ADDRESSES Addresses[QUIC_MAX_PATH_COUNT];
+    uint32_t Count = ReconcilerPathAddresses(Connection, Addresses, QUIC_MAX_PATH_COUNT);
+    TEST_TRUE(Count >= 2);
+    QUIC_ADDR Excluded = {};
+    bool Found = false;
+    for (uint32_t i = 0; i < Count; ++i) {
+        if (QuicAddrCompare(&Addresses[i].RemoteAddress, &Advertised.SockAddr)) {
+            Excluded = Addresses[i].LocalAddress;
+            Found = true;
+            break;
+        }
+    }
+    TEST_TRUE(Found);
+    QuicAddrSetPort(&Excluded, 0);
+
+    //
+    // That address, and only that address: a host prefix rather than a /8, so
+    // the active path's own local address is left alone for now.
+    //
+    QUIC_LOCAL_ADDRESS_POLICY Policy;
+    CxPlatZeroMemory(&Policy, sizeof(Policy));
+    Policy.Address = Excluded;
+    Policy.PrefixLength = 32;
+    Policy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(
+            QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Policy), &Policy));
+
+    //
+    // The pair left the table, so the path it was holding goes with it.
+    //
+    TEST_TRUE(ReconcilerWaitForPathTo(Connection, &Advertised.SockAddr, false));
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
+
+    //
+    // And the registration is readable, with the port cleared -- a policy
+    // matches on an address, so reporting a port back would be reporting
+    // something it does not use.
+    //
+    QUIC_LOCAL_ADDRESS_POLICY Read[2];
+    Length = sizeof(Read);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, Read));
+    TEST_EQUAL((uint32_t)sizeof(QUIC_LOCAL_ADDRESS_POLICY), Length);
+    TEST_EQUAL(32, Read[0].PrefixLength);
+    TEST_EQUAL((uint8_t)QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE, Read[0].Action);
+    TEST_TRUE(QuicAddrCompare(&Read[0].Address, &Excluded));
+    TEST_EQUAL(0, QuicAddrGetPort(&Read[0].Address));
+
+    //
+    // Too small a buffer reports what it would take, as the other array
+    // parameters do.
+    //
+    Length = sizeof(QUIC_LOCAL_ADDRESS_POLICY) - 1;
+    TEST_QUIC_STATUS(
+        QUIC_STATUS_BUFFER_TOO_SMALL,
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, Read));
+    TEST_EQUAL((uint32_t)sizeof(QUIC_LOCAL_ADDRESS_POLICY), Length);
+
+    //
+    // Excluding the address the connection is actually on. The table loses
+    // every pair, which is as far as a policy is allowed to go: the active
+    // path stays, because the alternative is a deny list that can kill a
+    // connection outright.
+    //
+    QuicAddr ActiveLocal;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ActiveLocal));
+    QUIC_LOCAL_ADDRESS_POLICY ActivePolicy;
+    CxPlatZeroMemory(&ActivePolicy, sizeof(ActivePolicy));
+    ActivePolicy.Address = ActiveLocal.SockAddr;
+    QuicAddrSetPort(&ActivePolicy.Address, 0);
+    ActivePolicy.PrefixLength = 32;
+    ActivePolicy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(
+            QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(ActivePolicy), &ActivePolicy));
+
+    CxPlatSleep(250);
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
+    TEST_TRUE(AltServerAddressPathCount(Connection) >= 1);
+    QuicAddr StillLocal;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(StillLocal));
+    TEST_TRUE(QuicAddrCompare(&StillLocal.SockAddr, &ActiveLocal.SockAddr));
+
+    //
+    // Removing a policy re-admits the address, and the pair that was waiting
+    // for it gets its path back.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(
+            QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(ActivePolicy), &ActivePolicy));
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(
+            QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(Policy), &Policy));
+
+    Length = sizeof(Read);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, Read));
+    TEST_EQUAL(0u, Length);
+
+    TEST_TRUE(ReconcilerWaitForPathTo(Connection, &Advertised.SockAddr, true));
+
+    TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(100));
+    Connection.Shutdown(QUIC_TEST_NO_ERROR);
+    TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+#endif
+}
+
+//
 // Stage 3 of #157: reconciliation leaves an application's path alone.
 //
 // The reason stage 2 recorded an origin at all. QUIC_PARAM_CONN_ADD_PATH is

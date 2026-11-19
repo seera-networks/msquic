@@ -167,6 +167,7 @@ typedef struct CXPLAT_SLIST_ENTRY {
 #define QUIC_POOL_BOUND_ADDRESS_LIST        '45cQ' // Qc54 - QUIC Bound Address List
 #define QUIC_POOL_CANDIDATE_ADDRESS_LIST    '55cQ' // Qc55 - QUIC Candidate Address List
 #define QUIC_POOL_PATHID                    '65cQ' // Qc56 - QUIC PathID
+#define QUIC_POOL_LOCAL_ADDRESS_POLICY      '75cQ' // Qc57 - QUIC Local Address Policy
 
 typedef enum CXPLAT_THREAD_FLAGS {
     CXPLAT_THREAD_FLAG_NONE               = 0x0000,

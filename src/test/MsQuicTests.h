@@ -239,6 +239,10 @@ QuicTestPathReconcilerSwapAtPathLimit(
     );
 
 void
+QuicTestLocalAddressPolicy(
+    );
+
+void
 QuicTestPathReconcilerKeepsApplicationPath(
     );
 

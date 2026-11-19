@@ -228,6 +228,69 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_PATH_STATUS` <br> 36 | QUIC_PATH_STATUS | Set-only | Mark a path active or backup, and tell the peer. Multipath only. See [QUIC_PARAM_CONN_PATH_STATUS](#quic_param_conn_path_status). |
 | `QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET` <br> 37 | uint8_t (BOOLEAN) | Both | Set on client only. Must be set before start, and requires `QUIC_PARAM_CONN_SHARE_UDP_BINDING`. See [QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET](#quic_param_conn_unconnected_udp_socket). |
 | `QUIC_PARAM_CONN_PATH_STATISTICS` <br> 38 | QUIC_PATH_STATISTICS[] | Get-only | Network statistics for every path at once, one array entry per path. See [QUIC_PARAM_CONN_PATH_STATISTICS](#quic_param_conn_path_statistics). |
+| `QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY` <br> 39 | QUIC_LOCAL_ADDRESS_POLICY | Set-only | Register a rule about the host's own addresses. Client only. See [QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY](#quic_param_conn_add_local_address_policy). |
+| `QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY` <br> 40 | QUIC_LOCAL_ADDRESS_POLICY | Set-only | Remove a rule, matched exactly. Client only. |
+| `QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES` <br> 41 | QUIC_LOCAL_ADDRESS_POLICY[] | Get-only | Every registered rule, in registration order. |
+
+### QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY
+
+Tells the connection not to use some of the host's own addresses.
+
+`AUTO` and `NAT_TRAVERSAL` pair every address the host has with every remote
+address the connection knows about, and open paths from the best of those
+pairs. An application that knows some of its addresses are not worth using -- a
+management interface, a VPN the peer cannot reach, a metered link -- registers
+one of these for each, and the stack leaves them alone.
+
+The parameter and its struct are behind `QUIC_API_ENABLE_PREVIEW_FEATURES`,
+which the application must define to use either.
+
+```c
+typedef enum QUIC_LOCAL_ADDRESS_POLICY_ACTION {
+    QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE   = 0,
+} QUIC_LOCAL_ADDRESS_POLICY_ACTION;
+
+typedef struct QUIC_LOCAL_ADDRESS_POLICY {
+    QUIC_ADDR Address;          // The port is ignored.
+    uint8_t PrefixLength;       // 0-32 for IPv4, 0-128 for IPv6.
+    uint8_t Action;             // QUIC_LOCAL_ADDRESS_POLICY_ACTION
+} QUIC_LOCAL_ADDRESS_POLICY;
+```
+
+A host address matches when the families agree and the leading `PrefixLength`
+bits of the address do. Both sides are compared unmapped, so a v4 prefix
+matches a v4-mapped v6 address. `PrefixLength` zero matches every address of
+that family, which is how "no IPv4 at all" is said. The port is not part of the
+match and comes back zeroed from
+`QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES`.
+
+What a policy does and does not reach:
+
+- An excluded address contributes no candidate pairs, so the reconciler opens
+  no path on it, and a path it already held is closed on the next pass.
+- It is never chosen as the active path's local address when the connection has
+  to move -- the same rule, applied to the other place the stack picks an
+  address on the application's behalf.
+- It does **not** override the application. An address passed to
+  `QUIC_PARAM_CONN_LOCAL_ADDRESS` before start, or a path added with
+  `QUIC_PARAM_CONN_ADD_PATH`, is an instruction rather than a preference and is
+  honoured.
+- It does not hide anything. `QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED`
+  keeps reporting what the host has, excluded addresses included: the policy is
+  about what the connection may use, not about what exists.
+- It will not strand the connection. Excluding the address the connection is
+  already on empties the candidate table but leaves the active path in place;
+  the connection moves only when there is somewhere allowed to move to.
+- In `MANUAL` the setting is inert, since nothing picks addresses
+  automatically there.
+
+Up to 16 policies can be registered on one connection; the seventeenth is
+refused with `QUIC_STATUS_PATH_LIMIT_REACHED`. A duplicate -- the same address,
+prefix length and action -- is `QUIC_STATUS_ADDRESS_IN_USE`, and a prefix
+length too long for the family, an unnamed address family, or an action this
+version does not implement is `QUIC_STATUS_INVALID_PARAMETER`. Removal matches
+on all three fields together and reports `QUIC_STATUS_NOT_FOUND` if no such
+rule is registered; it does not remove "whatever covers this address".
 
 ### QUIC_PARAM_CONN_PATH_STATUS
 

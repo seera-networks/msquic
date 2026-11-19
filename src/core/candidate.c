@@ -53,6 +53,96 @@ QuicCandidateAddressIsLinkLocal(
     return Bytes[0] == 0xfe && (Bytes[1] & 0xc0) == 0x80;
 }
 
+BOOLEAN
+QuicCandidateAddressMatchesPrefix(
+    _In_ const QUIC_ADDR* Address,
+    _In_ const QUIC_ADDR* Prefix,
+    _In_ uint8_t PrefixLength
+    )
+{
+    //
+    // Unmapped first, both sides. A v4-mapped v6 address and the v4 address it
+    // stands for are the same place, and which form a snapshot carries is the
+    // datapath's business rather than the application's.
+    //
+    // Only where the family is already INET6: CxPlatConvertFromMappedV6
+    // asserts that much, so handing it a v4 address would trip a debug build
+    // on the ordinary case.
+    //
+    QUIC_ADDR A = *Address;
+    QUIC_ADDR B = *Prefix;
+    if (QuicAddrGetFamily(&A) == QUIC_ADDRESS_FAMILY_INET6) {
+        CxPlatConvertFromMappedV6(&A, &A);
+    }
+    if (QuicAddrGetFamily(&B) == QUIC_ADDRESS_FAMILY_INET6) {
+        CxPlatConvertFromMappedV6(&B, &B);
+    }
+
+    if (QuicAddrGetFamily(&A) != QuicAddrGetFamily(&B)) {
+        return FALSE;
+    }
+
+    uint8_t Bytes[16];
+    uint8_t Against[16];
+    uint8_t Length;
+    if (QuicAddrGetFamily(&A) == QUIC_ADDRESS_FAMILY_INET) {
+        Length = 4;
+        CxPlatCopyMemory(Bytes, &A.Ipv4.sin_addr, Length);
+        CxPlatCopyMemory(Against, &B.Ipv4.sin_addr, Length);
+    } else if (QuicAddrGetFamily(&A) == QUIC_ADDRESS_FAMILY_INET6) {
+        Length = 16;
+        CxPlatCopyMemory(Bytes, &A.Ipv6.sin6_addr, Length);
+        CxPlatCopyMemory(Against, &B.Ipv6.sin6_addr, Length);
+    } else {
+        return FALSE;
+    }
+
+    if (PrefixLength > Length * 8) {
+        return FALSE;
+    }
+
+    const uint8_t WholeBytes = PrefixLength / 8;
+    if (WholeBytes != 0 && memcmp(Bytes, Against, WholeBytes) != 0) {
+        return FALSE;
+    }
+
+    const uint8_t Bits = PrefixLength % 8;
+    if (Bits != 0) {
+        //
+        // The partial byte, high bits first: a /12 compares the whole of byte 0
+        // and the top four bits of byte 1.
+        //
+        const uint8_t Mask = (uint8_t)(0xff << (8 - Bits));
+        if ((Bytes[WholeBytes] & Mask) != (Against[WholeBytes] & Mask)) {
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+BOOLEAN
+QuicCandidateLocalAddressIsExcluded(
+    _In_ const QUIC_ADDR* Address,
+    _In_reads_opt_(PolicyCount) const QUIC_LOCAL_ADDRESS_POLICY* Policies,
+    _In_ uint32_t PolicyCount
+    )
+{
+    if (Policies == NULL) {
+        return FALSE;
+    }
+    for (uint32_t i = 0; i < PolicyCount; ++i) {
+        if (Policies[i].Action != QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE) {
+            continue;
+        }
+        if (QuicCandidateAddressMatchesPrefix(
+                Address, &Policies[i].Address, Policies[i].PrefixLength)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 //
 // Scope read from the address as well as from the platform's flag. The flag is
 // what a backend reports; the address is what it is. Not every source of a
@@ -336,7 +426,9 @@ QuicCandidateSetRebuild(
     _In_ uint32_t LocalCount,
     _In_reads_(RemoteCount) const QUIC_CANDIDATE_REMOTE* Remotes,
     _In_ uint32_t RemoteCount,
-    _In_ BOOLEAN WantTemporary
+    _In_ BOOLEAN WantTemporary,
+    _In_reads_opt_(PolicyCount) const QUIC_LOCAL_ADDRESS_POLICY* Policies,
+    _In_ uint32_t PolicyCount
     )
 {
     //
@@ -361,6 +453,17 @@ QuicCandidateSetRebuild(
 
     for (uint32_t r = 0; r < RemoteCount; ++r) {
         for (uint32_t l = 0; l < LocalCount; ++l) {
+            //
+            // The application's own rule, checked before anything this file
+            // has an opinion about. An excluded address is not ranked last --
+            // it is not a candidate at all, which is the difference between
+            // "we would rather not" and "do not".
+            //
+            if (QuicCandidateLocalAddressIsExcluded(
+                    &Locals[l].Address, Policies, PolicyCount)) {
+                continue;
+            }
+
             if (!QuicCandidatePairIsViable(&Locals[l], &Remotes[r].Address)) {
                 continue;
             }

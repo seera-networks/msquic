@@ -123,6 +123,13 @@ QuicCandidateSetInitialize(
 // a connection that deliberately started on a privacy address should not be
 // moved onto the stable one, and vice versa.
 //
+//
+// Policies, when given, are the application's rules about the host's own
+// addresses: a local address that matches one contributes no pairs at all.
+// Enforced here rather than by the caller so that every table is built under
+// the same rule, and so that the exclusion is covered by the same tests as the
+// ordering.
+//
 void
 QuicCandidateSetRebuild(
     _Inout_ QUIC_CANDIDATE_SET* Set,
@@ -130,7 +137,9 @@ QuicCandidateSetRebuild(
     _In_ uint32_t LocalCount,
     _In_reads_(RemoteCount) const QUIC_CANDIDATE_REMOTE* Remotes,
     _In_ uint32_t RemoteCount,
-    _In_ BOOLEAN WantTemporary
+    _In_ BOOLEAN WantTemporary,
+    _In_reads_opt_(PolicyCount) const QUIC_LOCAL_ADDRESS_POLICY* Policies,
+    _In_ uint32_t PolicyCount
     );
 
 //
@@ -146,6 +155,35 @@ QuicCandidateAddressIsLoopback(
 BOOLEAN
 QuicCandidateAddressIsLinkLocal(
     _In_ const QUIC_ADDR* Address
+    );
+
+//
+// Whether Address falls inside Prefix/PrefixLength. Families must agree, after
+// both sides are unmapped -- a snapshot can hold a v4-mapped v6 address where
+// the application registered the v4 prefix it means. A zero prefix length
+// matches every address of the family.
+//
+// Returns FALSE for a prefix length too long for the family rather than
+// asserting, so that a policy which should have been rejected at registration
+// excludes nothing instead of excluding everything.
+//
+BOOLEAN
+QuicCandidateAddressMatchesPrefix(
+    _In_ const QUIC_ADDR* Address,
+    _In_ const QUIC_ADDR* Prefix,
+    _In_ uint8_t PrefixLength
+    );
+
+//
+// Whether any policy says this local address must not be used. The policies
+// are passed in rather than read from the connection, because nothing in this
+// file knows what a connection is -- see the note at the top.
+//
+BOOLEAN
+QuicCandidateLocalAddressIsExcluded(
+    _In_ const QUIC_ADDR* Address,
+    _In_reads_opt_(PolicyCount) const QUIC_LOCAL_ADDRESS_POLICY* Policies,
+    _In_ uint32_t PolicyCount
     );
 
 //

@@ -4535,6 +4535,199 @@ void QuicTest_QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET(MsQuicRegistration& Registr
 }
 #endif
 
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+void QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(MsQuicRegistration& Registration)
+{
+    TestScopeLogger LogScope0("QUIC_PARAM_CONN_ADD/REMOVE_LOCAL_ADDRESS_POLICY");
+
+    MsQuicConnection Connection(Registration);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    QUIC_LOCAL_ADDRESS_POLICY Policy;
+    CxPlatZeroMemory(&Policy, sizeof(Policy));
+    TEST_TRUE(QuicAddrFromString("10.0.0.0", 0, &Policy.Address));
+    Policy.PrefixLength = 8;
+    Policy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+
+    {
+        TestScopeLogger LogScope1("SetParam");
+
+        //
+        // The size is fixed, so a short or absent buffer is not a policy.
+        //
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_INVALID_PARAMETER,
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Policy) - 1, &Policy));
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_INVALID_PARAMETER,
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Policy), nullptr));
+
+        //
+        // A prefix longer than the family has bits, and an address family that
+        // says nothing about which addresses are meant.
+        //
+        {
+            QUIC_LOCAL_ADDRESS_POLICY Bad = Policy;
+            Bad.PrefixLength = 33;
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_INVALID_PARAMETER,
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Bad), &Bad));
+
+            CxPlatZeroMemory(&Bad, sizeof(Bad));
+            TEST_TRUE(QuicAddrFromString("2001:db8::", 0, &Bad.Address));
+            Bad.PrefixLength = 129;
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_INVALID_PARAMETER,
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Bad), &Bad));
+
+            CxPlatZeroMemory(&Bad, sizeof(Bad));
+            Bad.PrefixLength = 0;
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_INVALID_PARAMETER,
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Bad), &Bad));
+        }
+
+        //
+        // An action this build does not implement. Rejecting it is what lets a
+        // later one be added without changing what an old application meant.
+        //
+        {
+            QUIC_LOCAL_ADDRESS_POLICY Bad = Policy;
+            Bad.Action = 0xFF;
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_INVALID_PARAMETER,
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Bad), &Bad));
+        }
+
+        //
+        // Good, and then the same one again.
+        //
+        TEST_QUIC_SUCCEEDED(
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Policy), &Policy));
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_ADDRESS_IN_USE,
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Policy), &Policy));
+
+        //
+        // The same address with a different prefix length is a different
+        // statement, not a duplicate.
+        //
+        {
+            QUIC_LOCAL_ADDRESS_POLICY Narrower = Policy;
+            Narrower.PrefixLength = 16;
+            TEST_QUIC_SUCCEEDED(
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Narrower), &Narrower));
+            TEST_QUIC_SUCCEEDED(
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(Narrower), &Narrower));
+        }
+
+        //
+        // Removing one that was never registered.
+        //
+        {
+            QUIC_LOCAL_ADDRESS_POLICY Absent = Policy;
+            TEST_TRUE(QuicAddrFromString("192.168.0.0", 0, &Absent.Address));
+            Absent.PrefixLength = 16;
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_NOT_FOUND,
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(Absent), &Absent));
+        }
+
+        //
+        // The cap. One is registered already, so the next
+        // QUIC_MAX_LOCAL_ADDRESS_POLICIES - 1 fit and the one after does not.
+        //
+        {
+            TestScopeLogger LogScope2("QUIC_STATUS_PATH_LIMIT_REACHED");
+            for (uint32_t i = 1; i < 16; ++i) {
+                //
+                // A different address each time rather than a different prefix
+                // length on the same one: 10.0.0.0/8 is registered above, and
+                // the duplicate rule would reject the collision -- which it
+                // did when this loop varied the length.
+                //
+                char Literal[16];
+                CxPlatZeroMemory(Literal, sizeof(Literal));
+                sprintf_s(Literal, sizeof(Literal), "10.%u.0.0", i);
+
+                QUIC_LOCAL_ADDRESS_POLICY Filler;
+                CxPlatZeroMemory(&Filler, sizeof(Filler));
+                TEST_TRUE(QuicAddrFromString(Literal, 0, &Filler.Address));
+                Filler.PrefixLength = 16;
+                Filler.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+                TEST_QUIC_SUCCEEDED(
+                    Connection.SetParam(
+                        QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Filler), &Filler));
+            }
+
+            QUIC_LOCAL_ADDRESS_POLICY TooMany;
+            CxPlatZeroMemory(&TooMany, sizeof(TooMany));
+            TEST_TRUE(QuicAddrFromString("172.16.0.0", 0, &TooMany.Address));
+            TooMany.PrefixLength = 12;
+            TooMany.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_PATH_LIMIT_REACHED,
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(TooMany), &TooMany));
+        }
+    }
+
+    {
+        TestScopeLogger LogScope1("GetParam");
+
+        //
+        // The array protocol: the length alone, then the whole list.
+        //
+        uint32_t Length = 0;
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_BUFFER_TOO_SMALL,
+            MsQuic->GetParam(
+                Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, nullptr));
+        TEST_EQUAL(16u * sizeof(QUIC_LOCAL_ADDRESS_POLICY), Length);
+
+        UniquePtr<uint8_t[]> Buffer(new(std::nothrow) uint8_t[Length]);
+        TEST_NOT_EQUAL(nullptr, Buffer.get());
+        TEST_QUIC_SUCCEEDED(
+            MsQuic->GetParam(
+                Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, Buffer.get()));
+        TEST_EQUAL(16u * sizeof(QUIC_LOCAL_ADDRESS_POLICY), Length);
+
+        //
+        // Registration order, which is the order they went in above: the /8
+        // first, then the fillers by prefix length.
+        //
+        const QUIC_LOCAL_ADDRESS_POLICY* Read =
+            (const QUIC_LOCAL_ADDRESS_POLICY*)Buffer.get();
+        TEST_EQUAL(8, Read[0].PrefixLength);
+        TEST_EQUAL(16, Read[1].PrefixLength);
+        TEST_EQUAL(16, Read[15].PrefixLength);
+
+        QUIC_ADDR First = {}, Last = {};
+        TEST_TRUE(QuicAddrFromString("10.0.0.0", 0, &First));
+        TEST_TRUE(QuicAddrFromString("10.15.0.0", 0, &Last));
+        TEST_TRUE(QuicAddrCompare(&Read[0].Address, &First));
+        TEST_TRUE(QuicAddrCompare(&Read[15].Address, &Last));
+    }
+
+    //
+    // The client-only rule is not checked here: this file has no server
+    // connection to call it on, and inventing one for a one-line status would
+    // be a worse test than the comment saying where it lives.
+    //
+}
+#endif
+
 void QuicTest_QUIC_PARAM_CONN_LOCAL_BIDI_STREAM_COUNT(MsQuicRegistration& Registration)
 {
     TestScopeLogger LogScope0("QUIC_PARAM_CONN_LOCAL_BIDI_STREAM_COUNT");
@@ -5767,6 +5960,7 @@ void QuicTestConnectionParam()
     QuicTest_QUIC_PARAM_CONN_SHARE_UDP_BINDING(Registration, ClientConfiguration);
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
     QuicTest_QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET(Registration, ClientConfiguration);
+    QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(Registration);
 #endif
     QuicTest_QUIC_PARAM_CONN_LOCAL_BIDI_STREAM_COUNT(Registration);
     QuicTest_QUIC_PARAM_CONN_LOCAL_UNIDI_STREAM_COUNT(Registration);

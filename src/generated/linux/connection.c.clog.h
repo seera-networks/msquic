@@ -2283,6 +2283,28 @@ tracepoint(CLOG_CONNECTION_C, CandidatePairsRebuilt , arg1, arg3, arg4, arg5);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for CandidatePolicyExcludedLocals
+// [conn][%p] Policy excluded %u of %u local addresses
+// QuicTraceLogConnVerbose(
+                CandidatePolicyExcludedLocals,
+                Connection,
+                "Policy excluded %u of %u local addresses",
+                Excluded,
+                LocalCount);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Excluded = arg3
+// arg4 = arg4 = LocalCount = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_CandidatePolicyExcludedLocals
+#define _clog_5_ARGS_TRACE_CandidatePolicyExcludedLocals(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_CONNECTION_C, CandidatePolicyExcludedLocals , arg1, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ReconcileCreateHeldDownFor
 // [conn][%p] Reconciler held down opening paths for %llu us
 // QuicTraceLogConnVerbose(
