@@ -14371,6 +14371,95 @@ QuicConnGetPathStatistics(
     return QUIC_STATUS_SUCCESS;
 }
 
+//
+// Every registered policy, in registration order.
+//
+// The buffer holds the structs and then the addresses they name, each Address
+// pointing at its own copy just past the array: the public struct names its
+// address by pointer, because QUIC_ADDR is a type the language bindings supply
+// rather than one they can size, so there is nowhere in the struct to put the
+// address itself. Self-contained, and the documentation says it is not
+// relocatable.
+//
+// A function of its own rather than a case in QuicConnParamGet, which is what
+// QUIC_PARAM_CONN_PATH_STATISTICS does and for the same reason: an empty list
+// is a success that writes nothing, and MSVC's C6101 reads that as a promise
+// broken by the whole of QuicConnParamGet. Here the promise is the honest one
+// -- writes up to the buffer's size, and *BufferLength says how much -- which
+// is the annotation CxPlatStorageReadValue uses for the same shape.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Success_(return == QUIC_STATUS_SUCCESS)
+static
+QUIC_STATUS
+QuicConnGetLocalAddressPolicies(
+    _In_ const QUIC_CONNECTION* Connection,
+    _Inout_ uint32_t* BufferLength,
+    _Out_writes_bytes_to_opt_(*BufferLength, *BufferLength)
+        void* Buffer
+    )
+{
+    uint32_t Count = 0;
+    for (const CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
+            Entry != &Connection->LocalAddressPolicies;
+            Entry = Entry->Flink) {
+        Count++;
+    }
+
+    const uint32_t RequiredLength =
+        Count * (uint32_t)(sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR));
+
+    if (RequiredLength == 0) {
+        //
+        // Nothing registered. Answered before the buffer is looked at, so that
+        // asking with no buffer at all is how an application learns there is
+        // nothing rather than an error.
+        //
+        *BufferLength = 0;
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    if (*BufferLength < RequiredLength) {
+        *BufferLength = RequiredLength;
+        return QUIC_STATUS_BUFFER_TOO_SMALL;
+    }
+
+    if (Buffer == NULL) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    CxPlatZeroMemory(Buffer, RequiredLength);
+
+    QUIC_LOCAL_ADDRESS_POLICY* Policies = (QUIC_LOCAL_ADDRESS_POLICY*)Buffer;
+    //
+    // Aligned by construction: the struct leads with a pointer, so its size is
+    // a multiple of the pointer alignment and QUIC_ADDR needs no more than
+    // that.
+    //
+    QUIC_ADDR* Addresses = (QUIC_ADDR*)(Policies + Count);
+
+    uint32_t i = 0;
+    for (const CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
+            Entry != &Connection->LocalAddressPolicies && i < Count;
+            Entry = Entry->Flink) {
+        const QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Policy =
+            CXPLAT_CONTAINING_RECORD(
+                Entry,
+                QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
+                Link);
+        Addresses[i] = Policy->Rule.Address;
+        Policies[i].Address = &Addresses[i];
+        Policies[i].PrefixLength = Policy->Rule.PrefixLength;
+        Policies[i].Action = Policy->Rule.Action;
+        i++;
+    }
+
+    CXPLAT_DBG_ASSERT(i == Count);
+
+    *BufferLength = RequiredLength;
+    return QUIC_STATUS_SUCCESS;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 QuicConnParamGet(
@@ -14820,80 +14909,10 @@ QuicConnParamGet(
             QuicConnGetPathStatistics(Connection, BufferLength, (QUIC_PATH_STATISTICS *)Buffer);
         break;
 
-    case QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES: {
-
-        //
-        // Every registered policy, in registration order.
-        //
-        // The buffer holds the structs and then the addresses they name, each
-        // Address pointing at its own copy just past the array: the public
-        // struct names its address by pointer, because QUIC_ADDR is a type the
-        // language bindings supply rather than one they can size, so there is
-        // nowhere in the struct to put the address itself. Self-contained, and
-        // the documentation says it is not relocatable.
-        //
-        uint32_t Count = 0;
-        for (CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
-                Entry != &Connection->LocalAddressPolicies;
-                Entry = Entry->Flink) {
-            Count++;
-        }
-
-        const uint32_t RequiredLength =
-            Count *
-            (uint32_t)(sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR));
-
-        //
-        // Shaped like QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES: the empty case leaves
-        // first, so the copy below is only reached with a non-zero length and
-        // a buffer known not to be NULL. Letting it fall through instead is
-        // what MSVC's C6101 objects to -- a success that writes nothing to an
-        // _Out_ buffer.
-        //
-        if (RequiredLength == 0) {
-            *BufferLength = 0;
-            Status = QUIC_STATUS_SUCCESS;
-            break;
-        }
-        if (*BufferLength < RequiredLength || Buffer == NULL) {
-            *BufferLength = RequiredLength;
-            Status = QUIC_STATUS_BUFFER_TOO_SMALL;
-            break;
-        }
-
-        *BufferLength = RequiredLength;
-        CXPLAT_ANALYSIS_ASSUME(
-            Count * (sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR)) <=
-                *BufferLength);
-
-        QUIC_LOCAL_ADDRESS_POLICY* Policies = (QUIC_LOCAL_ADDRESS_POLICY*)Buffer;
-        //
-        // Aligned by construction: the struct leads with a pointer, so its size
-        // is a multiple of the pointer alignment and QUIC_ADDR needs no more
-        // than that.
-        //
-        QUIC_ADDR* Addresses =
-            (QUIC_ADDR*)(Policies + Count);
-
-        uint32_t i = 0;
-        for (CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
-                Entry != &Connection->LocalAddressPolicies && i < Count;
-                Entry = Entry->Flink) {
-            const QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Policy =
-                CXPLAT_CONTAINING_RECORD(
-                    Entry,
-                    QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
-                    Link);
-            Addresses[i] = Policy->Rule.Address;
-            Policies[i].Address = &Addresses[i];
-            Policies[i].PrefixLength = Policy->Rule.PrefixLength;
-            Policies[i].Action = Policy->Rule.Action;
-            i++;
-        }
-
-        Status = QUIC_STATUS_SUCCESS;
+    case QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES:
+        Status =
+            QuicConnGetLocalAddressPolicies(Connection, BufferLength, Buffer);
         break;
-    }
 
 #if DEBUG
     case QUIC_PARAM_CONN_TEST_PATH_ADDRESSES: {
