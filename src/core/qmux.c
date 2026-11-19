@@ -92,6 +92,16 @@ QuicQMuxUninitialize(
         QMux->SentEarlyDataPacketsTail = &QMux->SentEarlyDataPackets;
     }
 
+    if (QMux->TLS != NULL) {
+        //
+        // The TLS context (and the OpenSSL SSL object it owns) is created in
+        // QuicQMuxInitializeTls and is not part of Connection->Crypto, so
+        // QuicCryptoUninitialize does not free it.
+        //
+        CxPlatTlsUninitialize(QMux->TLS);
+        QMux->TLS = NULL;
+    }
+
     if (QMux->RecvBuffer != NULL) {
         CXPLAT_FREE(QMux->RecvBuffer, QUIC_POOL_QMUX_RECV_BUFFER);
         QMux->RecvBuffer = NULL;
