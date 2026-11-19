@@ -859,13 +859,20 @@ typedef enum QUIC_LOCAL_ADDRESS_POLICY_ACTION {
 // One rule about the host's own addresses, matched on an address and a prefix
 // length. See QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY.
 //
-// The address is held by value rather than as a pointer, unlike its neighbours
-// above: this struct also comes back out of
-// QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES as an array, and an array of pointers
-// into the library's own memory is not something to hand an application.
+// The address is a pointer, as it is in every other parameter struct here. By
+// value would read better for the array that
+// QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES returns, but QUIC_ADDR is a platform
+// type the language bindings supply themselves rather than one they can size,
+// so a public struct cannot contain one -- which is also why its neighbours
+// above take pointers.
+//
+// On the way out, each Address points into the caller's own buffer: the
+// parameter writes the array of structs and then the addresses they name after
+// it, so the buffer is self-contained but not relocatable. Copy what the
+// addresses say, not where they point.
 //
 typedef struct QUIC_LOCAL_ADDRESS_POLICY {
-    QUIC_ADDR Address;          // The port is ignored.
+    QUIC_ADDR* Address;         // The port is ignored.
     uint8_t PrefixLength;       // 0-32 for IPv4, 0-128 for IPv6.
     uint8_t Action;             // QUIC_LOCAL_ADDRESS_POLICY_ACTION
 } QUIC_LOCAL_ADDRESS_POLICY;

@@ -726,11 +726,11 @@ QuicConnLocalAddressIsExcluded(
                 Entry,
                 QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
                 Link);
-        if (Policy->Policy.Action != QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE) {
+        if (Policy->Rule.Action != QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE) {
             continue;
         }
         if (QuicCandidateAddressMatchesPrefix(
-                Address, &Policy->Policy.Address, Policy->Policy.PrefixLength)) {
+                Address, &Policy->Rule.Address, Policy->Rule.PrefixLength)) {
             return TRUE;
         }
     }
@@ -744,10 +744,10 @@ QuicConnLocalAddressIsExcluded(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
 uint32_t
-QuicConnGetLocalAddressPolicies(
+QuicConnGetLocalAddressRules(
     _In_ const QUIC_CONNECTION* Connection,
     _Out_writes_to_(QUIC_MAX_LOCAL_ADDRESS_POLICIES, return)
-        QUIC_LOCAL_ADDRESS_POLICY* Policies
+        QUIC_LOCAL_ADDRESS_RULE* Rules
     )
 {
     uint32_t Count = 0;
@@ -760,7 +760,7 @@ QuicConnGetLocalAddressPolicies(
                 Entry,
                 QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
                 Link);
-        Policies[Count++] = Policy->Policy;
+        Rules[Count++] = Policy->Rule;
     }
     return Count;
 }
@@ -10894,6 +10894,10 @@ QuicConnAddLocalAddressPolicy(
         return Status;
     }
 
+    if (Param->Address == NULL) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
     //
     // One action today. Rejecting the rest is what makes adding one later a
     // compatible change rather than a reinterpretation of a field an older
@@ -10903,7 +10907,17 @@ QuicConnAddLocalAddressPolicy(
         return QUIC_STATUS_INVALID_PARAMETER;
     }
 
-    const QUIC_ADDRESS_FAMILY Family = QuicAddrGetFamily(&Param->Address);
+    //
+    // Unmapped before anything is decided about it. The matcher compares
+    // unmapped addresses, so ::ffff:10.1.2.3 has 32 bits to match, not 128 --
+    // validating the length against the family as it arrived would accept
+    // ::ffff:10.1.2.3/128 and register a rule that can never match. Stored
+    // unmapped too, so GetParam reports what the policy acts on.
+    //
+    QUIC_ADDR Address;
+    QuicCandidateAddressUnmap(Param->Address, &Address);
+
+    const QUIC_ADDRESS_FAMILY Family = QuicAddrGetFamily(&Address);
     if (Family == QUIC_ADDRESS_FAMILY_INET) {
         if (Param->PrefixLength > 32) {
             return QUIC_STATUS_INVALID_PARAMETER;
@@ -10941,10 +10955,10 @@ QuicConnAddLocalAddressPolicy(
         // application register the same prefix twice by varying a field this
         // never reads.
         //
-        if (Existing->Policy.PrefixLength == Param->PrefixLength &&
-            Existing->Policy.Action == Param->Action &&
-            QuicAddrGetFamily(&Existing->Policy.Address) == Family &&
-            QuicAddrCompareIp(&Existing->Policy.Address, &Param->Address)) {
+        if (Existing->Rule.PrefixLength == Param->PrefixLength &&
+            Existing->Rule.Action == Param->Action &&
+            QuicAddrGetFamily(&Existing->Rule.Address) == Family &&
+            QuicAddrCompareIp(&Existing->Rule.Address, &Address)) {
             return QUIC_STATUS_ADDRESS_IN_USE;
         }
         Count++;
@@ -10968,12 +10982,16 @@ QuicConnAddLocalAddressPolicy(
         return QUIC_STATUS_OUT_OF_MEMORY;
     }
 
-    Policy->Policy = *Param;
     //
-    // Stored with the port cleared, so what comes back out of GetParam says
-    // what the policy actually matches on.
+    // Copied rather than referenced: Param->Address is the application's
+    // memory and is its own again the moment this returns. The port is cleared
+    // with it, so what comes back out of GetParam says what the policy
+    // actually matches on.
     //
-    QuicAddrSetPort(&Policy->Policy.Address, 0);
+    Policy->Rule.Address = Address;
+    Policy->Rule.PrefixLength = Param->PrefixLength;
+    Policy->Rule.Action = Param->Action;
+    QuicAddrSetPort(&Policy->Rule.Address, 0);
 
     CxPlatListInsertTail(&Connection->LocalAddressPolicies, &Policy->Link);
 
@@ -11000,6 +11018,17 @@ QuicConnRemoveLocalAddressPolicy(
         return Status;
     }
 
+    if (Param->Address == NULL) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    //
+    // Unmapped as the registration was, so a rule registered in one form is
+    // found by the other.
+    //
+    QUIC_ADDR Address;
+    QuicCandidateAddressUnmap(Param->Address, &Address);
+
     QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Found = NULL;
     for (CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
             Entry != &Connection->LocalAddressPolicies;
@@ -11009,11 +11038,11 @@ QuicConnRemoveLocalAddressPolicy(
                 Entry,
                 QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
                 Link);
-        if (Existing->Policy.PrefixLength == Param->PrefixLength &&
-            Existing->Policy.Action == Param->Action &&
-            QuicAddrGetFamily(&Existing->Policy.Address) ==
-                QuicAddrGetFamily(&Param->Address) &&
-            QuicAddrCompareIp(&Existing->Policy.Address, &Param->Address)) {
+        if (Existing->Rule.PrefixLength == Param->PrefixLength &&
+            Existing->Rule.Action == Param->Action &&
+            QuicAddrGetFamily(&Existing->Rule.Address) ==
+                QuicAddrGetFamily(&Address) &&
+            QuicAddrCompareIp(&Existing->Rule.Address, &Address)) {
             Found = Existing;
             break;
         }
@@ -11532,9 +11561,9 @@ QuicConnRebuildCandidatePairs(
     // The application's rules about the host's own addresses, flattened for a
     // function that does not know what a connection is.
     //
-    QUIC_LOCAL_ADDRESS_POLICY Policies[QUIC_MAX_LOCAL_ADDRESS_POLICIES];
+    QUIC_LOCAL_ADDRESS_RULE Rules[QUIC_MAX_LOCAL_ADDRESS_POLICIES];
     const uint32_t PolicyCount =
-        QuicConnGetLocalAddressPolicies(Connection, Policies);
+        QuicConnGetLocalAddressRules(Connection, Rules);
 
     //
     // Counted here only to report it. The rebuild below is what enforces the
@@ -11566,7 +11595,7 @@ QuicConnRebuildCandidatePairs(
         Remotes,
         RemoteCount,
         WantTemporary,
-        PolicyCount != 0 ? Policies : NULL,
+        PolicyCount != 0 ? Rules : NULL,
         PolicyCount);
 
     QuicTraceLogConnVerbose(
@@ -14794,10 +14823,14 @@ QuicConnParamGet(
     case QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES: {
 
         //
-        // Every registered policy, in registration order. The array protocol
-        // is the one QUIC_PARAM_CONN_PATH_STATISTICS and the test parameters
-        // use: too small a buffer reports how much is wanted, and an empty
-        // list is a success with nothing written.
+        // Every registered policy, in registration order.
+        //
+        // The buffer holds the structs and then the addresses they name, each
+        // Address pointing at its own copy just past the array: the public
+        // struct names its address by pointer, because QUIC_ADDR is a type the
+        // language bindings supply rather than one they can size, so there is
+        // nowhere in the struct to put the address itself. Self-contained, and
+        // the documentation says it is not relocatable.
         //
         uint32_t Count = 0;
         for (CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
@@ -14807,32 +14840,57 @@ QuicConnParamGet(
         }
 
         const uint32_t RequiredLength =
-            Count * (uint32_t)sizeof(QUIC_LOCAL_ADDRESS_POLICY);
-        if (*BufferLength < RequiredLength) {
+            Count *
+            (uint32_t)(sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR));
+
+        //
+        // Shaped like QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES: the empty case leaves
+        // first, so the copy below is only reached with a non-zero length and
+        // a buffer known not to be NULL. Letting it fall through instead is
+        // what MSVC's C6101 objects to -- a success that writes nothing to an
+        // _Out_ buffer.
+        //
+        if (RequiredLength == 0) {
+            *BufferLength = 0;
+            Status = QUIC_STATUS_SUCCESS;
+            break;
+        }
+        if (*BufferLength < RequiredLength || Buffer == NULL) {
             *BufferLength = RequiredLength;
             Status = QUIC_STATUS_BUFFER_TOO_SMALL;
             break;
         }
-        if (RequiredLength != 0 && Buffer == NULL) {
-            Status = QUIC_STATUS_INVALID_PARAMETER;
-            break;
-        }
+
+        *BufferLength = RequiredLength;
+        CXPLAT_ANALYSIS_ASSUME(
+            Count * (sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR)) <=
+                *BufferLength);
 
         QUIC_LOCAL_ADDRESS_POLICY* Policies = (QUIC_LOCAL_ADDRESS_POLICY*)Buffer;
+        //
+        // Aligned by construction: the struct leads with a pointer, so its size
+        // is a multiple of the pointer alignment and QUIC_ADDR needs no more
+        // than that.
+        //
+        QUIC_ADDR* Addresses =
+            (QUIC_ADDR*)(Policies + Count);
+
         uint32_t i = 0;
         for (CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
-                Entry != &Connection->LocalAddressPolicies;
+                Entry != &Connection->LocalAddressPolicies && i < Count;
                 Entry = Entry->Flink) {
             const QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Policy =
                 CXPLAT_CONTAINING_RECORD(
                     Entry,
                     QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
                     Link);
-            CXPLAT_DBG_ASSERT(i < Count);
-            Policies[i++] = Policy->Policy;
+            Addresses[i] = Policy->Rule.Address;
+            Policies[i].Address = &Addresses[i];
+            Policies[i].PrefixLength = Policy->Rule.PrefixLength;
+            Policies[i].Action = Policy->Rule.Action;
+            i++;
         }
 
-        *BufferLength = RequiredLength;
         Status = QUIC_STATUS_SUCCESS;
         break;
     }

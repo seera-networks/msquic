@@ -109,6 +109,19 @@ typedef struct QUIC_CANDIDATE_REMOTE {
 
 } QUIC_CANDIDATE_REMOTE;
 
+//
+// One of the application's rules about the host's own addresses, as the core
+// holds it: the public QUIC_LOCAL_ADDRESS_POLICY names the address by pointer,
+// which is the API's business and not a shape to keep internally.
+//
+typedef struct QUIC_LOCAL_ADDRESS_RULE {
+
+    QUIC_ADDR Address;
+    uint8_t PrefixLength;
+    uint8_t Action;             // QUIC_LOCAL_ADDRESS_POLICY_ACTION
+
+} QUIC_LOCAL_ADDRESS_RULE;
+
 void
 QuicCandidateSetInitialize(
     _Out_ QUIC_CANDIDATE_SET* Set
@@ -124,7 +137,7 @@ QuicCandidateSetInitialize(
 // moved onto the stable one, and vice versa.
 //
 //
-// Policies, when given, are the application's rules about the host's own
+// Rules, when given, are the application's statements about the host's own
 // addresses: a local address that matches one contributes no pairs at all.
 // Enforced here rather than by the caller so that every table is built under
 // the same rule, and so that the exclusion is covered by the same tests as the
@@ -138,8 +151,8 @@ QuicCandidateSetRebuild(
     _In_reads_(RemoteCount) const QUIC_CANDIDATE_REMOTE* Remotes,
     _In_ uint32_t RemoteCount,
     _In_ BOOLEAN WantTemporary,
-    _In_reads_opt_(PolicyCount) const QUIC_LOCAL_ADDRESS_POLICY* Policies,
-    _In_ uint32_t PolicyCount
+    _In_reads_opt_(RuleCount) const QUIC_LOCAL_ADDRESS_RULE* Rules,
+    _In_ uint32_t RuleCount
     );
 
 //
@@ -155,6 +168,23 @@ QuicCandidateAddressIsLoopback(
 BOOLEAN
 QuicCandidateAddressIsLinkLocal(
     _In_ const QUIC_ADDR* Address
+    );
+
+//
+// The address with any v4-mapped v6 form reduced to the v4 address it stands
+// for, and anything else copied through.
+//
+// Shared with the policy registration so that the prefix length is validated
+// against the family the matching will actually use: ::ffff:10.1.2.3 is a v4
+// address with 32 bits to match, and accepting /128 for it would register a
+// rule that can never match anything.
+//
+// Not CxPlatConvertFromMappedV6, which exists only in the POSIX platform layer.
+//
+void
+QuicCandidateAddressUnmap(
+    _In_ const QUIC_ADDR* Address,
+    _Out_ QUIC_ADDR* Unmapped
     );
 
 //
@@ -182,8 +212,8 @@ QuicCandidateAddressMatchesPrefix(
 BOOLEAN
 QuicCandidateLocalAddressIsExcluded(
     _In_ const QUIC_ADDR* Address,
-    _In_reads_opt_(PolicyCount) const QUIC_LOCAL_ADDRESS_POLICY* Policies,
-    _In_ uint32_t PolicyCount
+    _In_reads_opt_(RuleCount) const QUIC_LOCAL_ADDRESS_RULE* Rules,
+    _In_ uint32_t RuleCount
     );
 
 //

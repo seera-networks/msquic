@@ -958,8 +958,11 @@ RunClient(
     //
     for (const char* Arg : GetValues(argc, argv, "exclude")) {
         const char* Split = strchr(Arg, '/');
+        QUIC_ADDR Address;
         QUIC_LOCAL_ADDRESS_POLICY Policy;
         memset(&Policy, 0, sizeof(Policy));
+        memset(&Address, 0, sizeof(Address));
+        Policy.Address = &Address;
         Policy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
 
         std::string AddrText(Arg);
@@ -967,7 +970,7 @@ RunClient(
             AddrText.assign(Arg, (size_t)(Split - Arg));
             Policy.PrefixLength = (uint8_t)atoi(Split + 1);
         }
-        if (!ParseAddr(AddrText.c_str(), &Policy.Address)) {
+        if (!ParseAddr(AddrText.c_str(), &Address)) {
             printf("-exclude could not be parsed\n");
             return 1;
         }
@@ -977,15 +980,15 @@ RunClient(
             // its own family.
             //
             Policy.PrefixLength =
-                QuicAddrGetFamily(&Policy.Address) == QUIC_ADDRESS_FAMILY_INET ? 32 : 128;
+                QuicAddrGetFamily(&Address) == QUIC_ADDRESS_FAMILY_INET ? 32 : 128;
         }
-        QuicAddrSetPort(&Policy.Address, 0);
+        QuicAddrSetPort(&Address, 0);
 
         const QUIC_STATUS Status =
             Connection.SetParam(
                 QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Policy), &Policy);
         QUIC_ADDR_STR PolicyStr = { 0 };
-        QuicAddrToString(&Policy.Address, &PolicyStr);
+        QuicAddrToString(&Address, &PolicyStr);
         if (QUIC_FAILED(Status)) {
             Emit("client_exclude_failed=%s/%u,0x%x",
                 PolicyStr.Address, Policy.PrefixLength, Status);

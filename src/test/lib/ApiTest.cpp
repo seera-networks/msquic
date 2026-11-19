@@ -4543,11 +4543,27 @@ void QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(MsQuicRegistration& Registrat
     MsQuicConnection Connection(Registration);
     TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
 
+    QUIC_ADDR Ten;
+    CxPlatZeroMemory(&Ten, sizeof(Ten));
+    TEST_TRUE(QuicAddrFromString("10.0.0.0", 0, &Ten));
+
     QUIC_LOCAL_ADDRESS_POLICY Policy;
     CxPlatZeroMemory(&Policy, sizeof(Policy));
-    TEST_TRUE(QuicAddrFromString("10.0.0.0", 0, &Policy.Address));
+    Policy.Address = &Ten;
     Policy.PrefixLength = 8;
     Policy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+
+    //
+    // A policy has to name an address.
+    //
+    {
+        QUIC_LOCAL_ADDRESS_POLICY NoAddress = Policy;
+        NoAddress.Address = nullptr;
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_INVALID_PARAMETER,
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(NoAddress), &NoAddress));
+    }
 
     {
         TestScopeLogger LogScope1("SetParam");
@@ -4576,15 +4592,68 @@ void QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(MsQuicRegistration& Registrat
                 Connection.SetParam(
                     QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Bad), &Bad));
 
-            CxPlatZeroMemory(&Bad, sizeof(Bad));
-            TEST_TRUE(QuicAddrFromString("2001:db8::", 0, &Bad.Address));
+            QUIC_ADDR V6;
+            CxPlatZeroMemory(&V6, sizeof(V6));
+            TEST_TRUE(QuicAddrFromString("2001:db8::", 0, &V6));
+            Bad = Policy;
+            Bad.Address = &V6;
             Bad.PrefixLength = 129;
             TEST_QUIC_STATUS(
                 QUIC_STATUS_INVALID_PARAMETER,
                 Connection.SetParam(
                     QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Bad), &Bad));
 
-            CxPlatZeroMemory(&Bad, sizeof(Bad));
+            //
+            // A v4-mapped address carries a v4 prefix length, since that is
+            // the form the matching uses. /128 on one would be a rule that
+            // could never match, so it is refused rather than registered.
+            //
+            QUIC_ADDR Mapped;
+            CxPlatZeroMemory(&Mapped, sizeof(Mapped));
+            TEST_TRUE(QuicAddrFromString("::ffff:10.1.2.3", 0, &Mapped));
+            Bad = Policy;
+            Bad.Address = &Mapped;
+            Bad.PrefixLength = 128;
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_INVALID_PARAMETER,
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Bad), &Bad));
+
+            //
+            // The same address with the right length is accepted, and is the
+            // same rule as its unmapped form -- registering both would be a
+            // duplicate.
+            //
+            QUIC_LOCAL_ADDRESS_POLICY Good = Policy;
+            Good.Address = &Mapped;
+            Good.PrefixLength = 32;
+            TEST_QUIC_SUCCEEDED(
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Good), &Good));
+
+            QUIC_ADDR Plain;
+            CxPlatZeroMemory(&Plain, sizeof(Plain));
+            TEST_TRUE(QuicAddrFromString("10.1.2.3", 0, &Plain));
+            QUIC_LOCAL_ADDRESS_POLICY Same = Policy;
+            Same.Address = &Plain;
+            Same.PrefixLength = 32;
+            TEST_QUIC_STATUS(
+                QUIC_STATUS_ADDRESS_IN_USE,
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Same), &Same));
+            TEST_QUIC_SUCCEEDED(
+                Connection.SetParam(
+                    QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(Same), &Same));
+
+            //
+            // An address family that says nothing about which addresses are
+            // meant. A zero prefix length on a named family is how "all of
+            // these" is said.
+            //
+            QUIC_ADDR Unspec;
+            CxPlatZeroMemory(&Unspec, sizeof(Unspec));
+            Bad = Policy;
+            Bad.Address = &Unspec;
             Bad.PrefixLength = 0;
             TEST_QUIC_STATUS(
                 QUIC_STATUS_INVALID_PARAMETER,
@@ -4635,8 +4704,11 @@ void QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(MsQuicRegistration& Registrat
         // Removing one that was never registered.
         //
         {
+            QUIC_ADDR Other;
+            CxPlatZeroMemory(&Other, sizeof(Other));
+            TEST_TRUE(QuicAddrFromString("192.168.0.0", 0, &Other));
             QUIC_LOCAL_ADDRESS_POLICY Absent = Policy;
-            TEST_TRUE(QuicAddrFromString("192.168.0.0", 0, &Absent.Address));
+            Absent.Address = &Other;
             Absent.PrefixLength = 16;
             TEST_QUIC_STATUS(
                 QUIC_STATUS_NOT_FOUND,
@@ -4661,9 +4733,13 @@ void QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(MsQuicRegistration& Registrat
                 CxPlatZeroMemory(Literal, sizeof(Literal));
                 sprintf_s(Literal, sizeof(Literal), "10.%u.0.0", i);
 
+                QUIC_ADDR FillerAddr;
+                CxPlatZeroMemory(&FillerAddr, sizeof(FillerAddr));
+                TEST_TRUE(QuicAddrFromString(Literal, 0, &FillerAddr));
+
                 QUIC_LOCAL_ADDRESS_POLICY Filler;
                 CxPlatZeroMemory(&Filler, sizeof(Filler));
-                TEST_TRUE(QuicAddrFromString(Literal, 0, &Filler.Address));
+                Filler.Address = &FillerAddr;
                 Filler.PrefixLength = 16;
                 Filler.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
                 TEST_QUIC_SUCCEEDED(
@@ -4671,9 +4747,12 @@ void QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(MsQuicRegistration& Registrat
                         QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Filler), &Filler));
             }
 
+            QUIC_ADDR Private;
+            CxPlatZeroMemory(&Private, sizeof(Private));
+            TEST_TRUE(QuicAddrFromString("172.16.0.0", 0, &Private));
             QUIC_LOCAL_ADDRESS_POLICY TooMany;
             CxPlatZeroMemory(&TooMany, sizeof(TooMany));
-            TEST_TRUE(QuicAddrFromString("172.16.0.0", 0, &TooMany.Address));
+            TooMany.Address = &Private;
             TooMany.PrefixLength = 12;
             TooMany.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
             TEST_QUIC_STATUS(
@@ -4689,23 +4768,26 @@ void QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(MsQuicRegistration& Registrat
         //
         // The array protocol: the length alone, then the whole list.
         //
+        const uint32_t Expected =
+            16u * (uint32_t)(sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR));
+
         uint32_t Length = 0;
         TEST_QUIC_STATUS(
             QUIC_STATUS_BUFFER_TOO_SMALL,
             MsQuic->GetParam(
                 Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, nullptr));
-        TEST_EQUAL(16u * sizeof(QUIC_LOCAL_ADDRESS_POLICY), Length);
+        TEST_EQUAL(Expected, Length);
 
         UniquePtr<uint8_t[]> Buffer(new(std::nothrow) uint8_t[Length]);
         TEST_NOT_EQUAL(nullptr, Buffer.get());
         TEST_QUIC_SUCCEEDED(
             MsQuic->GetParam(
                 Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, Buffer.get()));
-        TEST_EQUAL(16u * sizeof(QUIC_LOCAL_ADDRESS_POLICY), Length);
+        TEST_EQUAL(Expected, Length);
 
         //
         // Registration order, which is the order they went in above: the /8
-        // first, then the fillers by prefix length.
+        // first, then the fillers by address.
         //
         const QUIC_LOCAL_ADDRESS_POLICY* Read =
             (const QUIC_LOCAL_ADDRESS_POLICY*)Buffer.get();
@@ -4713,11 +4795,23 @@ void QuicTest_QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICY(MsQuicRegistration& Registrat
         TEST_EQUAL(16, Read[1].PrefixLength);
         TEST_EQUAL(16, Read[15].PrefixLength);
 
-        QUIC_ADDR First = {}, Last = {};
+        QUIC_ADDR First, Last;
+        CxPlatZeroMemory(&First, sizeof(First));
+        CxPlatZeroMemory(&Last, sizeof(Last));
         TEST_TRUE(QuicAddrFromString("10.0.0.0", 0, &First));
         TEST_TRUE(QuicAddrFromString("10.15.0.0", 0, &Last));
-        TEST_TRUE(QuicAddrCompare(&Read[0].Address, &First));
-        TEST_TRUE(QuicAddrCompare(&Read[15].Address, &Last));
+        TEST_TRUE(QuicAddrCompare(Read[0].Address, &First));
+        TEST_TRUE(QuicAddrCompare(Read[15].Address, &Last));
+
+        //
+        // Every address sits inside the buffer the caller supplied.
+        //
+        for (uint32_t i = 0; i < 16; ++i) {
+            TEST_TRUE((const uint8_t*)Read[i].Address >= Buffer.get());
+            TEST_TRUE(
+                (const uint8_t*)Read[i].Address + sizeof(QUIC_ADDR) <=
+                    Buffer.get() + Length);
+        }
     }
 
     //

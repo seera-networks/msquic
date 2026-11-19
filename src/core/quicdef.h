@@ -416,7 +416,11 @@ CXPLAT_STATIC_ASSERT(
 // The maximum number of local address policies an application may register on
 // one connection. A deny list is a handful of prefixes in practice -- one per
 // interface class -- and the cap is what bounds both the memory and the work
-// per candidate rebuild, which is this times QUIC_MAX_LOCAL_ADDRESS_COUNT.
+// per candidate rebuild. That work is this times QUIC_MAX_LOCAL_ADDRESS_COUNT
+// times the remote count, since the check sits inside the cross product rather
+// than in a pass of its own: some tens of thousands of byte compares at the
+// limits, once per reconciliation pass, and reconciliation is rate-limited by
+// AutoMigrationHoldDownMs.
 //
 #define QUIC_MAX_LOCAL_ADDRESS_POLICIES         16
 

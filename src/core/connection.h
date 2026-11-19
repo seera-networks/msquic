@@ -1102,14 +1102,14 @@ typedef struct QUIC_CANDIDATE_ADDRESS_LIST_ENTRY {
 } QUIC_CANDIDATE_ADDRESS_LIST_ENTRY;
 
 //
-// One registered local address policy. The public struct is stored as it
-// arrived rather than decomposed, so that
-// QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES can hand it straight back.
+// One registered local address policy. Held as the core's own rule rather than
+// as the public struct, whose address is a pointer into the application's
+// memory and so is nothing to keep.
 //
 typedef struct QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY {
 
     CXPLAT_LIST_ENTRY Link;
-    QUIC_LOCAL_ADDRESS_POLICY Policy;
+    QUIC_LOCAL_ADDRESS_RULE Rule;
 
 } QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY;
 

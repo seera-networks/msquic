@@ -251,11 +251,21 @@ typedef enum QUIC_LOCAL_ADDRESS_POLICY_ACTION {
 } QUIC_LOCAL_ADDRESS_POLICY_ACTION;
 
 typedef struct QUIC_LOCAL_ADDRESS_POLICY {
-    QUIC_ADDR Address;          // The port is ignored.
+    QUIC_ADDR* Address;         // The port is ignored.
     uint8_t PrefixLength;       // 0-32 for IPv4, 0-128 for IPv6.
     uint8_t Action;             // QUIC_LOCAL_ADDRESS_POLICY_ACTION
 } QUIC_LOCAL_ADDRESS_POLICY;
 ```
+
+The address is a pointer, as it is in the other parameter structs here, and the
+library copies what it points at. `QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES`
+therefore writes the array of structs followed by the addresses they name, each
+`Address` pointing at its own copy inside the caller's buffer: ask with a
+length of zero to learn the size, which is
+`Count * (sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR))`. The result
+is self-contained but not relocatable -- copy what the addresses say, not where
+they point -- and the buffer has to be aligned for the struct, since that is
+what the library writes into it.
 
 A host address matches when the families agree and the leading `PrefixLength`
 bits of the address do. Both sides are compared unmapped, so a v4 prefix

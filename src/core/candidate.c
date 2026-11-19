@@ -53,6 +53,75 @@ QuicCandidateAddressIsLinkLocal(
     return Bytes[0] == 0xfe && (Bytes[1] & 0xc0) == 0x80;
 }
 
+//
+// Unmapped here rather than by CxPlatConvertFromMappedV6, which exists only in
+// the POSIX platform layer -- calling it compiled on Linux and failed the
+// Windows build with C4013.
+//
+void
+QuicCandidateAddressUnmap(
+    _In_ const QUIC_ADDR* Address,
+    _Out_ QUIC_ADDR* Unmapped
+    )
+{
+    *Unmapped = *Address;
+    if (QuicAddrGetFamily(Address) != QUIC_ADDRESS_FAMILY_INET6) {
+        return;
+    }
+
+    uint8_t Raw[16];
+    CxPlatCopyMemory(Raw, &Address->Ipv6.sin6_addr, sizeof(Raw));
+
+    //
+    // ::ffff:0:0/96 is the v4-mapped range: eighty zero bits, sixteen ones,
+    // then the v4 address.
+    //
+    static const uint8_t MappedPrefix[12] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff
+    };
+    if (memcmp(Raw, MappedPrefix, sizeof(MappedPrefix)) != 0) {
+        return;
+    }
+
+    const uint16_t Port = QuicAddrGetPort(Address);
+    CxPlatZeroMemory(Unmapped, sizeof(*Unmapped));
+    QuicAddrSetFamily(Unmapped, QUIC_ADDRESS_FAMILY_INET);
+    CxPlatCopyMemory(&Unmapped->Ipv4.sin_addr, Raw + 12, 4);
+    QuicAddrSetPort(Unmapped, Port);
+}
+
+//
+// The address as bytes, with its family reduced to the two this compares: a
+// v4-mapped v6 address and the v4 address it stands for are the same place, and
+// which form a snapshot carries is the datapath's business rather than the
+// application's.
+//
+static
+BOOLEAN
+QuicCandidateAddressBytes(
+    _In_ const QUIC_ADDR* Address,
+    _Out_writes_all_(16) uint8_t* Bytes,
+    _Out_ uint8_t* Length
+    )
+{
+    QUIC_ADDR Unmapped;
+    QuicCandidateAddressUnmap(Address, &Unmapped);
+
+    CxPlatZeroMemory(Bytes, 16);
+    if (QuicAddrGetFamily(&Unmapped) == QUIC_ADDRESS_FAMILY_INET) {
+        CxPlatCopyMemory(Bytes, &Unmapped.Ipv4.sin_addr, 4);
+        *Length = 4;
+        return TRUE;
+    }
+    if (QuicAddrGetFamily(&Unmapped) == QUIC_ADDRESS_FAMILY_INET6) {
+        CxPlatCopyMemory(Bytes, &Unmapped.Ipv6.sin6_addr, 16);
+        *Length = 16;
+        return TRUE;
+    }
+    *Length = 0;
+    return FALSE;
+}
+
 BOOLEAN
 QuicCandidateAddressMatchesPrefix(
     _In_ const QUIC_ADDR* Address,
@@ -60,40 +129,16 @@ QuicCandidateAddressMatchesPrefix(
     _In_ uint8_t PrefixLength
     )
 {
-    //
-    // Unmapped first, both sides. A v4-mapped v6 address and the v4 address it
-    // stands for are the same place, and which form a snapshot carries is the
-    // datapath's business rather than the application's.
-    //
-    // Only where the family is already INET6: CxPlatConvertFromMappedV6
-    // asserts that much, so handing it a v4 address would trip a debug build
-    // on the ordinary case.
-    //
-    QUIC_ADDR A = *Address;
-    QUIC_ADDR B = *Prefix;
-    if (QuicAddrGetFamily(&A) == QUIC_ADDRESS_FAMILY_INET6) {
-        CxPlatConvertFromMappedV6(&A, &A);
-    }
-    if (QuicAddrGetFamily(&B) == QUIC_ADDRESS_FAMILY_INET6) {
-        CxPlatConvertFromMappedV6(&B, &B);
-    }
-
-    if (QuicAddrGetFamily(&A) != QuicAddrGetFamily(&B)) {
-        return FALSE;
-    }
-
-    uint8_t Bytes[16];
-    uint8_t Against[16];
-    uint8_t Length;
-    if (QuicAddrGetFamily(&A) == QUIC_ADDRESS_FAMILY_INET) {
-        Length = 4;
-        CxPlatCopyMemory(Bytes, &A.Ipv4.sin_addr, Length);
-        CxPlatCopyMemory(Against, &B.Ipv4.sin_addr, Length);
-    } else if (QuicAddrGetFamily(&A) == QUIC_ADDRESS_FAMILY_INET6) {
-        Length = 16;
-        CxPlatCopyMemory(Bytes, &A.Ipv6.sin6_addr, Length);
-        CxPlatCopyMemory(Against, &B.Ipv6.sin6_addr, Length);
-    } else {
+    uint8_t Bytes[16], Against[16];
+    uint8_t Length = 0, AgainstLength = 0;
+    if (!QuicCandidateAddressBytes(Address, Bytes, &Length) ||
+        !QuicCandidateAddressBytes(Prefix, Against, &AgainstLength) ||
+        Length != AgainstLength) {
+        //
+        // Different families, or one of them is neither. A v4 prefix says
+        // nothing about a v6 address, which is what makes "exclude all IPv4" a
+        // usable thing to say.
+        //
         return FALSE;
     }
 
@@ -124,19 +169,19 @@ QuicCandidateAddressMatchesPrefix(
 BOOLEAN
 QuicCandidateLocalAddressIsExcluded(
     _In_ const QUIC_ADDR* Address,
-    _In_reads_opt_(PolicyCount) const QUIC_LOCAL_ADDRESS_POLICY* Policies,
-    _In_ uint32_t PolicyCount
+    _In_reads_opt_(RuleCount) const QUIC_LOCAL_ADDRESS_RULE* Rules,
+    _In_ uint32_t RuleCount
     )
 {
-    if (Policies == NULL) {
+    if (Rules == NULL) {
         return FALSE;
     }
-    for (uint32_t i = 0; i < PolicyCount; ++i) {
-        if (Policies[i].Action != QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE) {
+    for (uint32_t i = 0; i < RuleCount; ++i) {
+        if (Rules[i].Action != QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE) {
             continue;
         }
         if (QuicCandidateAddressMatchesPrefix(
-                Address, &Policies[i].Address, Policies[i].PrefixLength)) {
+                Address, &Rules[i].Address, Rules[i].PrefixLength)) {
             return TRUE;
         }
     }
@@ -427,8 +472,8 @@ QuicCandidateSetRebuild(
     _In_reads_(RemoteCount) const QUIC_CANDIDATE_REMOTE* Remotes,
     _In_ uint32_t RemoteCount,
     _In_ BOOLEAN WantTemporary,
-    _In_reads_opt_(PolicyCount) const QUIC_LOCAL_ADDRESS_POLICY* Policies,
-    _In_ uint32_t PolicyCount
+    _In_reads_opt_(RuleCount) const QUIC_LOCAL_ADDRESS_RULE* Rules,
+    _In_ uint32_t RuleCount
     )
 {
     //
@@ -460,7 +505,7 @@ QuicCandidateSetRebuild(
             // "we would rather not" and "do not".
             //
             if (QuicCandidateLocalAddressIsExcluded(
-                    &Locals[l].Address, Policies, PolicyCount)) {
+                    &Locals[l].Address, Rules, RuleCount)) {
                 continue;
             }
 

@@ -73,14 +73,14 @@ struct CandidateTest : public ::testing::Test {
         return Result;
     }
 
-    static QUIC_LOCAL_ADDRESS_POLICY Exclude(const char* Addr, uint8_t PrefixLength)
+    static QUIC_LOCAL_ADDRESS_RULE Exclude(const char* Addr, uint8_t PrefixLength)
     {
-        QUIC_LOCAL_ADDRESS_POLICY Policy;
-        CxPlatZeroMemory(&Policy, sizeof(Policy));
-        EXPECT_TRUE(QuicAddrFromString(Addr, 0, &Policy.Address));
-        Policy.PrefixLength = PrefixLength;
-        Policy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
-        return Policy;
+        QUIC_LOCAL_ADDRESS_RULE Rule;
+        CxPlatZeroMemory(&Rule, sizeof(Rule));
+        EXPECT_TRUE(QuicAddrFromString(Addr, 0, &Rule.Address));
+        Rule.PrefixLength = PrefixLength;
+        Rule.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+        return Rule;
     }
 
     static BOOLEAN Matches(const char* Addr, const char* Prefix, uint8_t PrefixLength)
@@ -476,6 +476,43 @@ TEST_F(CandidateTest, PrefixMatchesIpv6AndMappedForms)
     ASSERT_TRUE(Matches("10.1.2.3", "::ffff:10.0.0.0", 8));
 }
 
+TEST_F(CandidateTest, MappedPrefixLengthIsTheV4One)
+{
+    //
+    // ::ffff:10.1.2.3 is a v4 address with 32 bits to match, so a v6-looking
+    // prefix length on it matches nothing. The registration rejects that
+    // combination for exactly this reason -- see
+    // QuicConnAddLocalAddressPolicy, which unmaps before it validates.
+    //
+    ASSERT_TRUE(Matches("::ffff:10.1.2.3", "::ffff:10.1.2.3", 32));
+    ASSERT_FALSE(Matches("::ffff:10.1.2.3", "::ffff:10.1.2.3", 128));
+    ASSERT_TRUE(Matches("::ffff:10.1.2.3", "10.0.0.0", 8));
+}
+
+TEST_F(CandidateTest, UnmapsOnlyTheMappedRange)
+{
+    QUIC_ADDR In, Out;
+    EXPECT_TRUE(QuicAddrFromString("::ffff:10.1.2.3", 1234, &In));
+    QuicCandidateAddressUnmap(&In, &Out);
+    ASSERT_EQ((uint16_t)QUIC_ADDRESS_FAMILY_INET, QuicAddrGetFamily(&Out));
+    ASSERT_EQ(1234, QuicAddrGetPort(&Out));
+    QUIC_ADDR Expected;
+    EXPECT_TRUE(QuicAddrFromString("10.1.2.3", 1234, &Expected));
+    ASSERT_TRUE(QuicAddrCompare(&Out, &Expected));
+
+    //
+    // A real v6 address and a v4 one both come through unchanged, which is
+    // what lets the registration call this unconditionally.
+    //
+    EXPECT_TRUE(QuicAddrFromString("2001:db8::1", 443, &In));
+    QuicCandidateAddressUnmap(&In, &Out);
+    ASSERT_TRUE(QuicAddrCompare(&Out, &In));
+
+    EXPECT_TRUE(QuicAddrFromString("10.1.2.3", 443, &In));
+    QuicCandidateAddressUnmap(&In, &Out);
+    ASSERT_TRUE(QuicAddrCompare(&Out, &In));
+}
+
 TEST_F(CandidateTest, PrefixTooLongMatchesNothing)
 {
     //
@@ -497,7 +534,7 @@ TEST_F(CandidateTest, ExcludedLocalContributesNoPairs)
         Local("10.0.0.1"), Local("192.168.1.5"), Local("10.0.0.2")
     };
     const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1") };
-    const QUIC_LOCAL_ADDRESS_POLICY Policies[] = { Exclude("10.0.0.0", 8) };
+    const QUIC_LOCAL_ADDRESS_RULE Policies[] = { Exclude("10.0.0.0", 8) };
 
     QuicCandidateSetRebuild(&Set, Locals, 3, Remotes, 1, FALSE, Policies, 1);
 
@@ -517,7 +554,7 @@ TEST_F(CandidateTest, ExcludingEveryLocalEmptiesTheTable)
 
     const CXPLAT_LOCAL_ADDRESS Locals[] = { Local("10.0.0.1"), Local("10.0.0.2") };
     const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1"), Remote("192.0.2.2") };
-    const QUIC_LOCAL_ADDRESS_POLICY Policies[] = { Exclude("0.0.0.0", 0) };
+    const QUIC_LOCAL_ADDRESS_RULE Policies[] = { Exclude("0.0.0.0", 0) };
 
     QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 2, FALSE, Policies, 1);
 
@@ -538,7 +575,7 @@ TEST_F(CandidateTest, PolicyWithAnUnknownActionExcludesNothing)
     // belt-and-braces case as the over-long prefix: an action this build does
     // not implement must not be read as "exclude".
     //
-    QUIC_LOCAL_ADDRESS_POLICY Policies[] = { Exclude("10.0.0.0", 8) };
+    QUIC_LOCAL_ADDRESS_RULE Policies[] = { Exclude("10.0.0.0", 8) };
     Policies[0].Action = 0xff;
 
     QuicCandidateSetRebuild(&Set, Locals, 1, Remotes, 1, FALSE, Policies, 1);

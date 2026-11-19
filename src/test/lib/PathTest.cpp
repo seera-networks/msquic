@@ -3566,7 +3566,7 @@ QuicTestLocalAddressPolicy(
     //
     QUIC_LOCAL_ADDRESS_POLICY Policy;
     CxPlatZeroMemory(&Policy, sizeof(Policy));
-    Policy.Address = Excluded;
+    Policy.Address = &Excluded;
     Policy.PrefixLength = 32;
     Policy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
     TEST_QUIC_SUCCEEDED(
@@ -3584,27 +3584,50 @@ QuicTestLocalAddressPolicy(
     // matches on an address, so reporting a port back would be reporting
     // something it does not use.
     //
-    QUIC_LOCAL_ADDRESS_POLICY Read[2];
-    Length = sizeof(Read);
+    const uint32_t EntryLength =
+        (uint32_t)(sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR));
+    //
+    // Aligned for the structs the parameter writes into it, not just sized:
+    // the library casts the buffer to QUIC_LOCAL_ADDRESS_POLICY*, and a plain
+    // uint8_t array has no alignment to speak of. Compilers over-align a stack
+    // array this size in practice, which is how the misuse hides.
+    //
+    union {
+        QUIC_LOCAL_ADDRESS_POLICY Align;
+        uint8_t Bytes[2 * (sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR))];
+    } Read2;
+    uint8_t* const ReadBuffer = Read2.Bytes;
+    Length = sizeof(Read2.Bytes);
     TEST_QUIC_SUCCEEDED(
         MsQuic->GetParam(
-            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, Read));
-    TEST_EQUAL((uint32_t)sizeof(QUIC_LOCAL_ADDRESS_POLICY), Length);
+            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, ReadBuffer));
+    TEST_EQUAL(EntryLength, Length);
+
+    const QUIC_LOCAL_ADDRESS_POLICY* Read =
+        (const QUIC_LOCAL_ADDRESS_POLICY*)ReadBuffer;
     TEST_EQUAL(32, Read[0].PrefixLength);
     TEST_EQUAL((uint8_t)QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE, Read[0].Action);
-    TEST_TRUE(QuicAddrCompare(&Read[0].Address, &Excluded));
-    TEST_EQUAL(0, QuicAddrGetPort(&Read[0].Address));
+    TEST_NOT_EQUAL(nullptr, Read[0].Address);
+    //
+    // The address lives inside the buffer the caller gave, just past the
+    // structs -- which is what makes the result self-contained.
+    //
+    TEST_TRUE((const uint8_t*)Read[0].Address >= ReadBuffer);
+    TEST_TRUE(
+        (const uint8_t*)Read[0].Address + sizeof(QUIC_ADDR) <= ReadBuffer + Length);
+    TEST_TRUE(QuicAddrCompare(Read[0].Address, &Excluded));
+    TEST_EQUAL(0, QuicAddrGetPort(Read[0].Address));
 
     //
     // Too small a buffer reports what it would take, as the other array
     // parameters do.
     //
-    Length = sizeof(QUIC_LOCAL_ADDRESS_POLICY) - 1;
+    Length = EntryLength - 1;
     TEST_QUIC_STATUS(
         QUIC_STATUS_BUFFER_TOO_SMALL,
         MsQuic->GetParam(
-            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, Read));
-    TEST_EQUAL((uint32_t)sizeof(QUIC_LOCAL_ADDRESS_POLICY), Length);
+            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, ReadBuffer));
+    TEST_EQUAL(EntryLength, Length);
 
     //
     // Excluding the address the connection is actually on. The table loses
@@ -3614,10 +3637,11 @@ QuicTestLocalAddressPolicy(
     //
     QuicAddr ActiveLocal;
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ActiveLocal));
+    QUIC_ADDR ActiveExcluded = ActiveLocal.SockAddr;
+    QuicAddrSetPort(&ActiveExcluded, 0);
     QUIC_LOCAL_ADDRESS_POLICY ActivePolicy;
     CxPlatZeroMemory(&ActivePolicy, sizeof(ActivePolicy));
-    ActivePolicy.Address = ActiveLocal.SockAddr;
-    QuicAddrSetPort(&ActivePolicy.Address, 0);
+    ActivePolicy.Address = &ActiveExcluded;
     ActivePolicy.PrefixLength = 32;
     ActivePolicy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
     TEST_QUIC_SUCCEEDED(
@@ -3642,10 +3666,10 @@ QuicTestLocalAddressPolicy(
         Connection.SetParam(
             QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(Policy), &Policy));
 
-    Length = sizeof(Read);
+    Length = sizeof(Read2.Bytes);
     TEST_QUIC_SUCCEEDED(
         MsQuic->GetParam(
-            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, Read));
+            Connection.Handle, QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES, &Length, ReadBuffer));
     TEST_EQUAL(0u, Length);
 
     TEST_TRUE(ReconcilerWaitForPathTo(Connection, &Advertised.SockAddr, true));
