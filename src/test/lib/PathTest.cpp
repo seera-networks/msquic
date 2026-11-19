@@ -3635,18 +3635,45 @@ QuicTestLocalAddressPolicy(
     // path stays, because the alternative is a deny list that can kill a
     // connection outright.
     //
+    // Whether that needs a second policy depends on the host. Where routing
+    // reaches the advertised address from some other interface -- a Linux
+    // machine with a routable address, reaching a server it finds on loopback
+    // -- the two addresses differ and the active one is still allowed. Where
+    // routing answers with the address the connection is already on, which is
+    // what the Windows CI hosts do, the policy registered above has already
+    // excluded it and asking again is a duplicate (QUIC_STATUS_ADDRESS_IN_USE,
+    // which is how this test first failed there). So the second policy is
+    // registered only when it would say something new; the assertions below
+    // are the same either way, and in the second case they are being made
+    // about a connection that has been running on an excluded address since
+    // the first policy went in.
+    //
     QuicAddr ActiveLocal;
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(ActiveLocal));
     QUIC_ADDR ActiveExcluded = ActiveLocal.SockAddr;
     QuicAddrSetPort(&ActiveExcluded, 0);
+    const bool ActiveAlreadyExcluded =
+        QuicAddrCompare(&ActiveExcluded, &Excluded) != FALSE;
+
     QUIC_LOCAL_ADDRESS_POLICY ActivePolicy;
     CxPlatZeroMemory(&ActivePolicy, sizeof(ActivePolicy));
     ActivePolicy.Address = &ActiveExcluded;
     ActivePolicy.PrefixLength = 32;
     ActivePolicy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
-    TEST_QUIC_SUCCEEDED(
-        Connection.SetParam(
-            QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(ActivePolicy), &ActivePolicy));
+    if (!ActiveAlreadyExcluded) {
+        TEST_QUIC_SUCCEEDED(
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(ActivePolicy), &ActivePolicy));
+    } else {
+        //
+        // And the duplicate rule still holds, which is worth asserting since it
+        // is what tells the two cases apart.
+        //
+        TEST_QUIC_STATUS(
+            QUIC_STATUS_ADDRESS_IN_USE,
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(ActivePolicy), &ActivePolicy));
+    }
 
     CxPlatSleep(250);
     TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
@@ -3659,9 +3686,11 @@ QuicTestLocalAddressPolicy(
     // Removing a policy re-admits the address, and the pair that was waiting
     // for it gets its path back.
     //
-    TEST_QUIC_SUCCEEDED(
-        Connection.SetParam(
-            QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(ActivePolicy), &ActivePolicy));
+    if (!ActiveAlreadyExcluded) {
+        TEST_QUIC_SUCCEEDED(
+            Connection.SetParam(
+                QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(ActivePolicy), &ActivePolicy));
+    }
     TEST_QUIC_SUCCEEDED(
         Connection.SetParam(
             QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY, sizeof(Policy), &Policy));
