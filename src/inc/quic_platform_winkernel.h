@@ -476,6 +476,14 @@ CxPlatRefIncrementNonZero(
 
         } else {
             __fastfail(FAST_FAIL_INVALID_REFERENCE_COUNT);
+            //
+            // Kept for the compilers and analyzers that want every path out of
+            // a value-returning function to return something, and suppressed
+            // for the one that can see __fastfail does not come back: MSVC
+            // 19.52, in the windows-latest image from 20261116, reports C4702
+            // here and the build treats it as an error.
+            //
+#pragma warning(suppress: 4702) // unreachable code
             return FALSE;
         }
     }
@@ -510,6 +518,10 @@ CxPlatRefDecrement(
     }
 
     __fastfail(FAST_FAIL_INVALID_REFERENCE_COUNT);
+    //
+    // As above: unreachable, and kept anyway.
+    //
+#pragma warning(suppress: 4702) // unreachable code
     return FALSE;
 }
 
