@@ -10265,6 +10265,20 @@ QuicConnActivatePath(
             // If the path already exists, activate it.
             QuicPathSetActive(Connection, Path);
         } else {
+            //
+            // The announcement names a path ID, so a path that has none cannot
+            // be announced -- and marking it active anyway would raise
+            // SendStatus for a frame the writer can never build. #215.
+            //
+            // Refused rather than deferred: a path waiting on a path ID may
+            // never get one, and QUIC_PARAM_CONN_PATH_STATUS already answers
+            // this question the same way by refusing to find such a path at
+            // all (it looks paths up *by* path ID).
+            //
+            if (Path->PathID == NULL) {
+                return QUIC_STATUS_INVALID_STATE;
+            }
+
             // If the path already exists, activate it and set the send flag to notify the peer.
             BOOLEAN PrevIsActive = Path->IsActive;
             Path->IsActive = TRUE;
