@@ -686,7 +686,9 @@ QuicConnChoosePath(
     //
     // Reported as UINT32_MAX rather than through a second trace id, so that
     // "chosen with no path ID" is visible in a log that has one line per
-    // choice. Path ID 0 is a real id and could not have said it.
+    // choice. Path ID 0 is a real id and could not have said it -- which is
+    // also why a QMux connection, whose paths never hold a path ID at all,
+    // reports UINT32_MAX here rather than claiming path ID 0.
     //
     QuicTraceLogConnInfo(
         PathChosen,

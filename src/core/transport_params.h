@@ -159,6 +159,8 @@ typedef struct QUIC_TRANSPORT_PARAMETERS {
     const uint8_t* VersionInfo;
 
 
+    QUIC_VAR_INT MaxRecordSize;
+
     //
     // The initial maximum number of paths allowed.
     //

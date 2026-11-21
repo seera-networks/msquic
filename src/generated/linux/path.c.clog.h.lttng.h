@@ -36,10 +36,10 @@ TRACEPOINT_EVENT(CLOG_PATH_C, PathActiveFallback,
         Connection,
         "Path[%hhu][PathID][%u] Chosen",
         Path->ID,
-        Path->PathID->ID);
+        Path->PathID == NULL ? 0 : Path->PathID->ID);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Path->ID = arg3
-// arg4 = arg4 = Path->PathID->ID = arg4
+// arg4 = arg4 = Path->PathID == NULL ? 0 : Path->PathID->ID = arg4
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_PATH_C, PathChosen,
     TP_ARGS(
