@@ -609,6 +609,34 @@ QuicSendClearStreamSendFlag(
 // otherwise the next flush builds a packet for a flag it then finds nothing to
 // write for, and QuicSendWriteFrames trips its "framed nothing" assert.
 //
+//
+// Whether this path has a status the peer can be told about.
+//
+// The frames name a path ID, so a path that has none has nothing to announce
+// -- QuicConnAssignPathIDs leaves a path waiting for one on purpose, and
+// QuicPathRemove can take one away after SendStatus was raised. Reading
+// PathID->ID through that NULL is #215, and the sibling in
+// QuicConnChoosePath was #213.
+//
+// Asked in one place because the writers and the pending test below have to
+// agree: a path the writers skip but the test counts keeps the connection
+// flag up for a frame that never gets written, which is the "framed nothing"
+// assert this file already carries a comment about.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicSendPathHasStatusToSend(
+    _In_ const QUIC_PATH* Path,
+    _In_ BOOLEAN Active
+    )
+{
+    return
+        Path->SendStatus &&
+        Path->PathID != NULL &&
+        (Path->IsActive != FALSE) == (Active != FALSE);
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
 BOOLEAN
@@ -618,8 +646,7 @@ QuicSendPathStatusPending(
     )
 {
     for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
-        const QUIC_PATH* Path = &Connection->Paths[i];
-        if (Path->SendStatus && (Path->IsActive != FALSE) == (Active != FALSE)) {
+        if (QuicSendPathHasStatusToSend(&Connection->Paths[i], Active)) {
             return TRUE;
         }
     }
@@ -922,10 +949,7 @@ QuicSendWriteFrames(
 
         for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
             QUIC_PATH* TempPath = &Connection->Paths[i];
-            if (!TempPath->SendStatus) {
-                continue;
-            }
-            if (TempPath->IsActive) {
+            if (!QuicSendPathHasStatusToSend(TempPath, FALSE)) {
                 continue;
             }
 
@@ -964,10 +988,7 @@ QuicSendWriteFrames(
 
         for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
             QUIC_PATH* TempPath = &Connection->Paths[i];
-            if (!TempPath->SendStatus) {
-                continue;
-            }
-            if (!TempPath->IsActive) {
+            if (!QuicSendPathHasStatusToSend(TempPath, TRUE)) {
                 continue;
             }
 

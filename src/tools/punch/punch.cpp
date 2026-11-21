@@ -951,6 +951,53 @@ RunClient(
     }
 
     //
+    // Addresses the application wants left alone, as address/prefix-length
+    // policies (#207). The reconciler builds no candidate pair on an address
+    // that matches one, so the harness can ask for a path on one interface and
+    // not the other without changing the topology.
+    //
+    for (const char* Arg : GetValues(argc, argv, "exclude")) {
+        const char* Split = strchr(Arg, '/');
+        QUIC_ADDR Address;
+        QUIC_LOCAL_ADDRESS_POLICY Policy;
+        memset(&Policy, 0, sizeof(Policy));
+        memset(&Address, 0, sizeof(Address));
+        Policy.Address = &Address;
+        Policy.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+
+        std::string AddrText(Arg);
+        if (Split != nullptr) {
+            AddrText.assign(Arg, (size_t)(Split - Arg));
+            Policy.PrefixLength = (uint8_t)atoi(Split + 1);
+        }
+        if (!ParseAddr(AddrText.c_str(), &Address)) {
+            printf("-exclude could not be parsed\n");
+            return 1;
+        }
+        if (Split == nullptr) {
+            //
+            // A bare address means that address alone, which is the length of
+            // its own family.
+            //
+            Policy.PrefixLength =
+                QuicAddrGetFamily(&Address) == QUIC_ADDRESS_FAMILY_INET ? 32 : 128;
+        }
+        QuicAddrSetPort(&Address, 0);
+
+        const QUIC_STATUS Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY, sizeof(Policy), &Policy);
+        QUIC_ADDR_STR PolicyStr = { 0 };
+        QuicAddrToString(&Address, &PolicyStr);
+        if (QUIC_FAILED(Status)) {
+            Emit("client_exclude_failed=%s/%u,0x%x",
+                PolicyStr.Address, Policy.PrefixLength, Status);
+            return 1;
+        }
+        Emit("client_exclude=%s/%u", PolicyStr.Address, Policy.PrefixLength);
+    }
+
+    //
     // With -poll the run is a timeline rather than a race to the first
     // validated path: the #161 items are about paths appearing and
     // disappearing as local addresses come and go, so the loop reports the set
@@ -1000,6 +1047,7 @@ int QUIC_MAIN_EXPORT main(int argc, char **argv) {
             "                         [-poll:<seconds>] [-time:<seconds>]\n"
             "                         [-keepalive:<ms>] [-idle:<ms>] [-pathevent:0|1]\n"
             "                         [-local:<ip[:port]>] [-unconnected:0|1]\n"
+            "                         [-exclude:<ip>[/<prefixlen>]]...\n"
             "\n"
             "Exit codes: 0 a direct path validated, 2 relay only, 1 error.\n");
         return 1;

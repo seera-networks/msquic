@@ -123,6 +123,7 @@ QuicConnAlloc(
     CxPlatDispatchLockInitialize(&Connection->ReceiveQueueLock);
     CxPlatListInitializeHead(&Connection->BoundAddresses);
     CxPlatListInitializeHead(&Connection->CandidateAddresses);
+    CxPlatListInitializeHead(&Connection->LocalAddressPolicies);
     QuicStreamSetInitialize(&Connection->Streams);
     QuicSendBufferInitialize(&Connection->SendBuffer);
     QuicOperationQueueInitialize(&Connection->OperQ);
@@ -467,6 +468,14 @@ QuicConnFree(
                 QUIC_CANDIDATE_ADDRESS_LIST_ENTRY,
                 Link);
         CXPLAT_FREE(Candidate, QUIC_POOL_CANDIDATE_ADDRESS_LIST);
+    }
+    while (!CxPlatListIsEmpty(&Connection->LocalAddressPolicies)) {
+        QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY *Policy =
+            CXPLAT_CONTAINING_RECORD(
+                CxPlatListRemoveHead(&Connection->LocalAddressPolicies),
+                QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
+                Link);
+        CXPLAT_FREE(Policy, QUIC_POOL_LOCAL_ADDRESS_POLICY);
     }
     QuicPathIDSetFree(&Connection->PathIDs);
     QuicConnUnregister(Connection);
@@ -815,6 +824,17 @@ QuicConnRemovePath(
     _In_ QUIC_PATH_PARAM* Param
     );
 
+//
+// Declared here for QuicConnAddPath, and defined with the candidate-table
+// helpers it reads to decide which path is worth giving up.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnYieldPathSlot(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
 
 //
 // Whether the connection already sends from this address on some path. The
@@ -896,6 +916,69 @@ QuicConnGetRouteLocalAddress(
 }
 
 //
+// Whether the application has told this connection not to use an address.
+//
+// Reads the list directly rather than taking a flattened array, because the
+// chooser below asks one address at a time; the candidate rebuild, which hands
+// a whole snapshot to a function that knows nothing about connections, is the
+// one that flattens.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnLocalAddressIsExcluded(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Address
+    )
+{
+    for (const CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
+            Entry != &Connection->LocalAddressPolicies;
+            Entry = Entry->Flink) {
+        const QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Policy =
+            CXPLAT_CONTAINING_RECORD(
+                Entry,
+                QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
+                Link);
+        if (Policy->Rule.Action != QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE) {
+            continue;
+        }
+        if (QuicCandidateAddressMatchesPrefix(
+                Address, &Policy->Rule.Address, Policy->Rule.PrefixLength)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+//
+// Flattens the policy list for the candidate rebuild, which passes it to a
+// file that has no business knowing what a connection is.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint32_t
+QuicConnGetLocalAddressRules(
+    _In_ const QUIC_CONNECTION* Connection,
+    _Out_writes_to_(QUIC_MAX_LOCAL_ADDRESS_POLICIES, return)
+        QUIC_LOCAL_ADDRESS_RULE* Rules
+    )
+{
+    uint32_t Count = 0;
+    for (const CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
+            Entry != &Connection->LocalAddressPolicies &&
+                Count < QUIC_MAX_LOCAL_ADDRESS_POLICIES;
+            Entry = Entry->Flink) {
+        const QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Policy =
+            CXPLAT_CONTAINING_RECORD(
+                Entry,
+                QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
+                Link);
+        Rules[Count++] = Policy->Rule;
+    }
+    return Count;
+}
+
+//
 // Picks the local address AUTO mode should send from to reach Remote, or NULL
 // when the host has nothing usable. Excludes addresses the connection already
 // has a path on, since the caller is looking for somewhere new to go.
@@ -948,6 +1031,18 @@ QuicConnSelectLocalAddress(
 
         if (ExcludeAddressesInUse &&
             QuicConnHasPathOnLocalAddress(Connection, &Candidate->Address)) {
+            continue;
+        }
+
+        //
+        // The application said not to use this one. Checked here as well as in
+        // the candidate rebuild because this is the other thing that picks a
+        // local address on the application's behalf -- it chooses the active
+        // path's, from the snapshot rather than from the table -- and a policy
+        // honoured in only one of the two would keep paths off an address
+        // while still migrating the connection onto it.
+        //
+        if (QuicConnLocalAddressIsExcluded(Connection, &Candidate->Address)) {
             continue;
         }
 
@@ -10023,9 +10118,16 @@ QuicConnOpenNewPath(
             Path->PathID = PathID;
             QuicCongestionControlInitialize(&PathID->CongestionControl, &Connection->Settings);
         } else {
+            //
+            // No path ID left, which is a different limit from the path array
+            // above and now says so: QUIC_STATUS_PATHID_LIMIT_REACHED already
+            // existed for it, and OUT_OF_MEMORY made the two
+            // indistinguishable from outside -- the same complaint #205 is
+            // about.
+            //
             QuicLibraryReleaseBinding(Path->Binding);
             Path->Binding = NULL;
-            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            Status = QUIC_STATUS_PATHID_LIMIT_REACHED;
             goto Error;
         }
     } else {
@@ -10519,11 +10621,35 @@ QuicConnAddPath(
 
     if (Connection->PathsCount == QUIC_MAX_PATH_COUNT) {
         //
-        // Already tracking the maximum number of paths, and can't free
-        // any more.
+        // The array is full. An application asking for a path of its own gets
+        // one at the expense of a reconciler path, which is #205: AUTO fills
+        // every slot from the candidate table, so before this whether
+        // QUIC_PARAM_CONN_ADD_PATH worked depended on whether the server had
+        // advertised enough addresses first -- and a connection that worked
+        // yesterday could stop working because the *peer* started advertising
+        // one more.
         //
-        Status = QUIC_STATUS_OUT_OF_MEMORY;
-        goto Done;
+        // One direction only. A reconciler path is speculative, a validation
+        // candidate the stack opened on its own guess; the application's path
+        // is the one with a purpose. The reverse trade would be the stack
+        // overruling an instruction, which is why QuicConnReconcileRemovePaths
+        // has never touched a path it did not open.
+        //
+        if (Origin != QUIC_PATH_ORIGIN_APPLICATION ||
+            !QuicConnYieldPathSlot(Connection)) {
+            //
+            // Nothing to give up, or the caller is the reconciler itself.
+            //
+            // QUIC_STATUS_PATH_LIMIT_REACHED rather than OUT_OF_MEMORY, which
+            // is the other half of #205: an application could not tell "the
+            // stack spent your path budget" from "the allocator failed", so it
+            // could not sensibly retry, back off or report. Nothing here is
+            // out of memory.
+            //
+            Status = QUIC_STATUS_PATH_LIMIT_REACHED;
+            goto Done;
+        }
+        CXPLAT_DBG_ASSERT(Connection->PathsCount < QUIC_MAX_PATH_COUNT);
     }
 
     if (Connection->PathsCount > 1) {
@@ -10632,6 +10758,20 @@ QuicConnActivatePath(
             // If the path already exists, activate it.
             QuicPathSetActive(Connection, Path);
         } else {
+            //
+            // The announcement names a path ID, so a path that has none cannot
+            // be announced -- and marking it active anyway would raise
+            // SendStatus for a frame the writer can never build. #215.
+            //
+            // Refused rather than deferred: a path waiting on a path ID may
+            // never get one, and QUIC_PARAM_CONN_PATH_STATUS already answers
+            // this question the same way by refusing to find such a path at
+            // all (it looks paths up *by* path ID).
+            //
+            if (Path->PathID == NULL) {
+                return QUIC_STATUS_INVALID_STATE;
+            }
+
             // If the path already exists, activate it and set the send flag to notify the peer.
             BOOLEAN PrevIsActive = Path->IsActive;
             Path->IsActive = TRUE;
@@ -11192,6 +11332,244 @@ QuicConnAddCandidateAddress(
     return QUIC_STATUS_SUCCESS;
 }
 
+//
+// Whether this connection may hold local address policies at all.
+//
+// Client only, like the candidate addresses above and for the same reason: the
+// policies govern what the automatic machinery picks, and that machinery is
+// the client's. QuicConnReconcilePaths returns early on a server, and a server
+// in AUTO does nothing with the host's addresses but abandon the paths whose
+// address went away -- which is a different thing to want a policy about, and
+// would be its own feature.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_STATUS
+QuicConnLocalAddressPolicyAllowed(
+    _In_ const QUIC_CONNECTION* Connection
+    )
+{
+    if (Connection->State.ClosedLocally) {
+        return QUIC_STATUS_INVALID_STATE;
+    }
+    if (QuicConnIsServer(Connection)) {
+        return QUIC_STATUS_INVALID_STATE;
+    }
+    return QUIC_STATUS_SUCCESS;
+}
+
+//
+// A registered policy changes what the candidate table may hold, and the table
+// is only rebuilt by a reconciliation pass, so one is queued -- as adding a
+// candidate address does, and for the same reason: without it the stale pairs
+// stand until some unrelated event happens to cause a pass.
+//
+// The other chooser, the one that picks the active path's local address, is
+// deliberately *not* woken. The plan for this said to force it by clearing
+// LastAddressGeneration and queueing a local-address change, which turns out
+// to be wrong twice over: that chooser only runs when the active path's
+// address has gone or the route moved (see QuicConnAutoMigrate), neither of
+// which a policy makes true, and the pass it would run re-indicates
+// QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED with every host address not
+// currently carrying a path reported as newly added -- a lie told to a MANUAL
+// application for nothing. The chooser consults the policy at the next genuine
+// change, which is when it next has a choice to make.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+void
+QuicConnLocalAddressPolicyChanged(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    QuicConnQueueReconcile(Connection);
+}
+
+//
+// Registers one rule about the host's own addresses.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_STATUS
+QuicConnAddLocalAddressPolicy(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_LOCAL_ADDRESS_POLICY* Param
+    )
+{
+    QUIC_STATUS Status = QuicConnLocalAddressPolicyAllowed(Connection);
+    if (QUIC_FAILED(Status)) {
+        return Status;
+    }
+
+    if (Param->Address == NULL) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    //
+    // One action today. Rejecting the rest is what makes adding one later a
+    // compatible change rather than a reinterpretation of a field an older
+    // application left zeroed.
+    //
+    if (Param->Action != QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    //
+    // Unmapped before anything is decided about it. The matcher compares
+    // unmapped addresses, so ::ffff:10.1.2.3 has 32 bits to match, not 128 --
+    // validating the length against the family as it arrived would accept
+    // ::ffff:10.1.2.3/128 and register a rule that can never match. Stored
+    // unmapped too, so GetParam reports what the policy acts on.
+    //
+    QUIC_ADDR Address;
+    QuicCandidateAddressUnmap(Param->Address, &Address);
+
+    const QUIC_ADDRESS_FAMILY Family = QuicAddrGetFamily(&Address);
+    if (Family == QUIC_ADDRESS_FAMILY_INET) {
+        if (Param->PrefixLength > 32) {
+            return QUIC_STATUS_INVALID_PARAMETER;
+        }
+    } else if (Family == QUIC_ADDRESS_FAMILY_INET6) {
+        if (Param->PrefixLength > 128) {
+            return QUIC_STATUS_INVALID_PARAMETER;
+        }
+    } else {
+        //
+        // A policy has to say which family it is about. UNSPEC would otherwise
+        // read as "every address", which is what a zero prefix length on a
+        // named family already says and says explicitly.
+        //
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    uint32_t Count = 0;
+    for (CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
+            Entry != &Connection->LocalAddressPolicies;
+            Entry = Entry->Flink) {
+        const QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Existing =
+            CXPLAT_CONTAINING_RECORD(
+                Entry,
+                QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
+                Link);
+        //
+        // Compared on the address, the prefix and the action together, as the
+        // removal below is. Two policies that overlap are not duplicates:
+        // 10.0.0.0/8 and 10.1.0.0/16 are different statements, and the second
+        // one being redundant today is not this layer's judgement to make.
+        //
+        // The port is excluded deliberately -- a policy is about addresses --
+        // so QuicAddrCompareIp rather than QuicAddrCompare, which would let an
+        // application register the same prefix twice by varying a field this
+        // never reads.
+        //
+        if (Existing->Rule.PrefixLength == Param->PrefixLength &&
+            Existing->Rule.Action == Param->Action &&
+            QuicAddrGetFamily(&Existing->Rule.Address) == Family &&
+            QuicAddrCompareIp(&Existing->Rule.Address, &Address)) {
+            return QUIC_STATUS_ADDRESS_IN_USE;
+        }
+        Count++;
+    }
+
+    if (Count >= QUIC_MAX_LOCAL_ADDRESS_POLICIES) {
+        return QUIC_STATUS_PATH_LIMIT_REACHED;
+    }
+
+    QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Policy =
+        (QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY*)
+        CXPLAT_ALLOC_NONPAGED(
+            sizeof(QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY),
+            QUIC_POOL_LOCAL_ADDRESS_POLICY);
+    if (Policy == NULL) {
+        QuicTraceEvent(
+            AllocFailure,
+            "Allocation of '%s' failed. (%llu bytes)",
+            "local address policy",
+            (uint64_t)sizeof(QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY));
+        return QUIC_STATUS_OUT_OF_MEMORY;
+    }
+
+    //
+    // Copied rather than referenced: Param->Address is the application's
+    // memory and is its own again the moment this returns. The port is cleared
+    // with it, so what comes back out of GetParam says what the policy
+    // actually matches on.
+    //
+    Policy->Rule.Address = Address;
+    Policy->Rule.PrefixLength = Param->PrefixLength;
+    Policy->Rule.Action = Param->Action;
+    QuicAddrSetPort(&Policy->Rule.Address, 0);
+
+    CxPlatListInsertTail(&Connection->LocalAddressPolicies, &Policy->Link);
+
+    QuicConnLocalAddressPolicyChanged(Connection);
+
+    return QUIC_STATUS_SUCCESS;
+}
+
+//
+// Removes one rule. Matched exactly rather than by coverage: "remove whatever
+// excludes this address" would be a second, vaguer operation on the same
+// parameter.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+QUIC_STATUS
+QuicConnRemoveLocalAddressPolicy(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_LOCAL_ADDRESS_POLICY* Param
+    )
+{
+    QUIC_STATUS Status = QuicConnLocalAddressPolicyAllowed(Connection);
+    if (QUIC_FAILED(Status)) {
+        return Status;
+    }
+
+    if (Param->Address == NULL) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    //
+    // Unmapped as the registration was, so a rule registered in one form is
+    // found by the other.
+    //
+    QUIC_ADDR Address;
+    QuicCandidateAddressUnmap(Param->Address, &Address);
+
+    QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Found = NULL;
+    for (CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
+            Entry != &Connection->LocalAddressPolicies;
+            Entry = Entry->Flink) {
+        QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Existing =
+            CXPLAT_CONTAINING_RECORD(
+                Entry,
+                QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
+                Link);
+        if (Existing->Rule.PrefixLength == Param->PrefixLength &&
+            Existing->Rule.Action == Param->Action &&
+            QuicAddrGetFamily(&Existing->Rule.Address) ==
+                QuicAddrGetFamily(&Address) &&
+            QuicAddrCompareIp(&Existing->Rule.Address, &Address)) {
+            Found = Existing;
+            break;
+        }
+    }
+
+    if (Found == NULL) {
+        return QUIC_STATUS_NOT_FOUND;
+    }
+
+    CxPlatListEntryRemove(&Found->Link);
+    CXPLAT_FREE(Found, QUIC_POOL_LOCAL_ADDRESS_POLICY);
+
+    //
+    // Re-admitting an address is as much of a change as excluding one.
+    //
+    QuicConnLocalAddressPolicyChanged(Connection);
+
+    return QUIC_STATUS_SUCCESS;
+}
+
 // Removes a candidate address from the connection.
 _IRQL_requires_max_(PASSIVE_LEVEL)
 static
@@ -11704,13 +12082,46 @@ QuicConnRebuildCandidatePairs(
         QuicCandidateSetInitialize(Connection->CandidatePairs);
     }
 
+    //
+    // The application's rules about the host's own addresses, flattened for a
+    // function that does not know what a connection is.
+    //
+    QUIC_LOCAL_ADDRESS_RULE Rules[QUIC_MAX_LOCAL_ADDRESS_POLICIES];
+    const uint32_t PolicyCount =
+        QuicConnGetLocalAddressRules(Connection, Rules);
+
+    //
+    // Counted here only to report it. The rebuild below is what enforces the
+    // policy; this loop exists because a connection that quietly has fewer
+    // addresses than the host is worth being able to see from a trace, and the
+    // rebuild has no connection to trace against.
+    //
+    if (PolicyCount != 0) {
+        uint32_t Excluded = 0;
+        for (uint32_t i = 0; i < LocalCount; ++i) {
+            if (QuicConnLocalAddressIsExcluded(Connection, &Locals[i].Address)) {
+                Excluded++;
+            }
+        }
+        if (Excluded != 0) {
+            QuicTraceLogConnVerbose(
+                CandidatePolicyExcludedLocals,
+                Connection,
+                "Policy excluded %u of %u local addresses",
+                Excluded,
+                LocalCount);
+        }
+    }
+
     QuicCandidateSetRebuild(
         Connection->CandidatePairs,
         Locals,
         LocalCount,
         Remotes,
         RemoteCount,
-        WantTemporary);
+        WantTemporary,
+        PolicyCount != 0 ? Rules : NULL,
+        PolicyCount);
 
     QuicTraceLogConnVerbose(
         CandidatePairsRebuilt,
@@ -11795,6 +12206,127 @@ QuicConnHasPathForPair(
         }
     }
     return FALSE;
+}
+
+//
+// The index of the path holding this pair, or 0 when none does. Index 0 is the
+// active path, which is never the answer to this question: the pair comparison
+// ignores the local port, as above, and the caller is looking for a path it may
+// give up.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint8_t
+QuicConnGetPathIndexForPair(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Local,
+    _In_ const QUIC_ADDR* Remote
+    )
+{
+    QUIC_ADDR LocalNoPort = *Local;
+    QuicAddrSetPort(&LocalNoPort, 0);
+
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].Binding == NULL) {
+            continue;
+        }
+        QUIC_ADDR PathLocal = Connection->Paths[i].Route.LocalAddress;
+        QuicAddrSetPort(&PathLocal, 0);
+        if (QuicAddrCompare(&PathLocal, &LocalNoPort) &&
+            QuicAddrCompare(&Connection->Paths[i].Route.RemoteAddress, Remote)) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+//
+// Frees a path slot by giving up the least valuable reconciler path, or says it
+// could not.
+//
+// Least valuable is read from the candidate table rather than guessed. A
+// reconciler path whose pair has left the table is spent -- the next
+// reconciliation pass would remove it anyway -- so those go first; otherwise
+// the table is walked from its tail, which is its worst end, and the first
+// pair a reconciler path is holding is the one given up.
+//
+// Only where the removal is immediate, which means without multipath. There
+// QuicConnRemovePath takes the slot away synchronously and the caller can use
+// it; under multipath removal means PATH_ABANDON and the slot is not free
+// until that completes, so there would be nothing to hand back. That is also
+// the case where giving a path up is the wrong trade -- multipath paths carry
+// traffic rather than probe it -- so the caller refuses the request instead.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnYieldPathSlot(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    if (Connection->State.MultipathNegotiated) {
+        return FALSE;
+    }
+
+    uint8_t Victim = 0;
+
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount && Victim == 0; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path->Origin != QUIC_PATH_ORIGIN_RECONCILER || Path->LocalClose) {
+            continue;
+        }
+        if (Connection->CandidatePairs == NULL ||
+            !QuicConnCandidateSetHasPair(
+                Connection->CandidatePairs,
+                &Path->Route.LocalAddress,
+                &Path->Route.RemoteAddress)) {
+            Victim = i;
+        }
+    }
+
+    if (Victim == 0 && Connection->CandidatePairs != NULL) {
+        for (CXPLAT_LIST_ENTRY* Link = Connection->CandidatePairs->Pairs.Blink;
+                Link != &Connection->CandidatePairs->Pairs && Victim == 0;
+                Link = Link->Blink) {
+            const QUIC_CANDIDATE_PAIR* Pair =
+                CXPLAT_CONTAINING_RECORD(Link, QUIC_CANDIDATE_PAIR, Link);
+            const uint8_t Index =
+                QuicConnGetPathIndexForPair(
+                    Connection, &Pair->LocalAddress, &Pair->RemoteAddress);
+            if (Index != 0 &&
+                Connection->Paths[Index].Origin == QUIC_PATH_ORIGIN_RECONCILER &&
+                !Connection->Paths[Index].LocalClose) {
+                Victim = Index;
+            }
+        }
+    }
+
+    if (Victim == 0) {
+        return FALSE;
+    }
+
+    //
+    // Copied out before the call, which can memmove the array.
+    //
+    QUIC_ADDR Local = Connection->Paths[Victim].Route.LocalAddress;
+    QUIC_ADDR Remote = Connection->Paths[Victim].Route.RemoteAddress;
+    QuicTraceLogConnInfo(
+        PathSlotYielded,
+        Connection,
+        "Giving up path[%hhu] for an application path",
+        Connection->Paths[Victim].ID);
+
+    //
+    // Through QuicConnRemovePath rather than QuicPathRemove, so that the
+    // destination CID is retired and the path is taken down exactly as it
+    // would be had the application removed it.
+    //
+    QUIC_PATH_PARAM Param = { &Local, &Remote };
+    const QUIC_STATUS Status = QuicConnRemovePath(Connection, &Param);
+
+    return QUIC_SUCCEEDED(Status) && Connection->PathsCount < QUIC_MAX_PATH_COUNT;
 }
 
 //
@@ -14064,6 +14596,28 @@ QuicConnParamSet(
         break;
     }
 
+    case QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY: {
+        if (BufferLength != sizeof(QUIC_LOCAL_ADDRESS_POLICY) || Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+        Status =
+            QuicConnAddLocalAddressPolicy(
+                Connection, (const QUIC_LOCAL_ADDRESS_POLICY*)Buffer);
+        break;
+    }
+
+    case QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY: {
+        if (BufferLength != sizeof(QUIC_LOCAL_ADDRESS_POLICY) || Buffer == NULL) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+        Status =
+            QuicConnRemoveLocalAddressPolicy(
+                Connection, (const QUIC_LOCAL_ADDRESS_POLICY*)Buffer);
+        break;
+    }
+
     case QUIC_PARAM_CONN_PATH_STATUS:
         if (BufferLength != sizeof(QUIC_PATH_STATUS)) {
             Status = QUIC_STATUS_INVALID_PARAMETER;
@@ -14467,6 +15021,95 @@ QuicConnGetPathStatistics(
 
     *StatsLength = RequiredLength;
 
+    return QUIC_STATUS_SUCCESS;
+}
+
+//
+// Every registered policy, in registration order.
+//
+// The buffer holds the structs and then the addresses they name, each Address
+// pointing at its own copy just past the array: the public struct names its
+// address by pointer, because QUIC_ADDR is a type the language bindings supply
+// rather than one they can size, so there is nowhere in the struct to put the
+// address itself. Self-contained, and the documentation says it is not
+// relocatable.
+//
+// A function of its own rather than a case in QuicConnParamGet, which is what
+// QUIC_PARAM_CONN_PATH_STATISTICS does and for the same reason: an empty list
+// is a success that writes nothing, and MSVC's C6101 reads that as a promise
+// broken by the whole of QuicConnParamGet. Here the promise is the honest one
+// -- writes up to the buffer's size, and *BufferLength says how much -- which
+// is the annotation CxPlatStorageReadValue uses for the same shape.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Success_(return == QUIC_STATUS_SUCCESS)
+static
+QUIC_STATUS
+QuicConnGetLocalAddressPolicies(
+    _In_ const QUIC_CONNECTION* Connection,
+    _Inout_ uint32_t* BufferLength,
+    _Out_writes_bytes_to_opt_(*BufferLength, *BufferLength)
+        void* Buffer
+    )
+{
+    uint32_t Count = 0;
+    for (const CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
+            Entry != &Connection->LocalAddressPolicies;
+            Entry = Entry->Flink) {
+        Count++;
+    }
+
+    const uint32_t RequiredLength =
+        Count * (uint32_t)(sizeof(QUIC_LOCAL_ADDRESS_POLICY) + sizeof(QUIC_ADDR));
+
+    if (RequiredLength == 0) {
+        //
+        // Nothing registered. Answered before the buffer is looked at, so that
+        // asking with no buffer at all is how an application learns there is
+        // nothing rather than an error.
+        //
+        *BufferLength = 0;
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    if (*BufferLength < RequiredLength) {
+        *BufferLength = RequiredLength;
+        return QUIC_STATUS_BUFFER_TOO_SMALL;
+    }
+
+    if (Buffer == NULL) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    CxPlatZeroMemory(Buffer, RequiredLength);
+
+    QUIC_LOCAL_ADDRESS_POLICY* Policies = (QUIC_LOCAL_ADDRESS_POLICY*)Buffer;
+    //
+    // Aligned by construction: the struct leads with a pointer, so its size is
+    // a multiple of the pointer alignment and QUIC_ADDR needs no more than
+    // that.
+    //
+    QUIC_ADDR* Addresses = (QUIC_ADDR*)(Policies + Count);
+
+    uint32_t i = 0;
+    for (const CXPLAT_LIST_ENTRY* Entry = Connection->LocalAddressPolicies.Flink;
+            Entry != &Connection->LocalAddressPolicies && i < Count;
+            Entry = Entry->Flink) {
+        const QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY* Policy =
+            CXPLAT_CONTAINING_RECORD(
+                Entry,
+                QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY,
+                Link);
+        Addresses[i] = Policy->Rule.Address;
+        Policies[i].Address = &Addresses[i];
+        Policies[i].PrefixLength = Policy->Rule.PrefixLength;
+        Policies[i].Action = Policy->Rule.Action;
+        i++;
+    }
+
+    CXPLAT_DBG_ASSERT(i == Count);
+
+    *BufferLength = RequiredLength;
     return QUIC_STATUS_SUCCESS;
 }
 
@@ -14931,6 +15574,11 @@ QuicConnParamGet(
     case QUIC_PARAM_CONN_PATH_STATISTICS:
         Status =
             QuicConnGetPathStatistics(Connection, BufferLength, (QUIC_PATH_STATISTICS *)Buffer);
+        break;
+
+    case QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES:
+        Status =
+            QuicConnGetLocalAddressPolicies(Connection, BufferLength, Buffer);
         break;
 
 #if DEBUG

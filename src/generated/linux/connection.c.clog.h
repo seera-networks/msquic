@@ -1095,6 +1095,26 @@ tracepoint(CLOG_CONNECTION_C, PathDiscarded , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathSlotYielded
+// [conn][%p] Giving up path[%hhu] for an application path
+// QuicTraceLogConnInfo(
+        PathSlotYielded,
+        Connection,
+        "Giving up path[%hhu] for an application path",
+        Connection->Paths[Victim].ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->Paths[Victim].ID = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PathSlotYielded
+#define _clog_4_ARGS_TRACE_PathSlotYielded(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PathSlotYielded , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for Unreachable
 // [conn][%p] Received unreachable event
 // QuicTraceLogConnInfo(
@@ -2276,6 +2296,28 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
 #ifndef _clog_6_ARGS_TRACE_CandidatePairsRebuilt
 #define _clog_6_ARGS_TRACE_CandidatePairsRebuilt(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
 tracepoint(CLOG_CONNECTION_C, CandidatePairsRebuilt , arg1, arg3, arg4, arg5);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for CandidatePolicyExcludedLocals
+// [conn][%p] Policy excluded %u of %u local addresses
+// QuicTraceLogConnVerbose(
+                CandidatePolicyExcludedLocals,
+                Connection,
+                "Policy excluded %u of %u local addresses",
+                Excluded,
+                LocalCount);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Excluded = arg3
+// arg4 = arg4 = LocalCount = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_CandidatePolicyExcludedLocals
+#define _clog_5_ARGS_TRACE_CandidatePolicyExcludedLocals(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_CONNECTION_C, CandidatePolicyExcludedLocals , arg1, arg3, arg4);\
 
 #endif
 

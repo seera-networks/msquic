@@ -898,6 +898,15 @@ typedef struct QUIC_CONNECTION {
     CXPLAT_LIST_ENTRY CandidateAddresses;
 
     //
+    // The application's rules about the host's own addresses: an address that
+    // matches one is never picked automatically. Holds at most
+    // QUIC_MAX_LOCAL_ADDRESS_POLICIES entries, in registration order, and is
+    // only ever touched on the connection's worker -- SetParam and GetParam
+    // both run there -- so it needs no lock, as CandidateAddresses needs none.
+    //
+    CXPLAT_LIST_ENTRY LocalAddressPolicies;
+
+    //
     // The original CID used by the Client in its first Initial packet.
     //
     QUIC_CID* OrigDestCID;
@@ -1100,6 +1109,18 @@ typedef struct QUIC_CANDIDATE_ADDRESS_LIST_ENTRY {
     QUIC_ADDR ObservedAddress;
 
 } QUIC_CANDIDATE_ADDRESS_LIST_ENTRY;
+
+//
+// One registered local address policy. Held as the core's own rule rather than
+// as the public struct, whose address is a pointer into the application's
+// memory and so is nothing to keep.
+//
+typedef struct QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY {
+
+    CXPLAT_LIST_ENTRY Link;
+    QUIC_LOCAL_ADDRESS_RULE Rule;
+
+} QUIC_LOCAL_ADDRESS_POLICY_LIST_ENTRY;
 
 typedef struct QUIC_SERIALIZED_RESUMPTION_STATE {
 

@@ -845,6 +845,37 @@ typedef struct QUIC_PATH_STATISTICS {
     uint16_t Mtu;                        // Currently calculated path MTU
     QUIC_NETWORK_STATISTICS NetworkStatistics;
 } QUIC_PATH_STATISTICS;
+
+//
+// What a local address policy does to the addresses it matches. One value
+// today; anything else is rejected, which is what lets a later value be added
+// without changing the meaning of an older application's zeroed field.
+//
+typedef enum QUIC_LOCAL_ADDRESS_POLICY_ACTION {
+    QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE   = 0,    // Never pick this address automatically.
+} QUIC_LOCAL_ADDRESS_POLICY_ACTION;
+
+//
+// One rule about the host's own addresses, matched on an address and a prefix
+// length. See QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY.
+//
+// The address is a pointer, as it is in every other parameter struct here. By
+// value would read better for the array that
+// QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES returns, but QUIC_ADDR is a platform
+// type the language bindings supply themselves rather than one they can size,
+// so a public struct cannot contain one -- which is also why its neighbours
+// above take pointers.
+//
+// On the way out, each Address points into the caller's own buffer: the
+// parameter writes the array of structs and then the addresses they name after
+// it, so the buffer is self-contained but not relocatable. Copy what the
+// addresses say, not where they point.
+//
+typedef struct QUIC_LOCAL_ADDRESS_POLICY {
+    QUIC_ADDR* Address;         // The port is ignored.
+    uint8_t PrefixLength;       // 0-32 for IPv4, 0-128 for IPv6.
+    uint8_t Action;             // QUIC_LOCAL_ADDRESS_POLICY_ACTION
+} QUIC_LOCAL_ADDRESS_POLICY;
 #endif
 
 typedef struct QUIC_GLOBAL_SETTINGS {
@@ -1210,6 +1241,9 @@ typedef struct QUIC_SCHANNEL_CREDENTIAL_ATTRIBUTE_W {
 #define QUIC_PARAM_CONN_PATH_STATUS                     0x05000024  // QUIC_PATH_STATUS
 #define QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET          0x05000025  // uint8_t (BOOLEAN)
 #define QUIC_PARAM_CONN_PATH_STATISTICS                 0x05000026  // QUIC_PATH_STATISTICS[]
+#define QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY        0x05000027  // QUIC_LOCAL_ADDRESS_POLICY
+#define QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY     0x05000028  // QUIC_LOCAL_ADDRESS_POLICY
+#define QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES          0x05000029  // QUIC_LOCAL_ADDRESS_POLICY[]
 #endif
 
 //

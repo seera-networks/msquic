@@ -645,14 +645,28 @@ QuicConnChoosePath(
     )
 {
     QUIC_PATH* Path = &Connection->Paths[0];
-    
+
     if (Connection->State.MultipathNegotiated && Connection->State.HandshakeConfirmed) {
         QUIC_PATH* ActivePaths[QUIC_MAX_PATH_COUNT];
         uint8_t ActivePathCount = 0;
         for (uint8_t i = 0; i < Connection->PathsCount; ++i) {
             if (Connection->Paths[i].IsActive &&
                 !Connection->Paths[i].LocalClose &&
-                !Connection->Paths[i].RemoteClose) {
+                !Connection->Paths[i].RemoteClose &&
+                //
+                // A path with no path ID is not a candidate, which is #213.
+                //
+                // It is not a half-built path to be tolerated for a moment
+                // either: QuicConnAssignPathIDs leaves one here on purpose
+                // when no path ID is free, to be picked up when one is. Until
+                // then the path cannot carry anything --
+                // QuicPacketBuilderInitialize refuses a path whose path ID has
+                // no source CID ("No src CID to send with") -- so choosing it
+                // spends a flush on a path that cannot send, and the trace
+                // below used to read PathID->ID through the NULL and take the
+                // process with it.
+                //
+                Connection->Paths[i].PathID != NULL) {
                 ActivePaths[ActivePathCount++] = &Connection->Paths[i];
             }
         }
@@ -664,14 +678,24 @@ QuicConnChoosePath(
     }
 
     //
-    // QMux connections have no PathID to report.
+    // Paths[0] is the fallback and gets no such test: this function promises a
+    // path, and the connection's own first path is the only thing left to
+    // return. It normally has a path ID from QuicConnInitialize, but the
+    // promise is what matters here, so the trace carries the shortage instead
+    // of dereferencing it.
+    //
+    // Reported as UINT32_MAX rather than through a second trace id, so that
+    // "chosen with no path ID" is visible in a log that has one line per
+    // choice. Path ID 0 is a real id and could not have said it -- which is
+    // also why a QMux connection, whose paths never hold a path ID at all,
+    // reports UINT32_MAX here rather than claiming path ID 0.
     //
     QuicTraceLogConnInfo(
         PathChosen,
         Connection,
         "Path[%hhu][PathID][%u] Chosen",
         Path->ID,
-        Path->PathID == NULL ? 0 : Path->PathID->ID);
+        Path->PathID != NULL ? Path->PathID->ID : UINT32_MAX);
 
     return Path;
 }

@@ -171,6 +171,7 @@ typedef struct CXPLAT_SLIST_ENTRY {
 #define QUIC_POOL_QMUX_RECV_BUFFER          '85cQ' // Qc58 - QUIC Qmux Receive Buffer
 #define QUIC_POOL_QMUX_EARLY_DATA_BUFFER    '95cQ' // Qc59 - QUIC Qmux Early Data Buffer
 #define QUIC_POOL_TLS_EARLY_DATA_BUFFER     'A5cQ' // Qc5A - QUIC TLS Early Data Buffer
+#define QUIC_POOL_LOCAL_ADDRESS_POLICY      'B5cQ' // Qc5B - QUIC Local Address Policy
 
 typedef enum CXPLAT_THREAD_FLAGS {
     CXPLAT_THREAD_FLAG_NONE               = 0x0000,

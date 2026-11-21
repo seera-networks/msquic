@@ -54,6 +54,141 @@ QuicCandidateAddressIsLinkLocal(
 }
 
 //
+// Unmapped here rather than by CxPlatConvertFromMappedV6, which exists only in
+// the POSIX platform layer -- calling it compiled on Linux and failed the
+// Windows build with C4013.
+//
+void
+QuicCandidateAddressUnmap(
+    _In_ const QUIC_ADDR* Address,
+    _Out_ QUIC_ADDR* Unmapped
+    )
+{
+    *Unmapped = *Address;
+    if (QuicAddrGetFamily(Address) != QUIC_ADDRESS_FAMILY_INET6) {
+        return;
+    }
+
+    uint8_t Raw[16];
+    CxPlatCopyMemory(Raw, &Address->Ipv6.sin6_addr, sizeof(Raw));
+
+    //
+    // ::ffff:0:0/96 is the v4-mapped range: eighty zero bits, sixteen ones,
+    // then the v4 address.
+    //
+    static const uint8_t MappedPrefix[12] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff
+    };
+    if (memcmp(Raw, MappedPrefix, sizeof(MappedPrefix)) != 0) {
+        return;
+    }
+
+    const uint16_t Port = QuicAddrGetPort(Address);
+    CxPlatZeroMemory(Unmapped, sizeof(*Unmapped));
+    QuicAddrSetFamily(Unmapped, QUIC_ADDRESS_FAMILY_INET);
+    CxPlatCopyMemory(&Unmapped->Ipv4.sin_addr, Raw + 12, 4);
+    QuicAddrSetPort(Unmapped, Port);
+}
+
+//
+// The address as bytes, with its family reduced to the two this compares: a
+// v4-mapped v6 address and the v4 address it stands for are the same place, and
+// which form a snapshot carries is the datapath's business rather than the
+// application's.
+//
+static
+BOOLEAN
+QuicCandidateAddressBytes(
+    _In_ const QUIC_ADDR* Address,
+    _Out_writes_all_(16) uint8_t* Bytes,
+    _Out_ uint8_t* Length
+    )
+{
+    QUIC_ADDR Unmapped;
+    QuicCandidateAddressUnmap(Address, &Unmapped);
+
+    CxPlatZeroMemory(Bytes, 16);
+    if (QuicAddrGetFamily(&Unmapped) == QUIC_ADDRESS_FAMILY_INET) {
+        CxPlatCopyMemory(Bytes, &Unmapped.Ipv4.sin_addr, 4);
+        *Length = 4;
+        return TRUE;
+    }
+    if (QuicAddrGetFamily(&Unmapped) == QUIC_ADDRESS_FAMILY_INET6) {
+        CxPlatCopyMemory(Bytes, &Unmapped.Ipv6.sin6_addr, 16);
+        *Length = 16;
+        return TRUE;
+    }
+    *Length = 0;
+    return FALSE;
+}
+
+BOOLEAN
+QuicCandidateAddressMatchesPrefix(
+    _In_ const QUIC_ADDR* Address,
+    _In_ const QUIC_ADDR* Prefix,
+    _In_ uint8_t PrefixLength
+    )
+{
+    uint8_t Bytes[16], Against[16];
+    uint8_t Length = 0, AgainstLength = 0;
+    if (!QuicCandidateAddressBytes(Address, Bytes, &Length) ||
+        !QuicCandidateAddressBytes(Prefix, Against, &AgainstLength) ||
+        Length != AgainstLength) {
+        //
+        // Different families, or one of them is neither. A v4 prefix says
+        // nothing about a v6 address, which is what makes "exclude all IPv4" a
+        // usable thing to say.
+        //
+        return FALSE;
+    }
+
+    if (PrefixLength > Length * 8) {
+        return FALSE;
+    }
+
+    const uint8_t WholeBytes = PrefixLength / 8;
+    if (WholeBytes != 0 && memcmp(Bytes, Against, WholeBytes) != 0) {
+        return FALSE;
+    }
+
+    const uint8_t Bits = PrefixLength % 8;
+    if (Bits != 0) {
+        //
+        // The partial byte, high bits first: a /12 compares the whole of byte 0
+        // and the top four bits of byte 1.
+        //
+        const uint8_t Mask = (uint8_t)(0xff << (8 - Bits));
+        if ((Bytes[WholeBytes] & Mask) != (Against[WholeBytes] & Mask)) {
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+BOOLEAN
+QuicCandidateLocalAddressIsExcluded(
+    _In_ const QUIC_ADDR* Address,
+    _In_reads_opt_(RuleCount) const QUIC_LOCAL_ADDRESS_RULE* Rules,
+    _In_ uint32_t RuleCount
+    )
+{
+    if (Rules == NULL) {
+        return FALSE;
+    }
+    for (uint32_t i = 0; i < RuleCount; ++i) {
+        if (Rules[i].Action != QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE) {
+            continue;
+        }
+        if (QuicCandidateAddressMatchesPrefix(
+                Address, &Rules[i].Address, Rules[i].PrefixLength)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+//
 // Scope read from the address as well as from the platform's flag. The flag is
 // what a backend reports; the address is what it is. Not every source of a
 // snapshot sets flags -- the test injection parameter does not -- and a filter
@@ -336,7 +471,9 @@ QuicCandidateSetRebuild(
     _In_ uint32_t LocalCount,
     _In_reads_(RemoteCount) const QUIC_CANDIDATE_REMOTE* Remotes,
     _In_ uint32_t RemoteCount,
-    _In_ BOOLEAN WantTemporary
+    _In_ BOOLEAN WantTemporary,
+    _In_reads_opt_(RuleCount) const QUIC_LOCAL_ADDRESS_RULE* Rules,
+    _In_ uint32_t RuleCount
     )
 {
     //
@@ -361,6 +498,17 @@ QuicCandidateSetRebuild(
 
     for (uint32_t r = 0; r < RemoteCount; ++r) {
         for (uint32_t l = 0; l < LocalCount; ++l) {
+            //
+            // The application's own rule, checked before anything this file
+            // has an opinion about. An excluded address is not ranked last --
+            // it is not a candidate at all, which is the difference between
+            // "we would rather not" and "do not".
+            //
+            if (QuicCandidateLocalAddressIsExcluded(
+                    &Locals[l].Address, Rules, RuleCount)) {
+                continue;
+            }
+
             if (!QuicCandidatePairIsViable(&Locals[l], &Remotes[r].Address)) {
                 continue;
             }

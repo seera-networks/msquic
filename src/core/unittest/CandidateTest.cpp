@@ -73,6 +73,24 @@ struct CandidateTest : public ::testing::Test {
         return Result;
     }
 
+    static QUIC_LOCAL_ADDRESS_RULE Exclude(const char* Addr, uint8_t PrefixLength)
+    {
+        QUIC_LOCAL_ADDRESS_RULE Rule;
+        CxPlatZeroMemory(&Rule, sizeof(Rule));
+        EXPECT_TRUE(QuicAddrFromString(Addr, 0, &Rule.Address));
+        Rule.PrefixLength = PrefixLength;
+        Rule.Action = QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE;
+        return Rule;
+    }
+
+    static BOOLEAN Matches(const char* Addr, const char* Prefix, uint8_t PrefixLength)
+    {
+        QUIC_ADDR Address, Against;
+        EXPECT_TRUE(QuicAddrFromString(Addr, 0, &Address));
+        EXPECT_TRUE(QuicAddrFromString(Prefix, 0, &Against));
+        return QuicCandidateAddressMatchesPrefix(&Address, &Against, PrefixLength);
+    }
+
     static uint32_t ListLength(const QUIC_CANDIDATE_SET& Set)
     {
         uint32_t N = 0;
@@ -91,7 +109,7 @@ TEST_F(CandidateTest, EnumeratesTheProduct)
     const CXPLAT_LOCAL_ADDRESS Locals[] = { Local("10.0.0.1"), Local("10.0.0.2") };
     const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1"), Remote("192.0.2.2") };
 
-    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 2, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 2, FALSE, NULL, 0);
 
     //
     // Two locals by two remotes is four pairs. This is the thing neither of the
@@ -109,7 +127,7 @@ TEST_F(CandidateTest, FiltersMismatchedFamilies)
     const CXPLAT_LOCAL_ADDRESS Locals[] = { Local("10.0.0.1"), Local("2001:db8::1") };
     const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1") };
 
-    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 1, FALSE, NULL, 0);
 
     //
     // There is no mapping step: a v4 remote needs a v4 source.
@@ -135,7 +153,7 @@ TEST_F(CandidateTest, FiltersScopePerPair)
     // lives here rather than against one remote.
     //
     const QUIC_CANDIDATE_REMOTE Routable[] = { Remote("192.0.2.1") };
-    QuicCandidateSetRebuild(&Set, Locals, 3, Routable, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 3, Routable, 1, FALSE, NULL, 0);
     ASSERT_EQ(1u, ListLength(Set));
     ASSERT_EQ("10.0.0.1>192.0.2.1:4433", Order(Set)[0]);
 
@@ -145,7 +163,7 @@ TEST_F(CandidateTest, FiltersScopePerPair)
     // 127.0.0.2 -- which the asymmetric filter this replaces allowed.
     //
     const QUIC_CANDIDATE_REMOTE Loop[] = { Remote("127.0.0.2") };
-    QuicCandidateSetRebuild(&Set, Locals, 3, Loop, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 3, Loop, 1, FALSE, NULL, 0);
     ASSERT_EQ(1u, ListLength(Set));
     ASSERT_EQ("127.0.0.1>127.0.0.2:4433", Order(Set)[0]);
 }
@@ -170,7 +188,7 @@ TEST_F(CandidateTest, RoutePreferredOutranksEverything)
         Remote("192.0.2.9", QUIC_CANDIDATE_BACKUP, 99, "10.0.0.2"),
     };
 
-    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 2, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 2, FALSE, NULL, 0);
     ASSERT_EQ("10.0.0.2>192.0.2.9:4433", Order(Set)[0]);
 }
 
@@ -191,7 +209,7 @@ TEST_F(CandidateTest, SentinelRankOrdersAboveTheHint)
         Remote("192.0.2.1", QUIC_CANDIDATE_PREFERRED_TO_CURRENT, 99),
     };
 
-    QuicCandidateSetRebuild(&Set, Locals, 1, Remotes, 3, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 1, Remotes, 3, FALSE, NULL, 0);
 
     const auto O = Order(Set);
     ASSERT_EQ(3u, O.size());
@@ -212,7 +230,7 @@ TEST_F(CandidateTest, PriorityHintOrdersWithinASide)
         Remote("192.0.2.1", QUIC_CANDIDATE_BACKUP, 3),
     };
 
-    QuicCandidateSetRebuild(&Set, Locals, 1, Remotes, 2, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 1, Remotes, 2, FALSE, NULL, 0);
     ASSERT_EQ("10.0.0.1>192.0.2.1:4433", Order(Set)[0]);
 }
 
@@ -228,7 +246,7 @@ TEST_F(CandidateTest, DeprecatedLocalRanksLast)
     };
     const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1") };
 
-    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 1, FALSE, NULL, 0);
     ASSERT_EQ("10.0.0.2>192.0.2.1:4433", Order(Set)[0]);
 }
 
@@ -246,11 +264,11 @@ TEST_F(CandidateTest, TemporaryKindIsCarriedForward)
 
     QUIC_CANDIDATE_SET Set;
     QuicCandidateSetInitialize(&Set);
-    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 1, TRUE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 1, TRUE, NULL, 0);
     ASSERT_EQ("10.0.0.1>192.0.2.1:4433", Order(Set)[0]);
 
     QuicCandidateSetInitialize(&Set);
-    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 1, FALSE, NULL, 0);
     ASSERT_EQ("10.0.0.2>192.0.2.1:4433", Order(Set)[0]);
 }
 
@@ -267,8 +285,8 @@ TEST_F(CandidateTest, TiebreakIsDeterministic)
     QUIC_CANDIDATE_SET A, B;
     QuicCandidateSetInitialize(&A);
     QuicCandidateSetInitialize(&B);
-    QuicCandidateSetRebuild(&A, Forward, 2, Remotes, 1, FALSE);
-    QuicCandidateSetRebuild(&B, Reversed, 2, Remotes, 1, FALSE);
+    QuicCandidateSetRebuild(&A, Forward, 2, Remotes, 1, FALSE, NULL, 0);
+    QuicCandidateSetRebuild(&B, Reversed, 2, Remotes, 1, FALSE, NULL, 0);
 
     //
     // The lower interface index wins, whatever order the snapshot arrived in,
@@ -305,7 +323,7 @@ TEST_F(CandidateTest, CapsAtSixteenKeepingTheBest)
 
     QUIC_CANDIDATE_SET Set;
     QuicCandidateSetInitialize(&Set);
-    QuicCandidateSetRebuild(&Set, Reversed, 20, Remotes, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Reversed, 20, Remotes, 1, FALSE, NULL, 0);
 
     ASSERT_EQ(QUIC_MAX_CANDIDATE_PAIRS, Set.Count);
     ASSERT_EQ((uint32_t)QUIC_MAX_CANDIDATE_PAIRS, ListLength(Set));
@@ -327,11 +345,11 @@ TEST_F(CandidateTest, RebuildReplaces)
 
     const CXPLAT_LOCAL_ADDRESS Locals[] = { Local("10.0.0.1"), Local("10.0.0.2") };
     const QUIC_CANDIDATE_REMOTE Two[] = { Remote("192.0.2.1"), Remote("192.0.2.2") };
-    QuicCandidateSetRebuild(&Set, Locals, 2, Two, 2, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, Two, 2, FALSE, NULL, 0);
     ASSERT_EQ(4u, ListLength(Set));
 
     const QUIC_CANDIDATE_REMOTE One[] = { Remote("192.0.2.1") };
-    QuicCandidateSetRebuild(&Set, Locals, 2, One, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, One, 1, FALSE, NULL, 0);
     ASSERT_EQ(2u, ListLength(Set));
     ASSERT_EQ(2, Set.Count);
 
@@ -340,7 +358,7 @@ TEST_F(CandidateTest, RebuildReplaces)
     // with no usable address is in.
     //
     const QUIC_CANDIDATE_REMOTE V6[] = { Remote("2001:db8::1") };
-    QuicCandidateSetRebuild(&Set, Locals, 2, V6, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Locals, 2, V6, 1, FALSE, NULL, 0);
     ASSERT_EQ(0u, ListLength(Set));
     ASSERT_EQ(0, Set.Count);
 }
@@ -380,7 +398,7 @@ TEST_F(CandidateTest, SurvivesDisplacingTheInsertionPoint)
 
     QUIC_CANDIDATE_SET Set;
     QuicCandidateSetInitialize(&Set);
-    QuicCandidateSetRebuild(&Set, Offered, QUIC_MAX_CANDIDATE_PAIRS + 1, Remotes, 1, FALSE);
+    QuicCandidateSetRebuild(&Set, Offered, QUIC_MAX_CANDIDATE_PAIRS + 1, Remotes, 1, FALSE, NULL, 0);
 
     ASSERT_EQ((uint32_t)QUIC_MAX_CANDIDATE_PAIRS, ListLength(Set));
 
@@ -402,4 +420,165 @@ TEST_F(CandidateTest, SurvivesDisplacingTheInsertionPoint)
     ASSERT_EQ(
         "10.0.0.16>192.0.2.1:4433",
         Order(Set)[QUIC_MAX_CANDIDATE_PAIRS - 1]);
+}
+
+TEST_F(CandidateTest, PrefixMatchesOnByteBoundaries)
+{
+    ASSERT_TRUE(Matches("10.1.2.3", "10.0.0.0", 8));
+    ASSERT_TRUE(Matches("10.1.2.3", "10.1.0.0", 16));
+    ASSERT_TRUE(Matches("10.1.2.3", "10.1.2.0", 24));
+    ASSERT_TRUE(Matches("10.1.2.3", "10.1.2.3", 32));
+    ASSERT_FALSE(Matches("11.1.2.3", "10.0.0.0", 8));
+    ASSERT_FALSE(Matches("10.2.2.3", "10.1.0.0", 16));
+    ASSERT_FALSE(Matches("10.1.2.4", "10.1.2.3", 32));
+}
+
+TEST_F(CandidateTest, PrefixMatchesWithinAByte)
+{
+    //
+    // 100.64/10 is the shared address space, which is the real reason to want
+    // a prefix that does not land on a byte: 100.64.0.0 and 100.127.255.255
+    // are inside it and 100.128.0.1 is not.
+    //
+    ASSERT_TRUE(Matches("100.64.0.0", "100.64.0.0", 10));
+    ASSERT_TRUE(Matches("100.127.255.255", "100.64.0.0", 10));
+    ASSERT_FALSE(Matches("100.128.0.1", "100.64.0.0", 10));
+    ASSERT_FALSE(Matches("100.63.255.255", "100.64.0.0", 10));
+}
+
+TEST_F(CandidateTest, PrefixZeroMatchesTheWholeFamily)
+{
+    ASSERT_TRUE(Matches("10.1.2.3", "0.0.0.0", 0));
+    ASSERT_TRUE(Matches("192.0.2.1", "10.0.0.0", 0));
+    ASSERT_TRUE(Matches("2001:db8::1", "::", 0));
+
+    //
+    // Still only its own family, which is what makes "exclude all IPv4" a
+    // usable thing to say.
+    //
+    ASSERT_FALSE(Matches("2001:db8::1", "0.0.0.0", 0));
+    ASSERT_FALSE(Matches("10.1.2.3", "::", 0));
+}
+
+TEST_F(CandidateTest, PrefixMatchesIpv6AndMappedForms)
+{
+    ASSERT_TRUE(Matches("2001:db8::1", "2001:db8::", 32));
+    ASSERT_TRUE(Matches("2001:db8::1", "2001:db8::1", 128));
+    ASSERT_FALSE(Matches("2001:db9::1", "2001:db8::", 32));
+    ASSERT_FALSE(Matches("fe80::1", "2001:db8::", 16));
+
+    //
+    // A snapshot can carry the v4-mapped form of an address the application
+    // registered as v4. Both sides are unmapped before the comparison, so
+    // either form matches either form.
+    //
+    ASSERT_TRUE(Matches("::ffff:10.1.2.3", "10.0.0.0", 8));
+    ASSERT_TRUE(Matches("10.1.2.3", "::ffff:10.0.0.0", 8));
+}
+
+TEST_F(CandidateTest, MappedPrefixLengthIsTheV4One)
+{
+    //
+    // ::ffff:10.1.2.3 is a v4 address with 32 bits to match, so a v6-looking
+    // prefix length on it matches nothing. The registration rejects that
+    // combination for exactly this reason -- see
+    // QuicConnAddLocalAddressPolicy, which unmaps before it validates.
+    //
+    ASSERT_TRUE(Matches("::ffff:10.1.2.3", "::ffff:10.1.2.3", 32));
+    ASSERT_FALSE(Matches("::ffff:10.1.2.3", "::ffff:10.1.2.3", 128));
+    ASSERT_TRUE(Matches("::ffff:10.1.2.3", "10.0.0.0", 8));
+}
+
+TEST_F(CandidateTest, UnmapsOnlyTheMappedRange)
+{
+    QUIC_ADDR In, Out;
+    EXPECT_TRUE(QuicAddrFromString("::ffff:10.1.2.3", 1234, &In));
+    QuicCandidateAddressUnmap(&In, &Out);
+    ASSERT_EQ((uint16_t)QUIC_ADDRESS_FAMILY_INET, QuicAddrGetFamily(&Out));
+    ASSERT_EQ(1234, QuicAddrGetPort(&Out));
+    QUIC_ADDR Expected;
+    EXPECT_TRUE(QuicAddrFromString("10.1.2.3", 1234, &Expected));
+    ASSERT_TRUE(QuicAddrCompare(&Out, &Expected));
+
+    //
+    // A real v6 address and a v4 one both come through unchanged, which is
+    // what lets the registration call this unconditionally.
+    //
+    EXPECT_TRUE(QuicAddrFromString("2001:db8::1", 443, &In));
+    QuicCandidateAddressUnmap(&In, &Out);
+    ASSERT_TRUE(QuicAddrCompare(&Out, &In));
+
+    EXPECT_TRUE(QuicAddrFromString("10.1.2.3", 443, &In));
+    QuicCandidateAddressUnmap(&In, &Out);
+    ASSERT_TRUE(QuicAddrCompare(&Out, &In));
+}
+
+TEST_F(CandidateTest, PrefixTooLongMatchesNothing)
+{
+    //
+    // Registration rejects these, so reaching here means something already
+    // went wrong. Matching nothing is the safe way to be wrong: the other way
+    // round, a policy nobody could have registered would exclude every
+    // address and the connection would have no candidates at all.
+    //
+    ASSERT_FALSE(Matches("10.1.2.3", "10.0.0.0", 33));
+    ASSERT_FALSE(Matches("2001:db8::1", "2001:db8::", 129));
+}
+
+TEST_F(CandidateTest, ExcludedLocalContributesNoPairs)
+{
+    QUIC_CANDIDATE_SET Set;
+    QuicCandidateSetInitialize(&Set);
+
+    const CXPLAT_LOCAL_ADDRESS Locals[] = {
+        Local("10.0.0.1"), Local("192.168.1.5"), Local("10.0.0.2")
+    };
+    const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1") };
+    const QUIC_LOCAL_ADDRESS_RULE Policies[] = { Exclude("10.0.0.0", 8) };
+
+    QuicCandidateSetRebuild(&Set, Locals, 3, Remotes, 1, FALSE, Policies, 1);
+
+    //
+    // The one address outside the excluded prefix, and the order of what is
+    // left is the order it would have had anyway.
+    //
+    ASSERT_EQ(1u, ListLength(Set));
+    const std::vector<std::string> Expected = { "192.168.1.5>192.0.2.1:4433" };
+    ASSERT_EQ(Expected, Order(Set));
+}
+
+TEST_F(CandidateTest, ExcludingEveryLocalEmptiesTheTable)
+{
+    QUIC_CANDIDATE_SET Set;
+    QuicCandidateSetInitialize(&Set);
+
+    const CXPLAT_LOCAL_ADDRESS Locals[] = { Local("10.0.0.1"), Local("10.0.0.2") };
+    const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1"), Remote("192.0.2.2") };
+    const QUIC_LOCAL_ADDRESS_RULE Policies[] = { Exclude("0.0.0.0", 0) };
+
+    QuicCandidateSetRebuild(&Set, Locals, 2, Remotes, 2, FALSE, Policies, 1);
+
+    ASSERT_EQ(0u, ListLength(Set));
+    ASSERT_EQ(0u, (uint32_t)Set.Count);
+}
+
+TEST_F(CandidateTest, PolicyWithAnUnknownActionExcludesNothing)
+{
+    QUIC_CANDIDATE_SET Set;
+    QuicCandidateSetInitialize(&Set);
+
+    const CXPLAT_LOCAL_ADDRESS Locals[] = { Local("10.0.0.1") };
+    const QUIC_CANDIDATE_REMOTE Remotes[] = { Remote("192.0.2.1") };
+
+    //
+    // Registration rejects an action it does not know, so this is the same
+    // belt-and-braces case as the over-long prefix: an action this build does
+    // not implement must not be read as "exclude".
+    //
+    QUIC_LOCAL_ADDRESS_RULE Policies[] = { Exclude("10.0.0.0", 8) };
+    Policies[0].Action = 0xff;
+
+    QuicCandidateSetRebuild(&Set, Locals, 1, Remotes, 1, FALSE, Policies, 1);
+
+    ASSERT_EQ(1u, ListLength(Set));
 }

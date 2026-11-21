@@ -218,6 +218,9 @@ pub const QUIC_PARAM_CONN_REMOVE_CANDIDATE_ADDRESS: u32 = 83886115;
 pub const QUIC_PARAM_CONN_PATH_STATUS: u32 = 83886116;
 pub const QUIC_PARAM_CONN_UNCONNECTED_UDP_SOCKET: u32 = 83886117;
 pub const QUIC_PARAM_CONN_PATH_STATISTICS: u32 = 83886118;
+pub const QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY: u32 = 83886119;
+pub const QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY: u32 = 83886120;
+pub const QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES: u32 = 83886121;
 pub const QUIC_PARAM_TLS_HANDSHAKE_INFO: u32 = 100663296;
 pub const QUIC_PARAM_TLS_NEGOTIATED_ALPN: u32 = 100663297;
 pub const QUIC_PARAM_TLS_SCHANNEL_CONTEXT_ATTRIBUTE_W: u32 = 117440512;
@@ -1860,6 +1863,29 @@ const _: () = {
         [::std::mem::offset_of!(QUIC_PATH_STATISTICS, Mtu) - 32usize];
     ["Offset of field: QUIC_PATH_STATISTICS::NetworkStatistics"]
         [::std::mem::offset_of!(QUIC_PATH_STATISTICS, NetworkStatistics) - 40usize];
+};
+pub const QUIC_LOCAL_ADDRESS_POLICY_ACTION_QUIC_LOCAL_ADDRESS_POLICY_EXCLUDE:
+    QUIC_LOCAL_ADDRESS_POLICY_ACTION = 0;
+pub type QUIC_LOCAL_ADDRESS_POLICY_ACTION = ::std::os::raw::c_int;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct QUIC_LOCAL_ADDRESS_POLICY {
+    pub Address: *mut QUIC_ADDR,
+    pub PrefixLength: u8,
+    pub Action: u8,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of QUIC_LOCAL_ADDRESS_POLICY"]
+        [::std::mem::size_of::<QUIC_LOCAL_ADDRESS_POLICY>() - 16usize];
+    ["Alignment of QUIC_LOCAL_ADDRESS_POLICY"]
+        [::std::mem::align_of::<QUIC_LOCAL_ADDRESS_POLICY>() - 8usize];
+    ["Offset of field: QUIC_LOCAL_ADDRESS_POLICY::Address"]
+        [::std::mem::offset_of!(QUIC_LOCAL_ADDRESS_POLICY, Address) - 0usize];
+    ["Offset of field: QUIC_LOCAL_ADDRESS_POLICY::PrefixLength"]
+        [::std::mem::offset_of!(QUIC_LOCAL_ADDRESS_POLICY, PrefixLength) - 8usize];
+    ["Offset of field: QUIC_LOCAL_ADDRESS_POLICY::Action"]
+        [::std::mem::offset_of!(QUIC_LOCAL_ADDRESS_POLICY, Action) - 9usize];
 };
 #[repr(C)]
 #[derive(Copy, Clone)]

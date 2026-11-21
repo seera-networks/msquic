@@ -434,6 +434,23 @@ CxPlatRefInitializeMultiple(
 
 #define CxPlatRefUninitialize(RefCount)
 
+//
+// C4702 lives outside the functions on purpose.
+//
+// The return after __fastfail is unreachable and MSVC 19.52 -- the one in the
+// windows-latest image from 20261116 -- says so, as an error. The obvious
+// answer, a #pragma warning(suppress: 4702) on the return itself, does not
+// work: C4702 is reported after the function body has been compiled, not while
+// the statement is being parsed, so a statement-scoped suppression never
+// applies to it. That was tried first and the build failed again at the very
+// lines the pragma was attached to.
+//
+// So the suppression wraps the three ref-count helpers, which is the smallest
+// scope a post-body warning can be suppressed in.
+//
+#pragma warning(push)
+#pragma warning(disable: 4702) // unreachable code
+
 QUIC_INLINE
 void
 CxPlatRefIncrement(
@@ -476,6 +493,11 @@ CxPlatRefIncrementNonZero(
 
         } else {
             __fastfail(FAST_FAIL_INVALID_REFERENCE_COUNT);
+            //
+            // Unreachable, and kept anyway: the compilers and analyzers that
+            // want every path out of a value-returning function to return
+            // something still want it. See the pragma above the block.
+            //
             return FALSE;
         }
     }
@@ -510,8 +532,13 @@ CxPlatRefDecrement(
     }
 
     __fastfail(FAST_FAIL_INVALID_REFERENCE_COUNT);
+    //
+    // As above: unreachable, and kept anyway.
+    //
     return FALSE;
 }
+
+#pragma warning(pop)
 
 //
 // Event Interfaces
