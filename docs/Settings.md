@@ -220,7 +220,7 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_ADD_BOUND_ADDRESS` <br> 27       | QUIC_ADDR                     | Set-only  | Add a bound address. Server only. |
 | `QUIC_PARAM_CONN_ADD_OBSERVED_ADDRESS` <br> 28    | QUIC_ADD_OBSERVED_ADDRESS     | Set-only  | Set an observed address for a bound address. Server only. |
 | `QUIC_PARAM_CONN_REMOVE_BOUND_ADDRESS` <br> 29    | QUIC_ADDR                     | Set-only  | Remove a bound address. Server only. |
-| `QUIC_PARAM_CONN_ADD_PATH` <br> 30                | QUIC_PATH_PARAM               | Set-only  | Add a path. Client only. |
+| `QUIC_PARAM_CONN_ADD_PATH` <br> 30                | QUIC_PATH_PARAM               | Set-only  | Add a path. Client only. See [QUIC_PARAM_CONN_ADD_PATH](#quic_param_conn_add_path). |
 | `QUIC_PARAM_CONN_ACTIVATE_PATH` <br> 31           | QUIC_PATH_PARAM               | Set-only  | Activate a path. Client only. |
 | `QUIC_PARAM_CONN_REMOVE_PATH` <br> 33             | QUIC_PATH_PARAM               | Set-only  | Remove a path. Client only. |
 | `QUIC_PARAM_CONN_ADD_CANDIDATE_ADDRESS` <br> 34   | QUIC_CANDIDATE_ADDRESS        | Set-only  | Add a candidate address. Client only. |
@@ -231,6 +231,28 @@ These parameters are accessed by calling [GetParam](./api/GetParam.md) or [SetPa
 | `QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY` <br> 39 | QUIC_LOCAL_ADDRESS_POLICY | Set-only | Register a rule about the host's own addresses. Client only. See [QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY](#quic_param_conn_add_local_address_policy). |
 | `QUIC_PARAM_CONN_REMOVE_LOCAL_ADDRESS_POLICY` <br> 40 | QUIC_LOCAL_ADDRESS_POLICY | Set-only | Remove a rule, matched exactly. Client only. |
 | `QUIC_PARAM_CONN_LOCAL_ADDRESS_POLICIES` <br> 41 | QUIC_LOCAL_ADDRESS_POLICY[] | Get-only | Every registered rule, in registration order. |
+
+### QUIC_PARAM_CONN_ADD_PATH
+
+Adds a path, naming the local and remote address it runs between.
+
+A connection keeps at most four paths. In `AUTO` and `NAT_TRAVERSAL` the
+reconciler opens paths of its own from the candidate table and will use every
+slot, so an application asking for one can find the budget already spent. It
+gets the slot anyway: the stack gives up the least valuable path *it* opened --
+the one whose candidate pair ranks worst, or one whose pair has left the table
+altogether -- because those are speculative and the application's path is not.
+The trade is one-way; the reconciler never takes a path the application added.
+
+Two limits can still refuse the request, and they are reported separately:
+
+| Status | Meaning |
+|---|---|
+| `QUIC_STATUS_PATH_LIMIT_REACHED` | All four slots are held by paths the stack may not give up: the active path and the application's own. Under multipath this also covers the reconciler's, since removing one of those means `PATH_ABANDON` and the slot is not free until the peer's side completes -- and a multipath path carries traffic rather than probing, so it is not the cheaper thing to give up. |
+| `QUIC_STATUS_PATHID_LIMIT_REACHED` | Path IDs, not slots: the peer's `MAX_PATH_ID` has not left one free. Multipath only. |
+
+Both were `QUIC_STATUS_OUT_OF_MEMORY` before, which an application could not
+tell apart from a real allocation failure.
 
 ### QUIC_PARAM_CONN_ADD_LOCAL_ADDRESS_POLICY
 

@@ -1174,6 +1174,30 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathDiscarded,
 
 
 
+
+/*----------------------------------------------------------
+// Decoder Ring for PathSlotYielded
+// [conn][%p] Giving up path[%hhu] for an application path
+// QuicTraceLogConnInfo(
+        PathSlotYielded,
+        Connection,
+        "Giving up path[%hhu] for an application path",
+        Connection->Paths[Victim].ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->Paths[Victim].ID = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathSlotYielded,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned char, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned char, arg3, arg3)
+    )
+)
+
+
+
 /*----------------------------------------------------------
 // Decoder Ring for Unreachable
 // [conn][%p] Received unreachable event

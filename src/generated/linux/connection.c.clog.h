@@ -1095,6 +1095,26 @@ tracepoint(CLOG_CONNECTION_C, PathDiscarded , arg1, arg3);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathSlotYielded
+// [conn][%p] Giving up path[%hhu] for an application path
+// QuicTraceLogConnInfo(
+        PathSlotYielded,
+        Connection,
+        "Giving up path[%hhu] for an application path",
+        Connection->Paths[Victim].ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->Paths[Victim].ID = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PathSlotYielded
+#define _clog_4_ARGS_TRACE_PathSlotYielded(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PathSlotYielded , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for Unreachable
 // [conn][%p] Received unreachable event
 // QuicTraceLogConnInfo(

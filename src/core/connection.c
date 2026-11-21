@@ -622,6 +622,17 @@ QuicConnRemovePath(
     _In_ QUIC_PATH_PARAM* Param
     );
 
+//
+// Declared here for QuicConnAddPath, and defined with the candidate-table
+// helpers it reads to decide which path is worth giving up.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnYieldPathSlot(
+    _In_ QUIC_CONNECTION* Connection
+    );
+
 
 //
 // Whether the connection already sends from this address on some path. The
@@ -9656,9 +9667,16 @@ QuicConnOpenNewPath(
             Path->PathID = PathID;
             QuicCongestionControlInitialize(&PathID->CongestionControl, &Connection->Settings);
         } else {
+            //
+            // No path ID left, which is a different limit from the path array
+            // above and now says so: QUIC_STATUS_PATHID_LIMIT_REACHED already
+            // existed for it, and OUT_OF_MEMORY made the two
+            // indistinguishable from outside -- the same complaint #205 is
+            // about.
+            //
             QuicLibraryReleaseBinding(Path->Binding);
             Path->Binding = NULL;
-            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            Status = QUIC_STATUS_PATHID_LIMIT_REACHED;
             goto Error;
         }
     } else {
@@ -10152,11 +10170,35 @@ QuicConnAddPath(
 
     if (Connection->PathsCount == QUIC_MAX_PATH_COUNT) {
         //
-        // Already tracking the maximum number of paths, and can't free
-        // any more.
+        // The array is full. An application asking for a path of its own gets
+        // one at the expense of a reconciler path, which is #205: AUTO fills
+        // every slot from the candidate table, so before this whether
+        // QUIC_PARAM_CONN_ADD_PATH worked depended on whether the server had
+        // advertised enough addresses first -- and a connection that worked
+        // yesterday could stop working because the *peer* started advertising
+        // one more.
         //
-        Status = QUIC_STATUS_OUT_OF_MEMORY;
-        goto Done;
+        // One direction only. A reconciler path is speculative, a validation
+        // candidate the stack opened on its own guess; the application's path
+        // is the one with a purpose. The reverse trade would be the stack
+        // overruling an instruction, which is why QuicConnReconcileRemovePaths
+        // has never touched a path it did not open.
+        //
+        if (Origin != QUIC_PATH_ORIGIN_APPLICATION ||
+            !QuicConnYieldPathSlot(Connection)) {
+            //
+            // Nothing to give up, or the caller is the reconciler itself.
+            //
+            // QUIC_STATUS_PATH_LIMIT_REACHED rather than OUT_OF_MEMORY, which
+            // is the other half of #205: an application could not tell "the
+            // stack spent your path budget" from "the allocator failed", so it
+            // could not sensibly retry, back off or report. Nothing here is
+            // out of memory.
+            //
+            Status = QUIC_STATUS_PATH_LIMIT_REACHED;
+            goto Done;
+        }
+        CXPLAT_DBG_ASSERT(Connection->PathsCount < QUIC_MAX_PATH_COUNT);
     }
 
     if (Connection->PathsCount > 1) {
@@ -11695,6 +11737,127 @@ QuicConnHasPathForPair(
         }
     }
     return FALSE;
+}
+
+//
+// The index of the path holding this pair, or 0 when none does. Index 0 is the
+// active path, which is never the answer to this question: the pair comparison
+// ignores the local port, as above, and the caller is looking for a path it may
+// give up.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+uint8_t
+QuicConnGetPathIndexForPair(
+    _In_ const QUIC_CONNECTION* Connection,
+    _In_ const QUIC_ADDR* Local,
+    _In_ const QUIC_ADDR* Remote
+    )
+{
+    QUIC_ADDR LocalNoPort = *Local;
+    QuicAddrSetPort(&LocalNoPort, 0);
+
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount; ++i) {
+        if (Connection->Paths[i].Binding == NULL) {
+            continue;
+        }
+        QUIC_ADDR PathLocal = Connection->Paths[i].Route.LocalAddress;
+        QuicAddrSetPort(&PathLocal, 0);
+        if (QuicAddrCompare(&PathLocal, &LocalNoPort) &&
+            QuicAddrCompare(&Connection->Paths[i].Route.RemoteAddress, Remote)) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+//
+// Frees a path slot by giving up the least valuable reconciler path, or says it
+// could not.
+//
+// Least valuable is read from the candidate table rather than guessed. A
+// reconciler path whose pair has left the table is spent -- the next
+// reconciliation pass would remove it anyway -- so those go first; otherwise
+// the table is walked from its tail, which is its worst end, and the first
+// pair a reconciler path is holding is the one given up.
+//
+// Only where the removal is immediate, which means without multipath. There
+// QuicConnRemovePath takes the slot away synchronously and the caller can use
+// it; under multipath removal means PATH_ABANDON and the slot is not free
+// until that completes, so there would be nothing to hand back. That is also
+// the case where giving a path up is the wrong trade -- multipath paths carry
+// traffic rather than probe it -- so the caller refuses the request instead.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnYieldPathSlot(
+    _In_ QUIC_CONNECTION* Connection
+    )
+{
+    if (Connection->State.MultipathNegotiated) {
+        return FALSE;
+    }
+
+    uint8_t Victim = 0;
+
+    CXPLAT_DBG_ASSERT(Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 1; i < Connection->PathsCount && Victim == 0; ++i) {
+        const QUIC_PATH* Path = &Connection->Paths[i];
+        if (Path->Origin != QUIC_PATH_ORIGIN_RECONCILER || Path->LocalClose) {
+            continue;
+        }
+        if (Connection->CandidatePairs == NULL ||
+            !QuicConnCandidateSetHasPair(
+                Connection->CandidatePairs,
+                &Path->Route.LocalAddress,
+                &Path->Route.RemoteAddress)) {
+            Victim = i;
+        }
+    }
+
+    if (Victim == 0 && Connection->CandidatePairs != NULL) {
+        for (CXPLAT_LIST_ENTRY* Link = Connection->CandidatePairs->Pairs.Blink;
+                Link != &Connection->CandidatePairs->Pairs && Victim == 0;
+                Link = Link->Blink) {
+            const QUIC_CANDIDATE_PAIR* Pair =
+                CXPLAT_CONTAINING_RECORD(Link, QUIC_CANDIDATE_PAIR, Link);
+            const uint8_t Index =
+                QuicConnGetPathIndexForPair(
+                    Connection, &Pair->LocalAddress, &Pair->RemoteAddress);
+            if (Index != 0 &&
+                Connection->Paths[Index].Origin == QUIC_PATH_ORIGIN_RECONCILER &&
+                !Connection->Paths[Index].LocalClose) {
+                Victim = Index;
+            }
+        }
+    }
+
+    if (Victim == 0) {
+        return FALSE;
+    }
+
+    //
+    // Copied out before the call, which can memmove the array.
+    //
+    QUIC_ADDR Local = Connection->Paths[Victim].Route.LocalAddress;
+    QUIC_ADDR Remote = Connection->Paths[Victim].Route.RemoteAddress;
+    QuicTraceLogConnInfo(
+        PathSlotYielded,
+        Connection,
+        "Giving up path[%hhu] for an application path",
+        Connection->Paths[Victim].ID);
+
+    //
+    // Through QuicConnRemovePath rather than QuicPathRemove, so that the
+    // destination CID is retired and the path is taken down exactly as it
+    // would be had the application removed it.
+    //
+    QUIC_PATH_PARAM Param = { &Local, &Remote };
+    const QUIC_STATUS Status = QuicConnRemovePath(Connection, &Param);
+
+    return QUIC_SUCCEEDED(Status) && Connection->PathsCount < QUIC_MAX_PATH_COUNT;
 }
 
 //

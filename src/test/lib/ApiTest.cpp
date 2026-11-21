@@ -5800,8 +5800,15 @@ void QuicTest_QUIC_PARAM_CONN_ADD_PATH(MsQuicRegistration& Registration, MsQuicC
                             sizeof(PathParam),
                             &PathParam));
                 } else {
+                    //
+                    // The array is full of the application's own paths, so
+                    // there is no speculative path to give up and the limit is
+                    // reported as itself. QUIC_STATUS_OUT_OF_MEMORY until
+                    // #205, which made "the path budget is spent" and "the
+                    // allocator failed" distinguishable.
+                    //
                     TEST_QUIC_STATUS(
-                        QUIC_STATUS_OUT_OF_MEMORY,
+                        QUIC_STATUS_PATH_LIMIT_REACHED,
                         Connection.SetParam(
                             QUIC_PARAM_CONN_ADD_PATH,
                             sizeof(PathParam),

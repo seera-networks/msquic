@@ -1265,6 +1265,18 @@ TEST(Basic, LocalAddressPolicy) {
 #endif
 }
 
+TEST(Basic, PathBudgetYieldsToApplication) {
+#if !DEBUG
+    GTEST_SKIP() << "QuicTestPathBudgetYieldsToApplication needs QUIC_PARAM_CONN_TEST_PATH_ORIGINS, which is debug only.";
+#else
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestPathBudgetYieldsToApplication is user-mode only.";
+    }
+    TestLogger Logger("QuicTestPathBudgetYieldsToApplication");
+    QuicTestPathBudgetYieldsToApplication();
+#endif
+}
+
 TEST(Basic, TableMigration) {
 #if !DEBUG
     GTEST_SKIP() << "QuicTestTableMigration needs debug-only parameters.";

@@ -243,6 +243,10 @@ QuicTestLocalAddressPolicy(
     );
 
 void
+QuicTestPathBudgetYieldsToApplication(
+    );
+
+void
 QuicTestPathReconcilerKeepsApplicationPath(
     );
 

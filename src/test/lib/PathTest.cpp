@@ -1503,8 +1503,10 @@ QuicTestPathKeepAlive(
 // the host's own addresses as well as the peer's -- the connection builds the
 // candidate pair table and opens a path of its own for every usable local
 // address. That both inflates the count and spends the path IDs the test was
-// about to ask for, and QuicConnAddPath answers QUIC_STATUS_OUT_OF_MEMORY once
-// QuicPathIDSetGetUnusedPathID runs dry.
+// about to ask for, and QuicConnAddPath answers
+// QUIC_STATUS_PATHID_LIMIT_REACHED once QuicPathIDSetGetUnusedPathID runs dry
+// (QUIC_STATUS_OUT_OF_MEMORY before #205 gave the two limits their own
+// statuses).
 //
 // Invisible on a loopback connection, which has no pairs to open a path from,
 // so the table stays empty and AUTO does nothing. The XDP runs put the
@@ -2023,7 +2025,9 @@ QuicTestMultipathPathIdReclaimed(
             // WSAEACCES on Windows, where a bind can be refused for a port in
             // an excluded or exclusive-use range.
             //
-            if (Status == QUIC_STATUS_OUT_OF_MEMORY || QUIC_SUCCEEDED(Status)) {
+            if (Status == QUIC_STATUS_PATHID_LIMIT_REACHED ||
+                Status == QUIC_STATUS_PATH_LIMIT_REACHED ||
+                QUIC_SUCCEEDED(Status)) {
                 break;
             }
             delete ProbeHelper;
@@ -2146,7 +2150,9 @@ QuicTestMultipathPathIdFreeAckState(
         int Try = 0;
         do {
             Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(DoomedParam), &DoomedParam);
-            if (Status == QUIC_STATUS_OUT_OF_MEMORY || QUIC_SUCCEEDED(Status)) {
+            if (Status == QUIC_STATUS_PATHID_LIMIT_REACHED ||
+                Status == QUIC_STATUS_PATH_LIMIT_REACHED ||
+                QUIC_SUCCEEDED(Status)) {
                 break;
             }
             delete ProbeHelper;
@@ -2177,7 +2183,9 @@ QuicTestMultipathPathIdFreeAckState(
         Try = 0;
         do {
             Status = Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(GoodParam), &GoodParam);
-            if (Status == QUIC_STATUS_OUT_OF_MEMORY || QUIC_SUCCEEDED(Status)) {
+            if (Status == QUIC_STATUS_PATHID_LIMIT_REACHED ||
+                Status == QUIC_STATUS_PATH_LIMIT_REACHED ||
+                QUIC_SUCCEEDED(Status)) {
                 break;
             }
             GoodLocalAddr.SetEphemeralPort();
@@ -3458,6 +3466,185 @@ QuicTestPathReconcilerSwapAtPathLimit(
     TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(100));
     TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
 
+    Connection.Shutdown(QUIC_TEST_NO_ERROR);
+    TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+#endif
+}
+
+//
+// #205: with the path array full of the reconciler's own paths, the
+// application still gets one.
+//
+// AUTO fills every slot from the candidate table, and QUIC_PARAM_CONN_ADD_PATH
+// used to be refused once it had. Whether an application's path worked then
+// depended on whether the server had advertised enough addresses first -- so a
+// connection could stop working because the *peer* started advertising one
+// more. The stack now gives up the least valuable path it opened on its own
+// guess, and keeps refusing when there is nothing of its own to give.
+//
+void
+QuicTestPathBudgetYieldsToApplication(
+    )
+{
+#if !DEBUG
+    //
+    // Reads the paths' origins through a debug-only parameter.
+    //
+#else
+    AltServerAddressTestContext ServerContext;
+    AltServerAddressTestContext ClientContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicSettings ClientSettings;
+    ClientSettings.SetAddAddressMode(QUIC_ADD_ADDRESS_AUTO);
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, AltServerAddressTestContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QUIC_ADDRESS_FAMILY_INET);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(
+        Registration, CleanUpManual, AltServerAddressTestContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            QUIC_ADDRESS_FAMILY_INET,
+            QUIC_TEST_LOOPBACK_FOR_AF(QUIC_ADDRESS_FAMILY_INET),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(ClientContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
+
+    CxPlatSleep(100);
+
+    QuicAddr Host;
+    if (!AltServerAddressHostAddress(Host)) {
+        return;
+    }
+
+    //
+    // Fill the array: the active path plus one reconciler path per advertised
+    // address.
+    //
+    QuicAddr Advertised[QUIC_MAX_PATH_COUNT - 1];
+    for (uint32_t i = 0; i < QUIC_MAX_PATH_COUNT - 1; ++i) {
+        if (!ReconcilerAdvertise(ServerContext.Connection, Host, Advertised[i])) {
+            return;
+        }
+        TEST_TRUE(AltServerAddressWaitForPathCount(Connection, i + 2));
+    }
+    TEST_EQUAL((uint32_t)QUIC_MAX_PATH_COUNT, AltServerAddressPathCount(Connection));
+
+    //
+    // The application's path. Its remote is the server's address on a port
+    // nothing answers on, so it never validates -- what is under test is
+    // whether it is allowed to exist at all.
+    //
+    QuicAddr AppLocal;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(AppLocal));
+    QuicAddr AppRemote;
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(AppRemote));
+    AppRemote.SetPort((uint16_t)(ServerLocalAddr.GetPort() ^ 0x4000));
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    uint32_t Try = 0;
+    do {
+        AppLocal.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam = { &AppLocal.SockAddr, &AppRemote.SockAddr };
+        Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    //
+    // The count has not grown -- a slot was given up, not added -- and what
+    // went is one of the reconciler's.
+    //
+    TEST_EQUAL((uint32_t)QUIC_MAX_PATH_COUNT, AltServerAddressPathCount(Connection));
+
+    uint8_t Origins[QUIC_MAX_PATH_COUNT];
+    memset(Origins, 0xFF, sizeof(Origins));
+    uint32_t Length = sizeof(Origins);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_TEST_PATH_ORIGINS, &Length, Origins));
+    TEST_EQUAL((uint32_t)QUIC_MAX_PATH_COUNT, Length);
+
+    uint32_t ApplicationCount = 0;
+    uint32_t ReconcilerCount = 0;
+    for (uint32_t i = 0; i < Length; ++i) {
+        if (Origins[i] == QUIC_PATH_ORIGIN_APPLICATION) {
+            ApplicationCount++;
+        } else if (Origins[i] == QUIC_PATH_ORIGIN_RECONCILER) {
+            ReconcilerCount++;
+        }
+    }
+    TEST_EQUAL(1u, ApplicationCount);
+    TEST_EQUAL((uint32_t)QUIC_MAX_PATH_COUNT - 2, ReconcilerCount);
+
+    //
+    // And the trade is one-way: with the array now holding the application's
+    // path and the rest of the reconciler's, a *second* application path has
+    // something to take, but the reconciler itself gets nothing. Asking again
+    // takes another reconciler path.
+    //
+    QuicAddr SecondLocal = AppLocal;
+    Try = 0;
+    do {
+        SecondLocal.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam = { &SecondLocal.SockAddr, &AppRemote.SockAddr };
+        Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    TEST_QUIC_SUCCEEDED(Status);
+
+    memset(Origins, 0xFF, sizeof(Origins));
+    Length = sizeof(Origins);
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->GetParam(
+            Connection.Handle, QUIC_PARAM_CONN_TEST_PATH_ORIGINS, &Length, Origins));
+    ApplicationCount = 0;
+    for (uint32_t i = 0; i < Length; ++i) {
+        if (Origins[i] == QUIC_PATH_ORIGIN_APPLICATION) {
+            ApplicationCount++;
+        }
+    }
+    TEST_EQUAL(2u, ApplicationCount);
+
+    //
+    // Until nothing speculative is left, and then the limit is reported as
+    // itself rather than as an allocation failure.
+    //
+    QuicAddr ThirdLocal = AppLocal;
+    uint32_t Refusals = 0;
+    for (Try = 0; Try < 4; ++Try) {
+        ThirdLocal.SetEphemeralPort();
+        QUIC_PATH_PARAM PathParam = { &ThirdLocal.SockAddr, &AppRemote.SockAddr };
+        Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+        if (Status == QUIC_STATUS_PATH_LIMIT_REACHED) {
+            Refusals++;
+            break;
+        }
+    }
+    TEST_EQUAL(1u, Refusals);
+
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
     Connection.Shutdown(QUIC_TEST_NO_ERROR);
     TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
 #endif
