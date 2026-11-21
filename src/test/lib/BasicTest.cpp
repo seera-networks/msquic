@@ -812,14 +812,28 @@ void QuicTestUnconnectedSocketActivatePath(const FamilyArgs& Params)
     // The move itself: a local address that has no path yet, so the active path
     // is recreated on a new binding.
     //
+    //
+    // Retried with a pause, because one of the ways this fails is worth
+    // waiting out rather than retrying instantly: moving the active path
+    // retires its destination CID, and QuicConnActivatePath answers
+    // QUIC_STATUS_INVALID_STATE when QuicConnRetireCurrentDestCid finds no
+    // unused one to replace it with. The peer issues a replacement a round
+    // trip later, so four attempts in the same microsecond all fail the same
+    // way -- which is how this test failed in a kernel BVT while passing
+    // everywhere else. The other failure, a local port that will not bind,
+    // wants a different port and gets one on the next turn either way.
+    //
     QuicAddr MovedAddr = ClientAddr;
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
     int Try = 0;
     do {
+        if (Try != 0) {
+            CxPlatSleep(100);
+        }
         MovedAddr.SetEphemeralPort();
         QUIC_PATH_PARAM PathParam = { &MovedAddr.SockAddr, &PeerAddr.SockAddr };
         Status = Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam);
-    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    } while (QUIC_FAILED(Status) && ++Try <= 5);
     TEST_QUIC_SUCCEEDED(Status);
 
     QuicAddr AfterAddr;
@@ -853,14 +867,21 @@ void QuicTestUnconnectedSocketActivatePath(const FamilyArgs& Params)
     // left with the zero address and nowhere to send. Done last because the
     // connection is pointed at a server that knows nothing about it.
     //
+    //
+    // The same pause, and this is the move that needs it: by here the test has
+    // already spent CIDs on a move and an added path.
+    //
     QuicAddr MovedAgainAddr = ClientAddr;
     Status = QUIC_STATUS_SUCCESS;
     Try = 0;
     do {
+        if (Try != 0) {
+            CxPlatSleep(100);
+        }
         MovedAgainAddr.SetEphemeralPort();
         QUIC_PATH_PARAM PathParam = { &MovedAgainAddr.SockAddr, &Peer2Addr.SockAddr };
         Status = Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam);
-    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    } while (QUIC_FAILED(Status) && ++Try <= 5);
     TEST_QUIC_SUCCEEDED(Status);
 
     QuicAddr PeerMovedAddr;
