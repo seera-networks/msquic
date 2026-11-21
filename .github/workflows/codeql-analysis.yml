@@ -33,8 +33,19 @@ jobs:
           submodules: 'recursive'
 
       # Install dependencies and build submodules before starting analysis.
+      #
+      # No LTTng PPA. It publishes jammy and noble only, and this job runs on
+      # ubuntu-latest, which is now 26.04: adding a suite that does not exist
+      # makes `apt-get update` exit 100, and because this is a plain `run:`
+      # block under `bash -e` the step dies there, before anything is built or
+      # analysed. That is #210.
+      #
+      # Nothing is lost by dropping it. 26.04 ships liblttng-ust-dev 2.14 in
+      # universe, newer than the 2.13 the PPA carries, and 22.04 and 24.04 --
+      # where ubuntu-latest has been and where the packaging jobs still pin
+      # themselves -- both ship 2.13. The PPA dates from 20.04, whose 2.11 was
+      # too old.
       - run: |
-         sudo apt-add-repository ppa:lttng/stable-2.13
          sudo apt-get update
          sudo apt-get install -y liblttng-ust-dev libnuma-dev
          sudo sh scripts/install-powershell-docker.sh
