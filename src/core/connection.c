@@ -4480,6 +4480,65 @@ QuicConnCleanupServerResumptionState(
     }
 }
 
+//
+// Whether multipath can be used on this connection: the application asked for
+// it, and neither endpoint is using a zero-length connection ID. Multipath
+// tells paths apart by connection ID, so a zero-length one on either side
+// makes it unusable -- QuicCryptoTlsDecodeTransportParameters enforces that on
+// the receive side by closing the connection with PROTOCOL_VIOLATION.
+//
+// Derived from the connection IDs on every call rather than remembered in a
+// flag, for two reasons. QUIC_PARAM_CONN_SETTINGS re-applies
+// Settings.MultipathEnabled with OverWrite and no started gate, so an
+// application can turn the setting back on after the handshake has begun, and
+// the negotiation sites must not then conclude that an offer was made. And the
+// server evaluates this before it generates its own transport parameters --
+// QuicConnSetConfiguration applies the configuration's settings first -- so
+// there is no "we offered it" moment early enough for the server to record.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicConnMultipathUsable(
+    _In_ const QUIC_CONNECTION* Connection
+    )
+{
+    if (!Connection->Settings.MultipathEnabled) {
+        return FALSE;
+    }
+
+    const QUIC_PATHID* PathID = Connection->Paths.Paths[0].PathID;
+    if (PathID == NULL || PathID->SourceCids.Next == NULL) {
+        return FALSE;
+    }
+
+    const QUIC_CID_SLIST_ENTRY* SourceCid =
+        CXPLAT_CONTAINING_RECORD(
+            PathID->SourceCids.Next,
+            QUIC_CID_SLIST_ENTRY,
+            Link);
+    if (SourceCid->CID.Length == 0) {
+        return FALSE;
+    }
+
+    //
+    // The peer's connection ID matters just as much, and it is the half a
+    // server has to look at: its own source CID is always full length, while
+    // the client's -- which is the server's destination CID -- is zero length
+    // whenever that client did not share its binding.
+    //
+    if (CxPlatListIsEmpty(&PathID->DestCids)) {
+        return FALSE;
+    }
+
+    const QUIC_CID_LIST_ENTRY* DestCid =
+        CXPLAT_CONTAINING_RECORD(
+            PathID->DestCids.Flink,
+            QUIC_CID_LIST_ENTRY,
+            Link);
+    return DestCid->CID.Length != 0;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicConnPostAcceptValidatePeerTransportParameters(
@@ -4650,8 +4709,33 @@ QuicConnGenerateLocalTransportParameters(
     }
 
     if (Connection->Settings.MultipathEnabled) {
-        LocalTP->Flags |= QUIC_TP_FLAG_INITIAL_MAX_PATH_ID;
-        LocalTP->InitialMaxPathId = QUIC_ACTIVE_PATH_ID_LIMIT - 1;
+        if (QuicConnMultipathUsable(Connection)) {
+            LocalTP->Flags |= QUIC_TP_FLAG_INITIAL_MAX_PATH_ID;
+            LocalTP->InitialMaxPathId = QUIC_ACTIVE_PATH_ID_LIMIT - 1;
+        } else {
+            //
+            // A client's source CID is zero length whenever its binding is not
+            // shared, and that is the default, so offering the parameter there
+            // turned a connection that would have worked single path into a
+            // handshake the peer closes on its first round trip (#221).
+            //
+            // Withheld rather than refused at the API: single path is a
+            // working connection, and the alternative is an application that
+            // merely asked for multipath getting no connection at all. The
+            // setting is cleared so that an application reading
+            // QUIC_PARAM_CONN_SETTINGS back sees what it got, which is also
+            // what keeps QuicConnUpdateAddressMonitorRef from holding a
+            // monitor reference for a connection that cannot migrate paths.
+            // Nothing decides anything on that clearing, though --
+            // QuicConnMultipathUsable is the one answer, precisely because
+            // the application can set the field again.
+            //
+            QuicTraceLogConnWarning(
+                MultipathNotOfferedZeroLengthCid,
+                Connection,
+                "Not offering multipath: a connection ID is zero length");
+            Connection->Settings.MultipathEnabled = FALSE;
+        }
     }
 
     //
@@ -5454,7 +5538,7 @@ QuicConnProcessPeerTransportParameters(
             (QuicConnIsServer(Connection) ||
              Connection->State.AlternativeAddressNegotiated);
 
-        if (Connection->Settings.MultipathEnabled) {
+        if (QuicConnMultipathUsable(Connection)) {
             Connection->State.MultipathNegotiated =
                 !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_INITIAL_MAX_PATH_ID);
         }
@@ -15915,7 +15999,7 @@ QuicConnApplyNewSettings(
                 !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_SERVER_MIGRATION);
         }
 
-        if (QuicConnIsServer(Connection) && Connection->Settings.MultipathEnabled) {
+        if (QuicConnIsServer(Connection) && QuicConnMultipathUsable(Connection)) {
             Connection->State.MultipathNegotiated =
                 !!(Connection->PeerTransportParams.Flags & QUIC_TP_FLAG_INITIAL_MAX_PATH_ID);
         }

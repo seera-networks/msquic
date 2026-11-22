@@ -605,6 +605,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestServerProbePath);
     RegisterTestFunction(QuicTestServerMigration);
     RegisterTestFunction(QuicTestMultipath);
+    RegisterTestFunction(QuicTestMultipathUnsharedBinding);
     RegisterTestFunction(QuicTestMultipathPathDeath);
     RegisterTestFunction(QuicTestMultipathPathValidationFailed);
     RegisterTestFunction(QuicTestMultipathPathValidationRetry);

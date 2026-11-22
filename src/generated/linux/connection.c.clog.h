@@ -436,6 +436,24 @@ tracepoint(CLOG_CONNECTION_C, ApiEventNoHandler , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for MultipathNotOfferedZeroLengthCid
+// [conn][%p] Not offering multipath: a connection ID is zero length
+// QuicTraceLogConnWarning(
+                MultipathNotOfferedZeroLengthCid,
+                Connection,
+                "Not offering multipath: a connection ID is zero length");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_MultipathNotOfferedZeroLengthCid
+#define _clog_3_ARGS_TRACE_MultipathNotOfferedZeroLengthCid(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, MultipathNotOfferedZeroLengthCid , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for IgnoreUnreachable
 // [conn][%p] Ignoring received unreachable event (inline)
 // QuicTraceLogConnWarning(
