@@ -2558,6 +2558,8 @@ CxPlatTlsInitialize(
     CXPLAT_TLS* TlsContext = NULL;
     uint16_t ServerNameLength = 0;
     UNREFERENCED_PARAMETER(State);
+    struct AUX_DATA *AData = NULL;
+    BIO *ossl_bio = NULL;
 
     CXPLAT_DBG_ASSERT(Config->IsQMux || Config->HkdfLabels);
     CXPLAT_DBG_ASSERT(Config->IsServer || Config->ServerName != NULL);
@@ -2662,49 +2664,35 @@ CxPlatTlsInitialize(
             goto Exit;
         }
 
-    //
-    // Note This has to happen after the SSL_set_quic_tls_cbs call
-    // as it installs null bios for us
-    //
-    AData = CXPLAT_ALLOC_NONPAGED(sizeof(struct AUX_DATA), QUIC_POOL_TLS_AUX_DATA);
-    if (AData == NULL) {
-        QuicTraceEvent(
-            AllocFailure,
-            "Allocation of '%s' failed. (%llu bytes)",
-            "Adata",
-            sizeof(struct AUX_DATA));
-        Status = QUIC_STATUS_OUT_OF_MEMORY;
-        goto Exit;
-    }
-    memset(AData, 0, sizeof(struct AUX_DATA));
-    ossl_bio = BIO_new(BIO_s_null());
-    if (ossl_bio == NULL) {
-        QuicTraceEvent(
-            LibraryError,
-            "[ lib] ERROR, %s.",
-            "Unable to allocate BIO");
-        Status = QUIC_STATUS_OUT_OF_MEMORY;
-        goto Exit; 
-    }
-    BIO_set_app_data(ossl_bio, AData);
-    BIO_set_callback_ex(ossl_bio, FreeBioAuxData);
-    SSL_set_bio(TlsContext->Ssl, ossl_bio, ossl_bio);
-
-        SSL_set_app_data(TlsContext->Ssl, TlsContext);
-
-        if (SSL_set_quic_tls_transport_params(
-                TlsContext->Ssl,
-                Config->LocalTPBuffer,
-                Config->LocalTPLength) != 1) {
+        //
+        // Note This has to happen after the SSL_set_quic_tls_cbs call
+        // as it installs null bios for us
+        //
+        AData = CXPLAT_ALLOC_NONPAGED(sizeof(struct AUX_DATA), QUIC_POOL_TLS_AUX_DATA);
+        if (AData == NULL) {
             QuicTraceEvent(
-                TlsError,
-                "[ tls][%p] ERROR, %s.",
-                TlsContext->Connection,
-                "SSL_set_quic_transport_params failed");
-            Status = QUIC_STATUS_TLS_ERROR;
+                AllocFailure,
+                "Allocation of '%s' failed. (%llu bytes)",
+                "Adata",
+                sizeof(struct AUX_DATA));
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
             goto Exit;
         }
-        AData->Tp = Config->LocalTPBuffer;
+        memset(AData, 0, sizeof(struct AUX_DATA));
+        ossl_bio = BIO_new(BIO_s_null());
+        if (ossl_bio == NULL) {
+            QuicTraceEvent(
+                LibraryError,
+                "[ lib] ERROR, %s.",
+                "Unable to allocate BIO");
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            goto Exit;
+        }
+        BIO_set_app_data(ossl_bio, AData);
+        BIO_set_callback_ex(ossl_bio, FreeBioAuxData);
+        SSL_set_bio(TlsContext->Ssl, ossl_bio, ossl_bio);
+
+        SSL_set_app_data(TlsContext->Ssl, TlsContext);
     } else {
         TlsContext->rbio = BIO_new(BIO_s_mem());
         if (TlsContext->rbio == NULL) {
@@ -2815,6 +2803,29 @@ CxPlatTlsInitialize(
         if (!Config->IsQMux && (Config->IsServer || (Config->ResumptionTicketLength != 0))) {
             SSL_set_quic_tls_early_data_enabled(TlsContext->Ssl, 1);
         }
+    }
+
+    //
+    // A QMux connection carries no QUIC transport parameters: it runs the TLS
+    // handshake over TCP, so there is no Config->LocalTPBuffer to hand to
+    // OpenSSL and no AUX_DATA to own it. tls_quictls.c skips its own
+    // SSL_set_quic_transport_params the same way.
+    //
+    if (!Config->IsQMux) {
+        CXPLAT_DBG_ASSERT(AData != NULL);
+        if (SSL_set_quic_tls_transport_params(
+                TlsContext->Ssl,
+                Config->LocalTPBuffer,
+                Config->LocalTPLength) != 1) {
+            QuicTraceEvent(
+                TlsError,
+                "[ tls][%p] ERROR, %s.",
+                TlsContext->Connection,
+                "SSL_set_quic_transport_params failed");
+            Status = QUIC_STATUS_TLS_ERROR;
+            goto Exit;
+        }
+        AData->Tp = Config->LocalTPBuffer;
     }
 
 
