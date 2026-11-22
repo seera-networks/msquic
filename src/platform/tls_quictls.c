@@ -2758,6 +2758,13 @@ Handshake:
     }
 
 Send:
+    //
+    // A label needs a statement before C23, and the compilers in the Docker
+    // image and on the older build legs are older than that: without the
+    // empty one, the declarations below are "a label can only be part of a
+    // statement". tls_openssl.c carries the same empty statement.
+    //
+    ;
     uint32_t OutputBufferCount = 0;
     QUIC_BUFFER *OutputBuffer = &OutputBuffers[OutputBufferCount];
     size_t OutputBufferOffset = 0;
