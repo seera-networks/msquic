@@ -813,6 +813,11 @@ QuicTestMultipath(
     );
 
 void
+QuicTestMultipathUnsharedBinding(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestMultipathPathDeath(
     _In_ const FamilyArgs& Params
     );

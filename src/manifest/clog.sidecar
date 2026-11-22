@@ -9224,6 +9224,18 @@
       ],
       "macroName": "QuicTraceLogConnInfo"
     },
+    "MultipathNotOfferedZeroLengthCid": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Not offering multipath: source CID is zero length",
+      "UniqueId": "MultipathNotOfferedZeroLengthCid",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "MultipleReliableResetSendNotSupported": {
       "ModuleProperites": {},
       "TraceString": "[strm][%p] Multiple RELIABLE_RESET frames sending not supported.",
@@ -18865,6 +18877,11 @@
         "UniquenessHash": "af061074-69c0-cf5d-d770-0aa63ac01629",
         "TraceID": "MtuSearching",
         "EncodingString": "[conn][%p] Path[%u] Mtu Discovery Search Packet Sending with MTU %hu"
+      },
+      {
+        "UniquenessHash": "16dda9ee-3b71-b5e8-6068-9969451eb117",
+        "TraceID": "MultipathNotOfferedZeroLengthCid",
+        "EncodingString": "[conn][%p] Not offering multipath: source CID is zero length"
       },
       {
         "UniquenessHash": "7c8ed181-6e73-0552-43f1-7e00ce4948af",

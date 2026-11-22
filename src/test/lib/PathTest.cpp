@@ -1219,6 +1219,73 @@ QuicTestServerMigration(
 }
 
 
+//
+// A client that enables multipath but leaves its binding unshared -- the
+// default -- has a zero-length source connection ID, and a multipath peer is
+// required to reject initial_max_path_id arriving from one. The library
+// withholds the parameter in that case, so the handshake must complete, single
+// path, instead of being closed with PROTOCOL_VIOLATION (#221).
+//
+void
+QuicTestMultipathUnsharedBinding(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+    PathTestContext ServerContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicConfiguration ServerConfiguration(Registration,
+        "MsQuicTest",
+        MsQuicSettings{}.SetMultipathEnabled(TRUE),
+        ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration,
+        "MsQuicTest",
+        MsQuicSettings{}.SetMultipathEnabled(TRUE),
+        ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, PathTestContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    //
+    // No SetShareUdpBinding here, deliberately: that is the configuration the
+    // bug was in, and it is the default one.
+    //
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            ServerLocalAddr.GetFamily(),
+            QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()),
+            ServerLocalAddr.GetPort()));
+
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Connection.HandshakeComplete);
+    TEST_EQUAL((QUIC_STATUS)QUIC_STATUS_SUCCESS, Connection.TransportShutdownStatus);
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
+
+    //
+    // The connection reports multipath off, which is how the rest of the stack
+    // knows not to treat it as negotiated.
+    //
+    MsQuicSettings Settings;
+    TEST_QUIC_SUCCEEDED(Connection.GetSettings(&Settings));
+    TEST_FALSE(Settings.MultipathEnabled);
+}
+
 void
 QuicTestMultipath(
     _In_ const FamilyArgs& Params

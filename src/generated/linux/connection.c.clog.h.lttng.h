@@ -451,6 +451,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ApiEventNoHandler,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for MultipathNotOfferedZeroLengthCid
+// [conn][%p] Not offering multipath: source CID is zero length
+// QuicTraceLogConnWarning(
+                MultipathNotOfferedZeroLengthCid,
+                Connection,
+                "Not offering multipath: source CID is zero length");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, MultipathNotOfferedZeroLengthCid,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for IgnoreUnreachable
 // [conn][%p] Ignoring received unreachable event (inline)
 // QuicTraceLogConnWarning(

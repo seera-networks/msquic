@@ -4230,8 +4230,37 @@ QuicConnGenerateLocalTransportParameters(
     }
 
     if (Connection->Settings.MultipathEnabled) {
-        LocalTP->Flags |= QUIC_TP_FLAG_INITIAL_MAX_PATH_ID;
-        LocalTP->InitialMaxPathId = QUIC_ACTIVE_PATH_ID_LIMIT - 1;
+        if (SourceCid->CID.Length == 0) {
+            //
+            // Multipath tells paths apart by connection ID, so a peer that is
+            // offered initial_max_path_id by a zero-length source CID has to
+            // reject the handshake with PROTOCOL_VIOLATION -- which is exactly
+            // what this library does in
+            // QuicCryptoTlsDecodeTransportParameters. A client's source CID is
+            // zero length whenever its binding is not shared, and that is the
+            // default, so offering the parameter there turned a connection
+            // that would have worked single path into a handshake that fails
+            // on its first round trip (#221).
+            //
+            // Withheld rather than refused at the API: single path is a
+            // working connection, and the alternative is an application that
+            // merely asked for multipath getting no connection at all.
+            //
+            // The setting is cleared with it, because that is what the two
+            // negotiation sites key on -- otherwise a peer that offers
+            // initial_max_path_id (a multipath server always does) would have
+            // us believe multipath was agreed, and we would send PATH_ frames
+            // to a peer that never saw an offer and will reject them.
+            //
+            QuicTraceLogConnWarning(
+                MultipathNotOfferedZeroLengthCid,
+                Connection,
+                "Not offering multipath: source CID is zero length");
+            Connection->Settings.MultipathEnabled = FALSE;
+        } else {
+            LocalTP->Flags |= QUIC_TP_FLAG_INITIAL_MAX_PATH_ID;
+            LocalTP->InitialMaxPathId = QUIC_ACTIVE_PATH_ID_LIMIT - 1;
+        }
     }
 
     //

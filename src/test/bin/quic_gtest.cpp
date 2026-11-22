@@ -959,6 +959,15 @@ TEST_P(WithFamilyArgs, Multipath) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathUnsharedBinding) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathUnsharedBinding", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestMultipathUnsharedBinding), GetParam()));
+    } else {
+        QuicTestMultipathUnsharedBinding(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, MultipathPathDeath) {
     TestLoggerT<ParamType> Logger("QuicTestMultipathPathDeath", GetParam());
     if (TestingKernelMode) {
