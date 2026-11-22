@@ -452,11 +452,11 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ApiEventNoHandler,
 
 /*----------------------------------------------------------
 // Decoder Ring for MultipathNotOfferedZeroLengthCid
-// [conn][%p] Not offering multipath: source CID is zero length
+// [conn][%p] Not offering multipath: a connection ID is zero length
 // QuicTraceLogConnWarning(
                 MultipathNotOfferedZeroLengthCid,
                 Connection,
-                "Not offering multipath: source CID is zero length");
+                "Not offering multipath: a connection ID is zero length");
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, MultipathNotOfferedZeroLengthCid,

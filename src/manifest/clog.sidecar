@@ -9226,7 +9226,7 @@
     },
     "MultipathNotOfferedZeroLengthCid": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Not offering multipath: source CID is zero length",
+      "TraceString": "[conn][%p] Not offering multipath: a connection ID is zero length",
       "UniqueId": "MultipathNotOfferedZeroLengthCid",
       "splitArgs": [
         {
@@ -18879,9 +18879,9 @@
         "EncodingString": "[conn][%p] Path[%u] Mtu Discovery Search Packet Sending with MTU %hu"
       },
       {
-        "UniquenessHash": "16dda9ee-3b71-b5e8-6068-9969451eb117",
+        "UniquenessHash": "55bd544b-e2d9-8822-fb39-4ec7d0d9cbf6",
         "TraceID": "MultipathNotOfferedZeroLengthCid",
-        "EncodingString": "[conn][%p] Not offering multipath: source CID is zero length"
+        "EncodingString": "[conn][%p] Not offering multipath: a connection ID is zero length"
       },
       {
         "UniquenessHash": "7c8ed181-6e73-0552-43f1-7e00ce4948af",

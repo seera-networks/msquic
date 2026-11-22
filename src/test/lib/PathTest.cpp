@@ -1261,6 +1261,12 @@ QuicTestMultipathUnsharedBinding(
     TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
 
     //
+    // Set on the connection as well as the configuration, so that the
+    // IsSet flag below is unambiguously the application's own doing.
+    //
+    TEST_QUIC_SUCCEEDED(Connection.SetSettings(MsQuicSettings{}.SetMultipathEnabled(TRUE)));
+
+    //
     // No SetShareUdpBinding here, deliberately: that is the configuration the
     // bug was in, and it is the default one.
     //
@@ -1278,11 +1284,13 @@ QuicTestMultipathUnsharedBinding(
     TEST_NOT_EQUAL(nullptr, ServerContext.Connection);
 
     //
-    // The connection reports multipath off, which is how the rest of the stack
-    // knows not to treat it as negotiated.
+    // The connection reports multipath as asked for but not in effect. IsSet
+    // is asserted too: MsQuicSettings starts zeroed, so TEST_FALSE on the
+    // value alone would pass even if the field stopped being reported.
     //
     MsQuicSettings Settings;
     TEST_QUIC_SUCCEEDED(Connection.GetSettings(&Settings));
+    TEST_TRUE(Settings.IsSet.MultipathEnabled);
     TEST_FALSE(Settings.MultipathEnabled);
 }
 
