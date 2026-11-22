@@ -156,10 +156,10 @@ QuicCryptoInitialize(
     RecvBufferInitialized = TRUE;
 
     if (QuicConnIsServer(Connection)) {
-        CXPLAT_DBG_ASSERT(Connection->Paths[0].PathID->SourceCids.Next != NULL);
+        CXPLAT_DBG_ASSERT(Connection->Paths.Paths[0].PathID->SourceCids.Next != NULL);
         QUIC_CID_SLIST_ENTRY* SourceCid =
             CXPLAT_CONTAINING_RECORD(
-                Connection->Paths[0].PathID->SourceCids.Next,
+                Connection->Paths.Paths[0].PathID->SourceCids.Next,
                 QUIC_CID_SLIST_ENTRY,
                 Link);
 
@@ -167,10 +167,10 @@ QuicCryptoInitialize(
         HandshakeCidLength = SourceCid->CID.Length;
 
     } else {
-        CXPLAT_DBG_ASSERT(!CxPlatListIsEmpty(&Connection->Paths[0].PathID->DestCids));
+        CXPLAT_DBG_ASSERT(!CxPlatListIsEmpty(&Connection->Paths.Paths[0].PathID->DestCids));
         QUIC_CID_LIST_ENTRY* DestCid =
             CXPLAT_CONTAINING_RECORD(
-                Connection->Paths[0].PathID->DestCids.Flink,
+                Connection->Paths.Paths[0].PathID->DestCids.Flink,
                 QUIC_CID_LIST_ENTRY,
                 Link);
 
@@ -418,10 +418,10 @@ QuicCryptoOnVersionChange(
     }
 
     if (QuicConnIsServer(Connection)) {
-        CXPLAT_DBG_ASSERT(Connection->Paths[0].PathID->SourceCids.Next != NULL);
+        CXPLAT_DBG_ASSERT(Connection->Paths.Paths[0].PathID->SourceCids.Next != NULL);
         QUIC_CID_SLIST_ENTRY* SourceCid =
             CXPLAT_CONTAINING_RECORD(
-                Connection->Paths[0].PathID->SourceCids.Next,
+                Connection->Paths.Paths[0].PathID->SourceCids.Next,
                 QUIC_CID_SLIST_ENTRY,
                 Link);
 
@@ -429,10 +429,10 @@ QuicCryptoOnVersionChange(
         HandshakeCidLength = SourceCid->CID.Length;
 
     } else {
-        CXPLAT_DBG_ASSERT(!CxPlatListIsEmpty(&Connection->Paths[0].PathID->DestCids));
+        CXPLAT_DBG_ASSERT(!CxPlatListIsEmpty(&Connection->Paths.Paths[0].PathID->DestCids));
         QUIC_CID_LIST_ENTRY* DestCid =
             CXPLAT_CONTAINING_RECORD(
-                Connection->Paths[0].PathID->DestCids.Flink,
+                Connection->Paths.Paths[0].PathID->DestCids.Flink,
                 QUIC_CID_LIST_ENTRY,
                 Link);
 
@@ -502,7 +502,7 @@ QuicCryptoHandshakeConfirmed(
     // NOLINTEND(clang-analyzer-security.ArrayBound)
 
     if (SignalBinding) {
-        QUIC_PATH* Path = &Connection->Paths[0];
+        QUIC_PATH* Path = QuicPathGetActive(&Connection->Paths);
         CXPLAT_DBG_ASSERT(Path->Binding != NULL);
         QuicBindingOnConnectionHandshakeConfirmed(Path->Binding, Connection);
     }
@@ -588,13 +588,13 @@ QuicCryptoDiscardKeys(
     // Clean up send/recv tracking state for the encryption level.
     //
 
-    CXPLAT_DBG_ASSERT(Connection->Paths[0].PathID->ID == 0);
-    CXPLAT_DBG_ASSERT(Connection->Paths[0].PathID->Packets[EncryptLevel] != NULL);
+    CXPLAT_DBG_ASSERT(Connection->Paths.Paths[0].PathID->ID == 0);
+    CXPLAT_DBG_ASSERT(Connection->Paths.Paths[0].PathID->Packets[EncryptLevel] != NULL);
     BOOLEAN HasAckElicitingPacketsToAcknowledge =
-        Connection->Paths[0].PathID->Packets[EncryptLevel]->AckTracker.AckElicitingPacketsToAcknowledge != 0;
-    QuicLossDetectionDiscardPackets(&Connection->Paths[0].PathID->LossDetection, KeyType);
-    QuicPacketSpaceUninitialize(Connection->Paths[0].PathID->Packets[EncryptLevel]);
-    Connection->Paths[0].PathID->Packets[EncryptLevel] = NULL;
+        Connection->Paths.Paths[0].PathID->Packets[EncryptLevel]->AckTracker.AckElicitingPacketsToAcknowledge != 0;
+    QuicLossDetectionDiscardPackets(&Connection->Paths.Paths[0].PathID->LossDetection, KeyType);
+    QuicPacketSpaceUninitialize(Connection->Paths.Paths[0].PathID->Packets[EncryptLevel]);
+    Connection->Paths.Paths[0].PathID->Packets[EncryptLevel] = NULL;
 
     //
     // Clean up any possible left over recovery state.
@@ -810,10 +810,18 @@ QuicCryptoWriteCryptoFrames(
             //
             Sack = NULL;
         } else {
-            uint32_t i = 0;
-            while ((Sack = QuicRangeGetSafe(&Crypto->SparseAckRanges, i++)) != NULL &&
-                Sack->Low < (uint64_t)Left) {
+            //
+            // Start at the covering subrange or its successor; all earlier
+            // SACKs end before Left and cannot constrain this frame.
+            //
+            uint32_t i =
+                QuicRangeFindContainingOrNext(
+                    &Crypto->SparseAckRanges,
+                    (uint64_t)Left);
+            Sack = QuicRangeGetSafe(&Crypto->SparseAckRanges, i);
+            if (Sack != NULL && Sack->Low < (uint64_t)Left) {
                 CXPLAT_DBG_ASSERT(Sack->Low + Sack->Count <= (uint64_t)Left);
+                Sack = QuicRangeGetSafe(&Crypto->SparseAckRanges, i + 1);
             }
         }
 
@@ -1042,7 +1050,14 @@ QuicCryptoOnLoss(
     }
 
     QUIC_SUBRANGE* Sack;
-    uint32_t i = 0;
+    //
+    // Skip SACKs that end before Start; only the covering subrange or a later
+    // one can overlap the lost range.
+    //
+    uint32_t i =
+        QuicRangeFindContainingOrNext(
+            &Crypto->SparseAckRanges,
+            Start);
     while ((Sack = QuicRangeGetSafe(&Crypto->SparseAckRanges, i++)) != NULL &&
         Sack->Low < End) {
         if (Start < Sack->Low + Sack->Count) {
@@ -1472,7 +1487,7 @@ QuicCryptoProcessTlsCompletion(
         CXPLAT_TEL_ASSERT(Crypto->TlsState.EarlyDataState != CXPLAT_TLS_EARLY_DATA_ACCEPTED);
         if (QuicConnIsClient(Connection)) {
             QuicCryptoDiscardKeys(Crypto, QUIC_PACKET_KEY_0_RTT);
-            QuicLossDetectionOnZeroRttRejected(&Connection->Paths[0].PathID->LossDetection);
+            QuicLossDetectionOnZeroRttRejected(&Connection->Paths.Paths[0].PathID->LossDetection);
         } else {
             QuicConnDiscardDeferred0Rtt(Connection);
         }
@@ -1654,28 +1669,53 @@ QuicCryptoProcessTlsCompletion(
             QuicCryptoHandshakeConfirmed(&Connection->Crypto, FALSE);
 
             //
-            // Take this opportinuty to clean up the client chosen initial CID.
-            // It will be the second one in the list.
+            // Clean up the client-chosen initial source CID.
             //
-            CXPLAT_DBG_ASSERT(Connection->Paths[0].PathID->SourceCids.Next != NULL);
-            CXPLAT_DBG_ASSERT(Connection->Paths[0].PathID->SourceCids.Next->Next != NULL);
-            CXPLAT_DBG_ASSERT(Connection->Paths[0].PathID->SourceCids.Next->Next->Next == NULL);
-            QUIC_CID_SLIST_ENTRY* InitialSourceCid =
-                CXPLAT_CONTAINING_RECORD(
-                    Connection->Paths[0].PathID->SourceCids.Next->Next,
-                    QUIC_CID_SLIST_ENTRY,
-                    Link);
-            CXPLAT_DBG_ASSERT(InitialSourceCid->CID.IsInitial);
-            Connection->Paths[0].PathID->SourceCids.Next->Next = Connection->Paths[0].PathID->SourceCids.Next->Next->Next;
-            CXPLAT_DBG_ASSERT(!InitialSourceCid->CID.IsInLookupTable);
-            QuicTraceEvent(
-                ConnSourceCidRemoved,
-                "[conn][%p][pathid][%u] (SeqNum=%llu) Removed Source CID: %!CID!",
-                Connection,
-                Connection->Paths[0].PathID->ID,
-                InitialSourceCid->CID.SequenceNumber,
-                CASTED_CLOG_BYTEARRAY(InitialSourceCid->CID.Length, InitialSourceCid->CID.Data));
-            CXPLAT_FREE(InitialSourceCid, QUIC_POOL_CIDSLIST);
+            //
+            // Found by searching the list rather than by its position in it.
+            // Three asserts about the list's exact shape used to stand here;
+            // upstream's #6476 replaced the equivalent assumption after a
+            // 0-RTT handshake could leave another CID ahead of this one. The
+            // client-chosen CID is the only one that is both marked IsInitial
+            // and absent from the lookup table.
+            //
+            QUIC_PATHID* InitialPathID = QuicPathGetActive(&Connection->Paths)->PathID;
+            CXPLAT_DBG_ASSERT(InitialPathID != NULL);
+            CXPLAT_SLIST_ENTRY** PrevLink = &InitialPathID->SourceCids.Next;
+            BOOLEAN Found = FALSE;
+            while (*PrevLink != NULL) {
+                QUIC_CID_SLIST_ENTRY* CidEntry =
+                    CXPLAT_CONTAINING_RECORD(
+                        *PrevLink,
+                        QUIC_CID_SLIST_ENTRY,
+                        Link);
+                //
+                // Both the client-chosen CID and the server's own first CID are
+                // marked IsInitial on this fork, and CID.IsInLookupTable is not
+                // maintained here (the registrations hang off HashEntries), so
+                // the test upstream uses would match the server's own CID and
+                // free it out from under the binding's lookup table -- one
+                // leaked QUIC_CONN_REF_LOOKUP_TABLE, and a connection that
+                // never gets freed. The client-chosen CID is the one with no
+                // lookup registrations of its own.
+                //
+                if (CidEntry->CID.IsInitial && CidEntry->HashEntries.Next == NULL) {
+                    *PrevLink = (*PrevLink)->Next;
+                    QuicTraceEvent(
+                        ConnSourceCidRemoved,
+                        "[conn][%p][pathid][%u] (SeqNum=%llu) Removed Source CID: %!CID!",
+                        Connection,
+                        InitialPathID->ID,
+                        CidEntry->CID.SequenceNumber,
+                        CASTED_CLOG_BYTEARRAY(CidEntry->CID.Length, CidEntry->CID.Data));
+                    CXPLAT_FREE(CidEntry, QUIC_POOL_CIDSLIST);
+                    Found = TRUE;
+                    break;
+                }
+                PrevLink = &(*PrevLink)->Next;
+            }
+            CXPLAT_DBG_ASSERT(Found);
+            UNREFERENCED_PARAMETER(Found);
         }
 
         //
@@ -1726,8 +1766,8 @@ QuicCryptoProcessTlsCompletion(
         }
         Connection->Stats.ResumptionSucceeded = Crypto->TlsState.SessionResumed;
 
-        CXPLAT_DBG_ASSERT(Connection->PathsCount >= 1);
-        QUIC_PATH* Path = &Connection->Paths[0];
+        CXPLAT_DBG_ASSERT(Connection->Paths.Count >= 1);
+        QUIC_PATH* Path = QuicPathGetActive(&Connection->Paths);
         CXPLAT_DBG_ASSERT(Path->IsActive);
 
         if (Connection->Settings.EncryptionOffloadAllowed) {
@@ -1818,7 +1858,9 @@ QuicCryptoCustomCertValidationComplete(
             "Custom cert validation succeeded");
         QuicCryptoProcessDataComplete(Crypto, Crypto->PendingValidationBufferLength);
 
-        if (QuicRecvBufferHasUnreadData(&Crypto->RecvBuffer)) {
+        // The handshake completion above can uninitialize the crypto state.
+        if (Crypto->Initialized &&
+            QuicRecvBufferHasUnreadData(&Crypto->RecvBuffer)) {
             //
             // More data was received while waiting for user to perform the validation.
             //
@@ -1873,6 +1915,11 @@ QuicCryptoCustomTicketValidationComplete(
         //
         Crypto->TicketValidationPending = FALSE;
         QuicCryptoProcessDataComplete(Crypto, Crypto->PendingValidationBufferLength);
+
+        // Ticket validation pauses ClientHello processing. The client cannot send its Finished
+        // until after receiving the server flight, so the QuicCryptoProcessDataComplete call above
+        // cannot finish the handshake and uninitialize the crypto state.
+        CXPLAT_DBG_ASSERT(Crypto->Initialized);
 
         if (QuicRecvBufferHasUnreadData(&Crypto->RecvBuffer)) {
             //
@@ -1996,13 +2043,14 @@ QuicCryptoProcessData(
             QuicCryptoValidate(Crypto);
 
             Info.QuicVersion = Connection->Stats.QuicVersion;
-            Info.LocalAddress = &Connection->Paths[0].Route.LocalAddress;
-            Info.RemoteAddress = &Connection->Paths[0].Route.RemoteAddress;
+            QUIC_PATH* ActivePath = QuicPathGetActive(&Connection->Paths);
+            Info.LocalAddress = &ActivePath->Route.LocalAddress;
+            Info.RemoteAddress = &ActivePath->Route.RemoteAddress;
             Info.CryptoBufferLength = Buffer.Length;
             Info.CryptoBuffer = Buffer.Buffer;
 
             QuicBindingAcceptConnection(
-                Connection->Paths[0].Binding,
+                ActivePath->Binding,
                 Connection,
                 &Info);
 

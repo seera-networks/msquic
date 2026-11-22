@@ -77,16 +77,18 @@ static void InitializeMockConnection(
     // off CongestionControl) resolves back to the connection and active path.
     //
     PathID.Connection = &Connection;
-    PathID.Path = &Connection.Paths[0];
-    Connection.Paths[0].PathID = &PathID;
+    PathID.Path = &Connection.Paths.Paths[0];
+    Connection.Paths.Paths[0].PathID = &PathID;
 
-    Connection.Paths[0].Mtu = Mtu;
-    Connection.Paths[0].IsActive = TRUE;
+    Connection.Paths.Count = 1;
+    Connection.Paths.NextPathId = 1;
+    Connection.Paths.Paths[0].Mtu = Mtu;
+    Connection.Paths.Paths[0].IsActive = TRUE;
     PathID.NextPacketNumber = 0;
     Connection.Settings.PacingEnabled = FALSE;
     Connection.Settings.HyStartEnabled = FALSE;
-    Connection.Paths[0].GotFirstRttSample = FALSE;
-    Connection.Paths[0].SmoothedRtt = 0;
+    Connection.Paths.Paths[0].GotFirstRttSample = FALSE;
+    Connection.Paths.Paths[0].SmoothedRtt = 0;
 }
 
 //
@@ -178,12 +180,12 @@ protected:
         InitializeMockConnection(Connection, PathID, Mtu);
         Connection.Settings.HyStartEnabled = HyStart ? TRUE : FALSE;
         if (GotRttSample) {
-            Connection.Paths[0].GotFirstRttSample = TRUE;
-            Connection.Paths[0].SmoothedRtt = SmoothedRtt;
+            Connection.Paths.Paths[0].GotFirstRttSample = TRUE;
+            Connection.Paths.Paths[0].SmoothedRtt = SmoothedRtt;
         }
         if (SetMinRtt) {
-            Connection.Paths[0].MinRtt = MinRtt;
-            Connection.Paths[0].RttVariance = RttVariance;
+            Connection.Paths.Paths[0].MinRtt = MinRtt;
+            Connection.Paths.Paths[0].RttVariance = RttVariance;
         }
         CC = &PathID.CongestionControl;
         CubicCongestionControlInitialize(CC, &Settings);
@@ -530,7 +532,7 @@ TEST_F(CubicTest, Recovery_DoubleLossNoDoubleReduction)
 TEST_F(CubicTest, MinimumWindowFloor_AfterLoss)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 2, /*HyStart = */ false);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
     uint32_t InitialWindow = Cubic->CongestionWindow;
     // CW = 2 * 1232 = 2464. CW * 7/10 = 1724.
     // MinimumWindow = 2 * 1232 = 2464. 1724 < 2464 → floor kicks in.
@@ -586,7 +588,7 @@ TEST_F(CubicTest, SlowStart_BytesInFlightMaxClamp)
 TEST_F(CubicTest, CongestionAvoidance_AIMDvsCubicSelection)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 20,  /*HyStart = */ true);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
 
     EnterCongestionAvoidance();
 
@@ -646,7 +648,7 @@ TEST_F(CubicTest, CongestionAvoidance_AIMDvsCubicSelection)
 TEST_F(CubicTest, AIMD_SequentialLinearConvergence)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 10, /*HyStart = */ true);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
 
     EnterCongestionAvoidance();
 
@@ -706,7 +708,7 @@ TEST_F(CubicTest, AIMD_SequentialLinearConvergence)
 TEST_F(CubicTest, CongestionAvoidance_RenoFriendlyRegion)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 3, /*HyStart = */ false);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
 
     uint32_t WindowAfterLoss = EnterCongestionAvoidance(/*LostBytes=*/1200);
 
@@ -743,7 +745,7 @@ TEST_F(CubicTest, CongestionAvoidance_RenoFriendlyRegion)
 TEST_F(CubicTest, CongestionAvoidance_BoundedGrowthClamp)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 10, /*HyStart = */ false);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
 
     // Force into congestion avoidance
     uint32_t CW = 20000;
@@ -789,7 +791,7 @@ TEST_F(CubicTest, CongestionAvoidance_BoundedGrowthClamp)
 TEST_F(CubicTest, SpuriousCongestion_StateRollback)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 20,  /*HyStart = */ true);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
     uint32_t InitialWindow = DatagramPayloadLength * Settings.InitialWindowPackets;
 
     // Trigger a congestion event first
@@ -950,7 +952,7 @@ TEST_F(CubicTest, HyStart_ActiveToDone_ViaECN)
 TEST_F(CubicTest, HyStart_AnyToDone_ViaPersistentCongestion)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 30, /*HyStart = */ true);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
     // Precondition: Can be in any state (we'll test from NOT_STARTED)
     ASSERT_EQ(Cubic->HyStartState, HYSTART_NOT_STARTED);
     // Send data
@@ -1222,8 +1224,8 @@ TEST_F(CubicTest, GetSendAllowanceScenarios)
 
     // Scenario 3: Invalid time - should skip pacing and return full window
     Connection.Settings.PacingEnabled = TRUE;
-    Connection.Paths[0].GotFirstRttSample = TRUE;
-    Connection.Paths[0].SmoothedRtt = 50000;
+    Connection.Paths.Paths[0].GotFirstRttSample = TRUE;
+    Connection.Paths.Paths[0].SmoothedRtt = 50000;
     Allowance = CC->QuicCongestionControlGetSendAllowance(CC, 1000, FALSE); // FALSE = invalid time
     ASSERT_EQ(Allowance, ExpectedAllowance);
 }
@@ -1272,14 +1274,14 @@ TEST_F(CubicTest, GetNetworkStatistics_RetrieveStats)
 
     // Call through function pointer - note it takes Connection as first param
     CC->QuicCongestionControlGetNetworkStatistics(
-        &Connection, CC, &Connection.Paths[0], &NetworkStats);
+        &Connection, CC, &Connection.Paths.Paths[0], &NetworkStats);
 
     // Verify all 6 statistics fields were populated
     ASSERT_EQ(NetworkStats.CongestionWindow, Cubic->CongestionWindow);
     ASSERT_EQ(NetworkStats.BytesInFlight, Cubic->BytesInFlight);
     ASSERT_EQ(NetworkStats.SmoothedRTT, 5000u);
     // Bandwidth = CongestionWindow / SmoothedRtt = 12320 / 5000 = 2
-    uint64_t ExpectedBandwidth = Cubic->CongestionWindow / Connection.Paths[0].SmoothedRtt;
+    uint64_t ExpectedBandwidth = Cubic->CongestionWindow / Connection.Paths.Paths[0].SmoothedRtt;
     ASSERT_EQ(NetworkStats.Bandwidth, ExpectedBandwidth);
     // PostedBytes and IdealBytes come from SendBuffer, which is zero-initialized
     ASSERT_EQ(NetworkStats.PostedBytes, 0u);
@@ -1303,7 +1305,7 @@ TEST_F(CubicTest, GetNetworkStatistics_ZeroSmoothedRtt_BandwidthIsZero)
         /*GotRttSample=*/false
     );
 
-    ASSERT_EQ(Connection.Paths[0].SmoothedRtt, 0u);
+    ASSERT_EQ(Connection.Paths.Paths[0].SmoothedRtt, 0u);
 
     CC->QuicCongestionControlOnDataSent(CC, 5000);
 
@@ -1312,7 +1314,7 @@ TEST_F(CubicTest, GetNetworkStatistics_ZeroSmoothedRtt_BandwidthIsZero)
 
     // Must not crash with divide-by-zero when SmoothedRtt == 0.
     CC->QuicCongestionControlGetNetworkStatistics(
-        &Connection, CC, &Connection.Paths[0], &NetworkStats);
+        &Connection, CC, &Connection.Paths.Paths[0], &NetworkStats);
 
     ASSERT_EQ(NetworkStats.Bandwidth, 0u);
     ASSERT_EQ(NetworkStats.SmoothedRTT, 0u);
@@ -1351,7 +1353,7 @@ TEST_F(CubicTest, OnDataAcknowledged_NetStats_ZeroSmoothedRtt_BandwidthIsZero)
     Connection.Settings.NetStatsEventEnabled = TRUE;
     Connection.ClientCallbackHandler = NetStatsDummyCallback;
 
-    ASSERT_EQ(Connection.Paths[0].SmoothedRtt, 0u);
+    ASSERT_EQ(Connection.Paths.Paths[0].SmoothedRtt, 0u);
 
     Cubic->BytesInFlight = 5000;
 
@@ -1448,7 +1450,7 @@ TEST_F(CubicTest, AppLimited_APICoverage)
 TEST_F(CubicTest, ResetScenarios)
 {
     InitializeWithDefaults();
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
     uint32_t ExpectedWindow = DatagramPayloadLength * Settings.InitialWindowPackets;
 
     // Scenario 1: Partial reset (FullReset=FALSE) - preserves BytesInFlight
@@ -1594,7 +1596,7 @@ TEST_F(CubicTest, Pacing_SlowStartWindowEstimation)
     // In slow start: EstimatedWnd = min(2 * CongestionWindow, SlowStartThreshold) = 24640
     // CongestionWindow = (1280 - 48) * 10 = 12320
     uint32_t CongestionWindow = Cubic->CongestionWindow;
-    uint64_t SmoothedRtt = Connection.Paths[0].SmoothedRtt;
+    uint64_t SmoothedRtt = Connection.Paths.Paths[0].SmoothedRtt;
     uint32_t TimeSinceLastSend = 10000;
     uint32_t EstimatedWnd = 2 * CongestionWindow; // SSThresh == UINT32_MAX, so min(2*CW, SST) = 2*CW
     uint32_t ExpectedAllowance = (uint32_t)(((uint64_t)EstimatedWnd * TimeSinceLastSend) / SmoothedRtt);
@@ -1765,7 +1767,7 @@ TEST_F(CubicTest, AIMD_AccumulatorAboveWindowPrior)
 TEST_F(CubicTest, AIMD_AccumulatorTriggersWindowGrowth)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 10, /*HyStart = */ true);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
 
     EnterCongestionAvoidance();
 
@@ -1802,7 +1804,7 @@ TEST_F(CubicTest, AIMD_AccumulatorTriggersWindowGrowth)
 TEST_F(CubicTest, CubicWindow_OverflowToBytesInFlightMax)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 20,  /*HyStart = */ true);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
 
     uint32_t WindowAfterLoss = EnterCongestionAvoidance();
 
@@ -1846,7 +1848,7 @@ TEST_F(CubicTest, CubicWindow_OverflowToBytesInFlightMax)
 TEST_F(CubicTest, TimeGap_IdlePeriodHandling)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 20,  /*HyStart = */ true);
-    Connection.Paths[0].RttVariance = 5000;
+    Connection.Paths.Paths[0].RttVariance = 5000;
 
     // Trigger loss → recovery
     CC->QuicCongestionControlOnDataSent(CC, Cubic->CongestionWindow);
@@ -1913,7 +1915,7 @@ TEST_F(CubicTest, TimeGap_IdlePeriodHandling)
 TEST_F(CubicTest, CongestionAvoidance_TimeGapOverflowProtection)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 10, /*HyStart = */ false);
-    Connection.Paths[0].RttVariance = 10000;
+    Connection.Paths.Paths[0].RttVariance = 10000;
 
     // Force into congestion avoidance by setting window >= threshold
     Cubic->SlowStartThreshold = 10000;
@@ -2016,7 +2018,7 @@ TEST_F(CubicTest, SlowStart_WindowOverflowAfterPersistentCongestion)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 10, /*HyStart = */ false);
 
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
     uint32_t InitialWindow = DatagramPayloadLength * Settings.InitialWindowPackets;
     ASSERT_EQ(Cubic->CongestionWindow, InitialWindow);
 
@@ -2093,7 +2095,7 @@ TEST_F(CubicTest, SlowStart_WindowOverflowAfterPersistentCongestion)
 TEST_F(CubicTest, HyStart_InitialStateVerification)
 {
     InitializeDefaultWithRtt(/*WindowPackets = */ 10, /*HyStart = */ true);
-    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths[0]);
+    const uint16_t DatagramPayloadLength = QuicPathGetDatagramPayloadSize(&Connection.Paths.Paths[0]);
     uint32_t InitialWindow = DatagramPayloadLength * Settings.InitialWindowPackets;
 
     // Verify initial state

@@ -101,11 +101,11 @@ tracepoint(CLOG_SEND_C, AlternativeAddressTruncated , arg1, arg3);\
 
 /*----------------------------------------------------------
 // Decoder Ring for PathChallengeBuilderFailed
-// [conn][%p] Path[%hhu] could not start a packet for its challenge
+// [conn][%p] Path[%u] could not start a packet for its challenge
 // QuicTraceLogConnWarning(
                 PathChallengeBuilderFailed,
                 Connection,
-                "Path[%hhu] could not start a packet for its challenge",
+                "Path[%u] could not start a packet for its challenge",
                 Path->ID);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Path->ID = arg3
@@ -121,11 +121,11 @@ tracepoint(CLOG_SEND_C, PathChallengeBuilderFailed , arg1, arg3);\
 
 /*----------------------------------------------------------
 // Decoder Ring for MtuProbeTruncated
-// [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
+// [conn][%p] Path[%u] MTU probe of %hu not sent: peer accepts only %hu
 // QuicTraceLogConnInfo(
                 MtuProbeTruncated,
                 Connection,
-                "Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+                "Path[%u] MTU probe of %hu not sent: peer accepts only %hu",
                 Path->ID,
                 Intended,
                 (uint16_t)Builder.Datagram->Length);

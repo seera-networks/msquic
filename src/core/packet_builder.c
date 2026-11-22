@@ -118,8 +118,20 @@ QuicPacketBuilderInitialize(
     }
     Builder->TotalDatagramsLength = 0;
 
+    //
+    // A path with no path ID cannot send: there is no source CID to send with
+    // and no packet number space to send from. The path set can hold such a
+    // path on purpose -- QuicConnAssignPathIDs leaves one waiting when no path
+    // ID is free (#213), and a removal can shift one into slot 0, which is what
+    // the non-multipath send path picks unconditionally. The NULL used to be
+    // dereferenced right here; refusing the path hands the caller the answer it
+    // already handles for a path with no source CID.
+    //
+    // A QMux connection has no path ID by design, and sends without a source
+    // CID, so the question is only asked of the others.
+    //
     if (!QuicConnIsQMux(Connection)) {
-        if (Path->PathID->SourceCids.Next == NULL) {
+        if (Path->PathID == NULL || Path->PathID->SourceCids.Next == NULL) {
             QuicTraceLogConnWarning(
                 NoSrcCidAvailable,
                 Connection,
@@ -1028,7 +1040,8 @@ QuicPacketBuilderFinalize(
     }
 
     if (Builder->EncryptionOverhead != 0 &&
-        !(Builder->Key->Type == QUIC_PACKET_KEY_1_RTT && Connection->Paths[0].EncryptionOffloading)) {
+        !(Builder->Key->Type == QUIC_PACKET_KEY_1_RTT &&
+          QuicPathGetActive(&Connection->Paths)->EncryptionOffloading)) {
 
         //
         // Encrypt the data.
@@ -1078,51 +1091,48 @@ QuicPacketBuilderFinalize(
             "[pack][%llu] Finalizing",
             Builder->Metadata->PacketId);
 
-        if (Connection->State.HeaderProtectionEnabled) {
+        uint8_t* PnStart = Payload - Builder->PacketNumberLength;
 
-            uint8_t* PnStart = Payload - Builder->PacketNumberLength;
+        if (Builder->PacketType == SEND_PACKET_SHORT_HEADER_TYPE) {
+            CXPLAT_DBG_ASSERT(Builder->BatchCount < QUIC_MAX_CRYPTO_BATCH_COUNT);
 
-            if (Builder->PacketType == SEND_PACKET_SHORT_HEADER_TYPE) {
-                CXPLAT_DBG_ASSERT(Builder->BatchCount < QUIC_MAX_CRYPTO_BATCH_COUNT);
+            //
+            // Batch the header protection for short header packets.
+            //
 
-                //
-                // Batch the header protection for short header packets.
-                //
+            CxPlatCopyMemory(
+                Builder->CipherBatch + Builder->BatchCount * CXPLAT_HP_SAMPLE_LENGTH,
+                PnStart + 4,
+                CXPLAT_HP_SAMPLE_LENGTH);
+            Builder->HeaderBatch[Builder->BatchCount] = Header;
 
-                CxPlatCopyMemory(
-                    Builder->CipherBatch + Builder->BatchCount * CXPLAT_HP_SAMPLE_LENGTH,
+            if (++Builder->BatchCount == QUIC_MAX_CRYPTO_BATCH_COUNT) {
+                QuicPacketBuilderFinalizeHeaderProtection(Builder);
+            }
+
+        } else {
+            CXPLAT_DBG_ASSERT(Builder->BatchCount == 0);
+
+            //
+            // Individually do header protection for long header packets as
+            // they generally use different keys.
+            //
+
+            if (QUIC_FAILED(
+                Status =
+                CxPlatHpComputeMask(
+                    Builder->Key->HeaderKey,
+                    1,
                     PnStart + 4,
-                    CXPLAT_HP_SAMPLE_LENGTH);
-                Builder->HeaderBatch[Builder->BatchCount] = Header;
+                    Builder->HpMask))) {
+                CXPLAT_TEL_ASSERT(FALSE);
+                QuicConnFatalError(Connection, Status, "HP failure");
+                goto Exit;
+            }
 
-                if (++Builder->BatchCount == QUIC_MAX_CRYPTO_BATCH_COUNT) {
-                    QuicPacketBuilderFinalizeHeaderProtection(Builder);
-                }
-
-            } else {
-                CXPLAT_DBG_ASSERT(Builder->BatchCount == 0);
-
-                //
-                // Individually do header protection for long header packets as
-                // they generally use different keys.
-                //
-
-                if (QUIC_FAILED(
-                    Status =
-                    CxPlatHpComputeMask(
-                        Builder->Key->HeaderKey,
-                        1,
-                        PnStart + 4,
-                        Builder->HpMask))) {
-                    CXPLAT_TEL_ASSERT(FALSE);
-                    QuicConnFatalError(Connection, Status, "HP failure");
-                    goto Exit;
-                }
-
-                Header[0] ^= (Builder->HpMask[0] & 0x0f); // Bottom 4 bits for LH
-                for (uint8_t i = 0; i < Builder->PacketNumberLength; ++i) {
-                    PnStart[i] ^= Builder->HpMask[1 + i];
-                }
+            Header[0] ^= (Builder->HpMask[0] & 0x0f); // Bottom 4 bits for LH
+            for (uint8_t i = 0; i < Builder->PacketNumberLength; ++i) {
+                PnStart[i] ^= Builder->HpMask[1 + i];
             }
         }
 

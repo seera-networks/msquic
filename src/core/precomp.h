@@ -42,8 +42,9 @@
 // Internal Core Headers.
 //
 #include "quicdef.h"
-#include "cid.h"
 #include "mtu_discovery.h"
+#include "path.h"
+#include "cid.h"
 #include "transport_params.h"
 #include "lookup.h"
 #include "timer_wheel.h"
@@ -73,7 +74,6 @@
 #include "datagram.h"
 #include "version_neg.h"
 #include "qmux.h"
-#include "path.h"
 #include "pathid_set.h"
 #include "pathid.h"
 #include "candidate.h"

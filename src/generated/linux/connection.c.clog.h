@@ -1076,38 +1076,18 @@ tracepoint(CLOG_CONNECTION_C, FirstCidUsage , arg1, arg3);\
 
 /*----------------------------------------------------------
 // Decoder Ring for PathDiscarded
-// [conn][%p] Removing invalid path[%hhu]
+// [conn][%p] Removing invalid path[%u]
 // QuicTraceLogConnInfo(
                     PathDiscarded,
                     Connection,
-                    "Removing invalid path[%hhu]",
-                    Connection->Paths[i].ID);
+                    "Removing invalid path[%u]",
+                    InvalidPath->ID);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Paths[i].ID = arg3
+// arg3 = arg3 = InvalidPath->ID = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_4_ARGS_TRACE_PathDiscarded
 #define _clog_4_ARGS_TRACE_PathDiscarded(uniqueId, arg1, encoded_arg_string, arg3)\
 tracepoint(CLOG_CONNECTION_C, PathDiscarded , arg1, arg3);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for PathSlotYielded
-// [conn][%p] Giving up path[%hhu] for an application path
-// QuicTraceLogConnInfo(
-        PathSlotYielded,
-        Connection,
-        "Giving up path[%hhu] for an application path",
-        Connection->Paths[Victim].ID);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Paths[Victim].ID = arg3
-----------------------------------------------------------*/
-#ifndef _clog_4_ARGS_TRACE_PathSlotYielded
-#define _clog_4_ARGS_TRACE_PathSlotYielded(uniqueId, arg1, encoded_arg_string, arg3)\
-tracepoint(CLOG_CONNECTION_C, PathSlotYielded , arg1, arg3);\
 
 #endif
 
@@ -1134,11 +1114,11 @@ tracepoint(CLOG_CONNECTION_C, Unreachable , arg1);\
 
 /*----------------------------------------------------------
 // Decoder Ring for FailedRouteResolution
-// [conn][%p] Route resolution failed on Path[%hhu]. Switching paths...
+// [conn][%p] Route resolution failed on Path[%u]. Switching paths...
 // QuicTraceLogConnInfo(
             FailedRouteResolution,
             Connection,
-            "Route resolution failed on Path[%hhu]. Switching paths...",
+            "Route resolution failed on Path[%u]. Switching paths...",
             PathId);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = PathId = arg3
@@ -1154,11 +1134,11 @@ tracepoint(CLOG_CONNECTION_C, FailedRouteResolution , arg1, arg3);\
 
 /*----------------------------------------------------------
 // Decoder Ring for PathChallengeResend
-// [conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)
+// [conn][%p] Path[%u] re-sending PATH_CHALLENGE (%hhu of %u)
 // QuicTraceLogConnInfo(
                     PathChallengeResend,
                     Connection,
-                    "Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
+                    "Path[%u] re-sending PATH_CHALLENGE (%hhu of %u)",
                     Path->ID,
                     Path->ChallengeCount,
                     (uint32_t)QUIC_PATH_VALIDATION_PTO_COUNT);
@@ -1178,14 +1158,14 @@ tracepoint(CLOG_CONNECTION_C, PathChallengeResend , arg1, arg3, arg4, arg5);\
 
 /*----------------------------------------------------------
 // Decoder Ring for PunchAttemptCidRetired
-// [conn][%p] Path[%hhu] punch attempt failed; retired its destination CID
+// [conn][%p] Path[%u] punch attempt failed; retired its destination CID
 // QuicTraceLogConnInfo(
                 PunchAttemptCidRetired,
                 Connection,
-                "Path[%hhu] punch attempt failed; retired its destination CID",
-                Connection->Paths[i].ID);
+                "Path[%u] punch attempt failed; retired its destination CID",
+                Path->ID);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Paths[i].ID = arg3
+// arg3 = arg3 = Path->ID = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_4_ARGS_TRACE_PunchAttemptCidRetired
 #define _clog_4_ARGS_TRACE_PunchAttemptCidRetired(uniqueId, arg1, encoded_arg_string, arg3)\
@@ -1235,6 +1215,26 @@ tracepoint(CLOG_CONNECTION_C, BoundAddressWildcardForQtip , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathSlotYielded
+// [conn][%p] Giving up path[%u] for an application path
+// QuicTraceLogConnInfo(
+        PathSlotYielded,
+        Connection,
+        "Giving up path[%u] for an application path",
+        Connection->Paths.Paths[Victim].ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->Paths.Paths[Victim].ID = arg3
+----------------------------------------------------------*/
+#ifndef _clog_4_ARGS_TRACE_PathSlotYielded
+#define _clog_4_ARGS_TRACE_PathSlotYielded(uniqueId, arg1, encoded_arg_string, arg3)\
+tracepoint(CLOG_CONNECTION_C, PathSlotYielded , arg1, arg3);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ReconcileRemovedPath
 // [conn][%p] Reconciler removed a path whose pair left the table
 // QuicTraceLogConnInfo(
@@ -1253,24 +1253,6 @@ tracepoint(CLOG_CONNECTION_C, ReconcileRemovedPath , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for ReconcileDeferredNoDestCid
-// [conn][%p] Reconciler has no destination CID for a new path; retrying later
-// QuicTraceLogConnInfo(
-                ReconcileDeferredNoDestCid,
-                Connection,
-                "Reconciler has no destination CID for a new path; retrying later");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_ReconcileDeferredNoDestCid
-#define _clog_3_ARGS_TRACE_ReconcileDeferredNoDestCid(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for ReconcileDeferredNoPathID
 // [conn][%p] Reconciler has no unused path ID for a new path; retrying later
 // QuicTraceLogConnInfo(
@@ -1282,6 +1264,24 @@ tracepoint(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid , arg1);\
 #ifndef _clog_3_ARGS_TRACE_ReconcileDeferredNoPathID
 #define _clog_3_ARGS_TRACE_ReconcileDeferredNoPathID(uniqueId, arg1, encoded_arg_string)\
 tracepoint(CLOG_CONNECTION_C, ReconcileDeferredNoPathID , arg1);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileDeferredNoDestCid
+// [conn][%p] Reconciler has no destination CID for a new path; retrying later
+// QuicTraceLogConnInfo(
+                    ReconcileDeferredNoDestCid,
+                    Connection,
+                    "Reconciler has no destination CID for a new path; retrying later");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_ReconcileDeferredNoDestCid
+#define _clog_3_ARGS_TRACE_ReconcileDeferredNoDestCid(uniqueId, arg1, encoded_arg_string)\
+tracepoint(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid , arg1);\
 
 #endif
 
@@ -1507,9 +1507,9 @@ tracepoint(CLOG_CONNECTION_C, UpdateStreamSchedulingScheme , arg1, arg3);\
             LocalInterfaceSet,
             Connection,
             "Local interface set to %u",
-            Connection->Paths[0].Route.LocalAddress.Ipv6.sin6_scope_id);
+            QuicPathGetActive(&Connection->Paths)->Route.LocalAddress.Ipv6.sin6_scope_id);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Paths[0].Route.LocalAddress.Ipv6.sin6_scope_id = arg3
+// arg3 = arg3 = QuicPathGetActive(&Connection->Paths)->Route.LocalAddress.Ipv6.sin6_scope_id = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_4_ARGS_TRACE_LocalInterfaceSet
 #define _clog_4_ARGS_TRACE_LocalInterfaceSet(uniqueId, arg1, encoded_arg_string, arg3)\
@@ -2203,24 +2203,6 @@ tracepoint(CLOG_CONNECTION_C, PunchRequestUnknownAddress , arg1);\
 
 
 /*----------------------------------------------------------
-// Decoder Ring for IndicatePeerAddrChanged
-// [conn][%p] Indicating QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED
-// QuicTraceLogConnVerbose(
-            IndicatePeerAddrChanged,
-            Connection,
-            "Indicating QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-#ifndef _clog_3_ARGS_TRACE_IndicatePeerAddrChanged
-#define _clog_3_ARGS_TRACE_IndicatePeerAddrChanged(uniqueId, arg1, encoded_arg_string)\
-tracepoint(CLOG_CONNECTION_C, IndicatePeerAddrChanged , arg1);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for UdpRecvBatch
 // [conn][%p] Batch Recv %u UDP datagrams
 // QuicTraceLogConnVerbose(
@@ -2279,6 +2261,28 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
 
 
 /*----------------------------------------------------------
+// Decoder Ring for CandidatePolicyExcludedLocals
+// [conn][%p] Policy excluded %u of %u local addresses
+// QuicTraceLogConnVerbose(
+                CandidatePolicyExcludedLocals,
+                Connection,
+                "Policy excluded %u of %u local addresses",
+                Excluded,
+                LocalCount);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Excluded = arg3
+// arg4 = arg4 = LocalCount = arg4
+----------------------------------------------------------*/
+#ifndef _clog_5_ARGS_TRACE_CandidatePolicyExcludedLocals
+#define _clog_5_ARGS_TRACE_CandidatePolicyExcludedLocals(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
+tracepoint(CLOG_CONNECTION_C, CandidatePolicyExcludedLocals , arg1, arg3, arg4);\
+
+#endif
+
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for CandidatePairsRebuilt
 // [conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs
 // QuicTraceLogConnVerbose(
@@ -2296,28 +2300,6 @@ tracepoint(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded , arg1);\
 #ifndef _clog_6_ARGS_TRACE_CandidatePairsRebuilt
 #define _clog_6_ARGS_TRACE_CandidatePairsRebuilt(uniqueId, arg1, encoded_arg_string, arg3, arg4, arg5)\
 tracepoint(CLOG_CONNECTION_C, CandidatePairsRebuilt , arg1, arg3, arg4, arg5);\
-
-#endif
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for CandidatePolicyExcludedLocals
-// [conn][%p] Policy excluded %u of %u local addresses
-// QuicTraceLogConnVerbose(
-                CandidatePolicyExcludedLocals,
-                Connection,
-                "Policy excluded %u of %u local addresses",
-                Excluded,
-                LocalCount);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Excluded = arg3
-// arg4 = arg4 = LocalCount = arg4
-----------------------------------------------------------*/
-#ifndef _clog_5_ARGS_TRACE_CandidatePolicyExcludedLocals
-#define _clog_5_ARGS_TRACE_CandidatePolicyExcludedLocals(uniqueId, arg1, encoded_arg_string, arg3, arg4)\
-tracepoint(CLOG_CONNECTION_C, CandidatePolicyExcludedLocals , arg1, arg3, arg4);\
 
 #endif
 
@@ -2931,9 +2913,11 @@ tracepoint(CLOG_CONNECTION_C, ConnAssignWorker , arg2, arg3);\
         ConnEcnCapable,
         "[conn][%p] Ecn: IsCapable=%hu",
         Connection,
-        Connection->Paths[0].EcnValidationState == ECN_VALIDATION_CAPABLE);
+        QuicPathGetActive(&Connection->Paths)->EcnValidationState ==
+            ECN_VALIDATION_CAPABLE);
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = Connection->Paths[0].EcnValidationState == ECN_VALIDATION_CAPABLE = arg3
+// arg3 = arg3 = QuicPathGetActive(&Connection->Paths)->EcnValidationState ==
+            ECN_VALIDATION_CAPABLE = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_4_ARGS_TRACE_ConnEcnCapable
 #define _clog_4_ARGS_TRACE_ConnEcnCapable(uniqueId, encoded_arg_string, arg2, arg3)\
@@ -3293,10 +3277,10 @@ tracepoint(CLOG_CONNECTION_C, ConnReleaseChain , arg2, arg3);\
 
 /*----------------------------------------------------------
 // Decoder Ring for ConnPathValidationTimeout
-// [conn][%p] Path[%hhu] validation timed out
+// [conn][%p] Path[%u] validation timed out
 // QuicTraceEvent(
             ConnPathValidationTimeout,
-            "[conn][%p] Path[%hhu] validation timed out",
+            "[conn][%p] Path[%u] validation timed out",
             Connection,
             Path->ID);
 // arg2 = arg2 = Connection = arg2
@@ -3360,9 +3344,9 @@ tracepoint(CLOG_CONNECTION_C, ConnObservedAddrAdded , arg2, arg3_len, arg3, arg4
             ConnLocalAddrRemoved,
             "[conn][%p] Removed Local IP: %!ADDR!",
             Connection,
-            CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.LocalAddress), &Connection->Paths[0].Route.LocalAddress));
+            CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths.Paths[0].Route.LocalAddress), &Connection->Paths.Paths[0].Route.LocalAddress));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.LocalAddress), &Connection->Paths[0].Route.LocalAddress) = arg3
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths.Paths[0].Route.LocalAddress), &Connection->Paths.Paths[0].Route.LocalAddress) = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_5_ARGS_TRACE_ConnLocalAddrRemoved
 #define _clog_5_ARGS_TRACE_ConnLocalAddrRemoved(uniqueId, encoded_arg_string, arg2, arg3, arg3_len)\
@@ -3380,9 +3364,9 @@ tracepoint(CLOG_CONNECTION_C, ConnLocalAddrRemoved , arg2, arg3_len, arg3);\
             ConnRemoteAddrRemoved,
             "[conn][%p] Removed Remote IP: %!ADDR!",
             Connection,
-            CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.RemoteAddress), &Connection->Paths[0].Route.RemoteAddress));
+            CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths.Paths[0].Route.RemoteAddress), &Connection->Paths.Paths[0].Route.RemoteAddress));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.RemoteAddress), &Connection->Paths[0].Route.RemoteAddress) = arg3
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths.Paths[0].Route.RemoteAddress), &Connection->Paths.Paths[0].Route.RemoteAddress) = arg3
 ----------------------------------------------------------*/
 #ifndef _clog_5_ARGS_TRACE_ConnRemoteAddrRemoved
 #define _clog_5_ARGS_TRACE_ConnRemoteAddrRemoved(uniqueId, encoded_arg_string, arg2, arg3, arg3_len)\

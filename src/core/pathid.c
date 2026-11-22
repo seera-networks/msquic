@@ -352,17 +352,17 @@ QuicPathIDGenerateNewSourceCid(
     QUIC_BINDING* Bindings[QUIC_MAX_PATH_COUNT + QUIC_MAX_LOCAL_ADDRESS_COUNT] = {NULL};
     uint8_t BindingsCount = 0;
 
-    for (uint8_t i = 0; i < PathID->Connection->PathsCount; ++i) {
-        if (PathID->Connection->Paths[i].Binding != NULL) {
+    for (uint8_t i = 0; i < PathID->Connection->Paths.Count; ++i) {
+        if (PathID->Connection->Paths.Paths[i].Binding != NULL) {
             BOOLEAN NewBinding = TRUE;
             for (uint8_t j = 0; j < BindingsCount; ++j) {
-                if (PathID->Connection->Paths[i].Binding == Bindings[j]) {
+                if (PathID->Connection->Paths.Paths[i].Binding == Bindings[j]) {
                     NewBinding = FALSE;
                     break;
                 }
             }
             if (NewBinding) {
-                Bindings[BindingsCount++] = PathID->Connection->Paths[i].Binding;
+                Bindings[BindingsCount++] = PathID->Connection->Paths.Paths[i].Binding;
             }
         }
     }
@@ -687,11 +687,11 @@ QuicPathIDRetireCurrentDestCid(
 
     CXPLAT_DBG_ASSERT(Path->DestCid != NewDestCid);
     QUIC_CID_LIST_ENTRY* OldDestCid = Path->DestCid;
-    QUIC_CID_CLEAR_PATH(Path->DestCid);
+    QuicCidClearPath(Path->DestCid);
     QuicPathIDRetireCid(PathID, Path->DestCid);
     Path->DestCid = NewDestCid;
-    QUIC_CID_SET_PATH(PathID->Connection, Path->DestCid, Path);
-    QUIC_CID_VALIDATE_NULL(PathID->Connection, OldDestCid);
+    QuicCidSetPath(&PathID->Connection->Paths, Path->DestCid, Path);
+    QuicCidValidateUnused(&PathID->Connection->Paths, OldDestCid);
     Path->DestCid->CID.UsedLocally = TRUE;
     QuicTraceEvent(
         ConnDestCidUpdated,
@@ -731,7 +731,7 @@ QuicPathIDOnRetirePriorToUpdated(
             ReplaceRetiredCids = TRUE;
         }
 
-        QUIC_CID_CLEAR_PATH(DestCid);
+        QuicCidClearPath(DestCid);
         QuicPathIDRetireCid(PathID, DestCid);
     }
 
@@ -744,13 +744,13 @@ QuicPathIDReplaceRetiredCids(
     _In_ QUIC_PATHID* PathID
     )
 {
-    CXPLAT_DBG_ASSERT(PathID->Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
+    CXPLAT_DBG_ASSERT(PathID->Connection->Paths.Count <= QUIC_MAX_PATH_COUNT);
     //
     // The loop index is advanced manually: when a path is removed the array
     // shifts down, so the slot at 'i' must be re-examined rather than skipped.
     //
-    for (uint8_t i = 0; i < PathID->Connection->PathsCount; ) {
-        QUIC_PATH* Path = &PathID->Connection->Paths[i];
+    for (uint8_t i = 0; i < PathID->Connection->Paths.Count; ) {
+        QUIC_PATH* Path = &PathID->Connection->Paths.Paths[i];
         if (Path->PathID != PathID || Path->DestCid == NULL || !Path->DestCid->CID.Retired) {
             ++i;
             continue;
@@ -772,29 +772,30 @@ QuicPathIDReplaceRetiredCids(
                 PathID->Connection,
                 "Non-active path has no replacement for retired CID.");
             CXPLAT_DBG_ASSERT(i != 0);
-            CXPLAT_DBG_ASSERT(PathID->Connection->Paths[i].Binding != NULL);
+            CXPLAT_DBG_ASSERT(PathID->Connection->Paths.Paths[i].Binding != NULL);
             //
             // Here the path goes away but its path ID stays, so this is not
             // QuicPathIDFreeSourceCids' job. Withdraw the connection's CIDs
             // from the binding only once nothing else uses it -- another path
             // sharing it is still reached through them.
             //
-            if (!PathID->Connection->Paths[i].UseBound &&
+            if (!PathID->Connection->Paths.Paths[i].UseBound &&
                 !QuicConnIsBindingShared(
-                    PathID->Connection, &PathID->Connection->Paths[i])) {
-                QuicBindingRemoveAllSourceConnectionIDs(PathID->Connection->Paths[i].Binding, PathID->Connection);
+                    PathID->Connection, &PathID->Connection->Paths.Paths[i])) {
+                QuicBindingRemoveAllSourceConnectionIDs(PathID->Connection->Paths.Paths[i].Binding, PathID->Connection);
             }
-            QuicLibraryReleaseBinding(PathID->Connection->Paths[i].Binding);
-            PathID->Connection->Paths[i].Binding = NULL;
-            QuicPathRemove(PathID->Connection, i);
+            QuicLibraryReleaseBinding(PathID->Connection->Paths.Paths[i].Binding);
+            PathID->Connection->Paths.Paths[i].Binding = NULL;
+            QuicPathRemove(
+                PathID->Connection, &PathID->Connection->Paths.Paths[i]);
             continue;
         }
 
         CXPLAT_DBG_ASSERT(NewDestCid != Path->DestCid);
         QUIC_CID_LIST_ENTRY* OldDestCid = Path->DestCid;
         Path->DestCid = NewDestCid;
-        QUIC_CID_SET_PATH(PathID->Connection, NewDestCid, Path);
-        QUIC_CID_VALIDATE_NULL(PathID->Connection, OldDestCid);
+        QuicCidSetPath(&PathID->Connection->Paths, NewDestCid, Path);
+        QuicCidValidateUnused(&PathID->Connection->Paths, OldDestCid);
         Path->DestCid->CID.UsedLocally = TRUE;
         Path->InitiatedCidUpdate = TRUE;
         QuicPathValidate(Path);
@@ -818,7 +819,16 @@ QuicPathIDReplaceRetiredCids(
                 Entry,
                 QUIC_CID_LIST_ENTRY,
                 Link);
-        CXPLAT_DBG_ASSERT(!DestCid->CID.Retired || DestCid->AssignedPath == NULL);
+        //
+        // A retired CID must not be the destination CID of any path. The check
+        // used to read the CID's own back pointer, which was cleared whenever a
+        // path let it go; upstream's stable path id replaces that pointer and is
+        // not cleared on retirement, so the question is asked of the paths
+        // instead -- which is what QuicCidValidateUnused is for.
+        //
+        if (DestCid->CID.Retired) {
+            QuicCidValidateUnused(&PathID->Connection->Paths, DestCid);
+        }
     }
 #endif
 
@@ -849,7 +859,7 @@ QuicPathIDUpdateDestCid(
             PathID->DestCids.Flink,
             QUIC_CID_LIST_ENTRY,
             Link);
-    CXPLAT_DBG_ASSERT(PathID->Connection->Paths[0].DestCid == DestCid);
+    CXPLAT_DBG_ASSERT(PathID->Connection->Paths.Paths[0].DestCid == DestCid);
 
     if (Packet->SourceCidLen != DestCid->CID.Length ||
         memcmp(Packet->SourceCid, DestCid->CID.Data, DestCid->CID.Length) != 0) {
@@ -891,13 +901,13 @@ QuicPathIDUpdateDestCid(
                     Packet->SourceCid);
             if (DestCid == NULL) {
                 PathID->DestCidCount--;
-                PathID->Connection->Paths[0].DestCid = NULL;
+                PathID->Connection->Paths.Paths[0].DestCid = NULL;
                 QuicConnFatalError(PathID->Connection, QUIC_STATUS_OUT_OF_MEMORY, "Out of memory");
                 return FALSE;
             }
 
-            PathID->Connection->Paths[0].DestCid = DestCid;
-            QUIC_CID_SET_PATH(PathID->Connection, DestCid, &PathID->Connection->Paths[0]);
+            PathID->Connection->Paths.Paths[0].DestCid = DestCid;
+            QuicCidSetPath(&PathID->Connection->Paths, DestCid, &PathID->Connection->Paths.Paths[0]);
             DestCid->CID.UsedLocally = TRUE;
             CxPlatListInsertHead(&PathID->DestCids, &DestCid->Link);
         }
@@ -924,9 +934,9 @@ QuicPathIDAssignCids(
 {
     BOOLEAN Assigned = FALSE;
 
-    CXPLAT_DBG_ASSERT(PathID->Connection->PathsCount <= QUIC_MAX_PATH_COUNT);
-    for (uint8_t i = 0; i < PathID->Connection->PathsCount; ++i) {
-        QUIC_PATH* Path = &PathID->Connection->Paths[i];
+    CXPLAT_DBG_ASSERT(PathID->Connection->Paths.Count <= QUIC_MAX_PATH_COUNT);
+    for (uint8_t i = 0; i < PathID->Connection->Paths.Count; ++i) {
+        QUIC_PATH* Path = &PathID->Connection->Paths.Paths[i];
         if (Path->PathID != PathID || Path->DestCid != NULL ||
             !Path->InUse || Path->Binding == NULL) {
             continue;
@@ -938,7 +948,7 @@ QuicPathIDAssignCids(
         }
 
         Path->DestCid = NewDestCid;
-        QUIC_CID_SET_PATH(PathID->Connection, NewDestCid, Path);
+        QuicCidSetPath(&PathID->Connection->Paths, NewDestCid, Path);
         Path->DestCid->CID.UsedLocally = TRUE;
         QuicPathValidate(Path);
 

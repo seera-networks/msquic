@@ -334,7 +334,7 @@ BbrCongestionControlIndicateConnectionEvent(
     // The connection-level event has always reported the active path.
     //
     BbrCongestionControlGetNetworkStatistics(
-        Connection, Cc, &Connection->Paths[0], &Event.NETWORK_STATISTICS);
+        Connection, Cc, &Connection->Paths.Paths[0], &Event.NETWORK_STATISTICS);
 
     QuicTraceLogConnVerbose(
         IndicateDataAcked,

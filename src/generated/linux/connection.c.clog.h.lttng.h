@@ -1153,46 +1153,22 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, FirstCidUsage,
 
 /*----------------------------------------------------------
 // Decoder Ring for PathDiscarded
-// [conn][%p] Removing invalid path[%hhu]
+// [conn][%p] Removing invalid path[%u]
 // QuicTraceLogConnInfo(
                     PathDiscarded,
                     Connection,
-                    "Removing invalid path[%hhu]",
-                    Connection->Paths[i].ID);
+                    "Removing invalid path[%u]",
+                    InvalidPath->ID);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Paths[i].ID = arg3
+// arg3 = arg3 = InvalidPath->ID = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathDiscarded,
     TP_ARGS(
         const void *, arg1,
-        unsigned char, arg3), 
+        unsigned int, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned char, arg3, arg3)
-    )
-)
-
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for PathSlotYielded
-// [conn][%p] Giving up path[%hhu] for an application path
-// QuicTraceLogConnInfo(
-        PathSlotYielded,
-        Connection,
-        "Giving up path[%hhu] for an application path",
-        Connection->Paths[Victim].ID);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Paths[Victim].ID = arg3
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathSlotYielded,
-    TP_ARGS(
-        const void *, arg1,
-        unsigned char, arg3), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg3, arg3)
     )
 )
 
@@ -1219,11 +1195,11 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, Unreachable,
 
 /*----------------------------------------------------------
 // Decoder Ring for FailedRouteResolution
-// [conn][%p] Route resolution failed on Path[%hhu]. Switching paths...
+// [conn][%p] Route resolution failed on Path[%u]. Switching paths...
 // QuicTraceLogConnInfo(
             FailedRouteResolution,
             Connection,
-            "Route resolution failed on Path[%hhu]. Switching paths...",
+            "Route resolution failed on Path[%u]. Switching paths...",
             PathId);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = PathId = arg3
@@ -1231,10 +1207,10 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, Unreachable,
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, FailedRouteResolution,
     TP_ARGS(
         const void *, arg1,
-        unsigned char, arg3), 
+        unsigned int, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg3, arg3)
     )
 )
 
@@ -1242,11 +1218,11 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, FailedRouteResolution,
 
 /*----------------------------------------------------------
 // Decoder Ring for PathChallengeResend
-// [conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)
+// [conn][%p] Path[%u] re-sending PATH_CHALLENGE (%hhu of %u)
 // QuicTraceLogConnInfo(
                     PathChallengeResend,
                     Connection,
-                    "Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
+                    "Path[%u] re-sending PATH_CHALLENGE (%hhu of %u)",
                     Path->ID,
                     Path->ChallengeCount,
                     (uint32_t)QUIC_PATH_VALIDATION_PTO_COUNT);
@@ -1258,12 +1234,12 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, FailedRouteResolution,
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathChallengeResend,
     TP_ARGS(
         const void *, arg1,
-        unsigned char, arg3,
+        unsigned int, arg3,
         unsigned char, arg4,
         unsigned int, arg5), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg3, arg3)
         ctf_integer(unsigned char, arg4, arg4)
         ctf_integer(unsigned int, arg5, arg5)
     )
@@ -1273,22 +1249,22 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathChallengeResend,
 
 /*----------------------------------------------------------
 // Decoder Ring for PunchAttemptCidRetired
-// [conn][%p] Path[%hhu] punch attempt failed; retired its destination CID
+// [conn][%p] Path[%u] punch attempt failed; retired its destination CID
 // QuicTraceLogConnInfo(
                 PunchAttemptCidRetired,
                 Connection,
-                "Path[%hhu] punch attempt failed; retired its destination CID",
-                Connection->Paths[i].ID);
+                "Path[%u] punch attempt failed; retired its destination CID",
+                Path->ID);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Paths[i].ID = arg3
+// arg3 = arg3 = Path->ID = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchAttemptCidRetired,
     TP_ARGS(
         const void *, arg1,
-        unsigned char, arg3), 
+        unsigned int, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg3, arg3)
     )
 )
 
@@ -1337,6 +1313,29 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, BoundAddressWildcardForQtip,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for PathSlotYielded
+// [conn][%p] Giving up path[%u] for an application path
+// QuicTraceLogConnInfo(
+        PathSlotYielded,
+        Connection,
+        "Giving up path[%u] for an application path",
+        Connection->Paths.Paths[Victim].ID);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Connection->Paths.Paths[Victim].ID = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, PathSlotYielded,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for ReconcileRemovedPath
 // [conn][%p] Reconciler removed a path whose pair left the table
 // QuicTraceLogConnInfo(
@@ -1356,26 +1355,6 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileRemovedPath,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for ReconcileDeferredNoDestCid
-// [conn][%p] Reconciler has no destination CID for a new path; retrying later
-// QuicTraceLogConnInfo(
-                ReconcileDeferredNoDestCid,
-                Connection,
-                "Reconciler has no destination CID for a new path; retrying later");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid,
-    TP_ARGS(
-        const void *, arg1), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-    )
-)
-
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for ReconcileDeferredNoPathID
 // [conn][%p] Reconciler has no unused path ID for a new path; retrying later
 // QuicTraceLogConnInfo(
@@ -1385,6 +1364,25 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid,
 // arg1 = arg1 = Connection = arg1
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileDeferredNoPathID,
+    TP_ARGS(
+        const void *, arg1), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+    )
+)
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for ReconcileDeferredNoDestCid
+// [conn][%p] Reconciler has no destination CID for a new path; retrying later
+// QuicTraceLogConnInfo(
+                    ReconcileDeferredNoDestCid,
+                    Connection,
+                    "Reconciler has no destination CID for a new path; retrying later");
+// arg1 = arg1 = Connection = arg1
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, ReconcileDeferredNoDestCid,
     TP_ARGS(
         const void *, arg1), 
     TP_FIELDS(
@@ -1638,9 +1636,9 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, UpdateStreamSchedulingScheme,
             LocalInterfaceSet,
             Connection,
             "Local interface set to %u",
-            Connection->Paths[0].Route.LocalAddress.Ipv6.sin6_scope_id);
+            QuicPathGetActive(&Connection->Paths)->Route.LocalAddress.Ipv6.sin6_scope_id);
 // arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Connection->Paths[0].Route.LocalAddress.Ipv6.sin6_scope_id = arg3
+// arg3 = arg3 = QuicPathGetActive(&Connection->Paths)->Route.LocalAddress.Ipv6.sin6_scope_id = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, LocalInterfaceSet,
     TP_ARGS(
@@ -2439,25 +2437,6 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, PunchRequestUnknownAddress,
 
 
 /*----------------------------------------------------------
-// Decoder Ring for IndicatePeerAddrChanged
-// [conn][%p] Indicating QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED
-// QuicTraceLogConnVerbose(
-            IndicatePeerAddrChanged,
-            Connection,
-            "Indicating QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED");
-// arg1 = arg1 = Connection = arg1
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicatePeerAddrChanged,
-    TP_ARGS(
-        const void *, arg1), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-    )
-)
-
-
-
-/*----------------------------------------------------------
 // Decoder Ring for UdpRecvBatch
 // [conn][%p] Batch Recv %u UDP datagrams
 // QuicTraceLogConnVerbose(
@@ -2523,6 +2502,33 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, IndicateNotifyRemoteAddressAdded,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for CandidatePolicyExcludedLocals
+// [conn][%p] Policy excluded %u of %u local addresses
+// QuicTraceLogConnVerbose(
+                CandidatePolicyExcludedLocals,
+                Connection,
+                "Policy excluded %u of %u local addresses",
+                Excluded,
+                LocalCount);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Excluded = arg3
+// arg4 = arg4 = LocalCount = arg4
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_CONNECTION_C, CandidatePolicyExcludedLocals,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned int, arg3,
+        unsigned int, arg4), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(unsigned int, arg3, arg3)
+        ctf_integer(unsigned int, arg4, arg4)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for CandidatePairsRebuilt
 // [conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs
 // QuicTraceLogConnVerbose(
@@ -2548,33 +2554,6 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, CandidatePairsRebuilt,
         ctf_integer(unsigned int, arg3, arg3)
         ctf_integer(unsigned int, arg4, arg4)
         ctf_integer(unsigned char, arg5, arg5)
-    )
-)
-
-
-
-/*----------------------------------------------------------
-// Decoder Ring for CandidatePolicyExcludedLocals
-// [conn][%p] Policy excluded %u of %u local addresses
-// QuicTraceLogConnVerbose(
-                CandidatePolicyExcludedLocals,
-                Connection,
-                "Policy excluded %u of %u local addresses",
-                Excluded,
-                LocalCount);
-// arg1 = arg1 = Connection = arg1
-// arg3 = arg3 = Excluded = arg3
-// arg4 = arg4 = LocalCount = arg4
-----------------------------------------------------------*/
-TRACEPOINT_EVENT(CLOG_CONNECTION_C, CandidatePolicyExcludedLocals,
-    TP_ARGS(
-        const void *, arg1,
-        unsigned int, arg3,
-        unsigned int, arg4), 
-    TP_FIELDS(
-        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned int, arg3, arg3)
-        ctf_integer(unsigned int, arg4, arg4)
     )
 )
 
@@ -3264,9 +3243,11 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnAssignWorker,
         ConnEcnCapable,
         "[conn][%p] Ecn: IsCapable=%hu",
         Connection,
-        Connection->Paths[0].EcnValidationState == ECN_VALIDATION_CAPABLE);
+        QuicPathGetActive(&Connection->Paths)->EcnValidationState ==
+            ECN_VALIDATION_CAPABLE);
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = Connection->Paths[0].EcnValidationState == ECN_VALIDATION_CAPABLE = arg3
+// arg3 = arg3 = QuicPathGetActive(&Connection->Paths)->EcnValidationState ==
+            ECN_VALIDATION_CAPABLE = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnEcnCapable,
     TP_ARGS(
@@ -3688,10 +3669,10 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnReleaseChain,
 
 /*----------------------------------------------------------
 // Decoder Ring for ConnPathValidationTimeout
-// [conn][%p] Path[%hhu] validation timed out
+// [conn][%p] Path[%u] validation timed out
 // QuicTraceEvent(
             ConnPathValidationTimeout,
-            "[conn][%p] Path[%hhu] validation timed out",
+            "[conn][%p] Path[%u] validation timed out",
             Connection,
             Path->ID);
 // arg2 = arg2 = Connection = arg2
@@ -3700,10 +3681,10 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnReleaseChain,
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnPathValidationTimeout,
     TP_ARGS(
         const void *, arg2,
-        unsigned char, arg3), 
+        unsigned int, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg2, (uint64_t)arg2)
-        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg3, arg3)
     )
 )
 
@@ -3772,9 +3753,9 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnObservedAddrAdded,
             ConnLocalAddrRemoved,
             "[conn][%p] Removed Local IP: %!ADDR!",
             Connection,
-            CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.LocalAddress), &Connection->Paths[0].Route.LocalAddress));
+            CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths.Paths[0].Route.LocalAddress), &Connection->Paths.Paths[0].Route.LocalAddress));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.LocalAddress), &Connection->Paths[0].Route.LocalAddress) = arg3
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths.Paths[0].Route.LocalAddress), &Connection->Paths.Paths[0].Route.LocalAddress) = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnLocalAddrRemoved,
     TP_ARGS(
@@ -3797,9 +3778,9 @@ TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnLocalAddrRemoved,
             ConnRemoteAddrRemoved,
             "[conn][%p] Removed Remote IP: %!ADDR!",
             Connection,
-            CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.RemoteAddress), &Connection->Paths[0].Route.RemoteAddress));
+            CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths.Paths[0].Route.RemoteAddress), &Connection->Paths.Paths[0].Route.RemoteAddress));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths[0].Route.RemoteAddress), &Connection->Paths[0].Route.RemoteAddress) = arg3
+// arg3 = arg3 = CASTED_CLOG_BYTEARRAY(sizeof(Connection->Paths.Paths[0].Route.RemoteAddress), &Connection->Paths.Paths[0].Route.RemoteAddress) = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CONNECTION_C, ConnRemoteAddrRemoved,
     TP_ARGS(

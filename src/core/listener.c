@@ -922,7 +922,7 @@ QuicListenerAcceptConnection(
                 Connection->CibirId[0]));
     }
 
-    if (!QuicPathIDGenerateNewSourceCid(Connection->Paths[0].PathID, TRUE)) {
+    if (!QuicPathIDGenerateNewSourceCid(Connection->Paths.Paths[0].PathID, TRUE)) {
         return;
     }
 

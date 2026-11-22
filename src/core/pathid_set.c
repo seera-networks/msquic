@@ -350,8 +350,7 @@ QuicPathIDSetTryFreePathID(
     // QUIC_STATUS_PATHID_LIMIT_REACHED while nothing looks wrong.
     //
     if (PathID->Path != NULL) {
-        uint8_t PathIndex;
-        QUIC_PATH* Path = QuicConnGetPathByID(Connection, PathID->Path->ID, &PathIndex);
+        QUIC_PATH* Path = QuicConnGetPathByID(Connection, PathID->Path->ID);
         CXPLAT_DBG_ASSERT(PathID->Path == Path);
 
         //
@@ -369,7 +368,7 @@ QuicPathIDSetTryFreePathID(
         QuicLibraryReleaseBinding(Path->Binding);
         Path->Binding = NULL;
 
-        QuicPathRemove(Connection, PathIndex);
+        QuicPathRemove(Connection, Path);
     }
 
     PathID->Flags.InPathIDTable = FALSE;

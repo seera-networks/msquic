@@ -17,7 +17,9 @@ typedef struct QUIC_CONNECTION QUIC_CONNECTION;
 typedef struct QUIC_STREAM QUIC_STREAM;
 typedef struct QUIC_PACKET_BUILDER QUIC_PACKET_BUILDER;
 typedef struct QUIC_PATHID QUIC_PATHID;
+typedef struct QUIC_CID_LIST_ENTRY QUIC_CID_LIST_ENTRY;
 typedef struct QUIC_PATH QUIC_PATH;
+typedef struct QUIC_PATH_SET QUIC_PATH_SET;
 typedef struct QUIC_RX_PACKET QUIC_RX_PACKET;
 
 /*************************************************************

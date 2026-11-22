@@ -2227,7 +2227,7 @@
                 name="Connection"
                 />
             <data
-                inType="win:UInt8"
+                inType="win:UInt32"
                 name="PathID"
                 />
           </template>
@@ -2237,7 +2237,7 @@
                 name="Connection"
                 />
             <data
-                inType="win:UInt8"
+                inType="win:UInt32"
                 name="PathID"
                 />
             <data
@@ -2251,7 +2251,7 @@
                 name="Connection"
                 />
             <data
-                inType="win:UInt8"
+                inType="win:UInt32"
                 name="PathID"
                 />
             <data

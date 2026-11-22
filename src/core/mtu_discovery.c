@@ -66,7 +66,7 @@ QuicMtuDiscoveryMoveToSearchComplete(
     QuicTraceLogConnInfo(
         MtuSearchComplete,
         Connection,
-        "Path[%hhu] Mtu Discovery Entering Search Complete at MTU %hu",
+        "Path[%u] Mtu Discovery Entering Search Complete at MTU %hu",
         Path->ID,
         Path->Mtu);
 }
@@ -140,7 +140,7 @@ QuicMtuDiscoveryMoveToSearching(
     QuicTraceLogConnInfo(
         MtuSearching,
         Connection,
-        "Path[%hhu] Mtu Discovery Search Packet Sending with MTU %hu",
+        "Path[%u] Mtu Discovery Search Packet Sending with MTU %hu",
         Path->ID,
         MtuDiscovery->ProbeSize);
 
@@ -171,7 +171,7 @@ QuicMtuDiscoveryPeerValidated(
     QuicTraceLogConnInfo(
         MtuPathInitialized,
         Connection,
-        "Path[%hhu] Mtu Discovery Initialized: max_mtu=%u, cur/min_mtu=%u",
+        "Path[%u] Mtu Discovery Initialized: max_mtu=%u, cur/min_mtu=%u",
         Path->ID,
         MtuDiscovery->MaxMtu,
         Path->Mtu);
@@ -196,7 +196,7 @@ QuicMtuDiscoveryOnAckedPacket(
         QuicTraceLogConnVerbose(
             MtuIncorrectSize,
             Connection,
-            "Path[%hhu] Mtu Discovery Received Out of Order: expected=%u received=%u",
+            "Path[%u] Mtu Discovery Received Out of Order: expected=%u received=%u",
             Path->ID,
             MtuDiscovery->ProbeSize,
             PacketMtu);
@@ -211,7 +211,7 @@ QuicMtuDiscoveryOnAckedPacket(
     QuicTraceLogConnInfo(
         PathMtuUpdated,
         Connection,
-        "Path[%hhu] MTU updated to %hu bytes",
+        "Path[%u] MTU updated to %hu bytes",
         Path->ID,
         Path->Mtu);
 
@@ -241,7 +241,7 @@ QuicMtuDiscoveryProbePacketDiscarded(
         QuicTraceLogConnVerbose(
             MtuIncorrectSize,
             Connection,
-            "Path[%hhu] Mtu Discovery Received Out of Order: expected=%u received=%u",
+            "Path[%u] Mtu Discovery Received Out of Order: expected=%u received=%u",
             Path->ID,
             MtuDiscovery->ProbeSize,
             PacketMtu);
@@ -251,7 +251,7 @@ QuicMtuDiscoveryProbePacketDiscarded(
     QuicTraceLogConnInfo(
         MtuDiscarded,
         Connection,
-        "Path[%hhu] Mtu Discovery Packet Discarded: size=%u, probe_count=%u",
+        "Path[%u] Mtu Discovery Packet Discarded: size=%u, probe_count=%u",
         Path->ID,
         MtuDiscovery->ProbeSize,
         MtuDiscovery->ProbeCount);

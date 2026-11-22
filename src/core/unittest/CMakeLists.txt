@@ -9,6 +9,7 @@ set(SOURCES
     CandidateTest.cpp
     FrameTest.cpp
     PacketNumberTest.cpp
+    PathTest.cpp
     PartitionTest.cpp
     PathIdStatsTest.cpp
     RangeTest.cpp

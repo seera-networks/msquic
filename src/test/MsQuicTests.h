@@ -1188,6 +1188,10 @@ QuicTestStreamAbortConnFlowControl(
     );
 
 void
+QuicTestTinyStreamRecvWindow(
+    );
+
+void
 QuicTestStreamReliableReset(
     );
 

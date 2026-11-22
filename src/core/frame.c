@@ -173,6 +173,18 @@ QuicAckBlockDecode(
     return TRUE;
 }
 
+static
+uint16_t
+QuicAckEcnSize(
+    _In_ const QUIC_ACK_ECN_EX * const Ecn
+    )
+{
+    return
+        QuicVarIntSize(Ecn->ECT_0_Count) +
+        QuicVarIntSize(Ecn->ECT_1_Count) +
+        QuicVarIntSize(Ecn->CE_Count);
+}
+
 _Success_(return != FALSE)
 BOOLEAN
 QuicAckEcnEncode(
@@ -182,10 +194,7 @@ QuicAckEcnEncode(
     _Out_writes_to_(BufferLength, *Offset) uint8_t* Buffer
     )
 {
-    uint16_t RequiredLength =
-        QuicVarIntSize(Ecn->ECT_0_Count) +
-        QuicVarIntSize(Ecn->ECT_1_Count) +
-        QuicVarIntSize(Ecn->CE_Count);
+    const uint16_t RequiredLength = QuicAckEcnSize(Ecn);
 
     if (BufferLength < *Offset + RequiredLength) {
         return FALSE;
@@ -218,6 +227,33 @@ QuicAckEcnDecode(
     return TRUE;
 }
 
+CXPLAT_STATIC_ASSERT(
+    QUIC_MAX_RANGE_ACK_PACKETS / sizeof(QUIC_SUBRANGE) <= 0x4000,
+    "ACK block count must fit in a two-byte QUIC varint");
+
+//
+// Updates a one- or two-byte AdditionalAckBlockCount without changing its encoded width.
+//
+static
+void
+QuicAckUpdateBlockCount(
+    _In_ uint64_t NewAckBlockCount,
+    _In_ uint8_t AckBlockCountFieldSize,
+    _Inout_updates_bytes_(AckBlockCountFieldSize) uint8_t* Buffer
+    )
+{
+    CXPLAT_DBG_ASSERT(
+        AckBlockCountFieldSize == sizeof(uint8_t) ||
+        AckBlockCountFieldSize == sizeof(uint16_t));
+
+    if (AckBlockCountFieldSize == sizeof(uint8_t)) {
+        QuicVarIntEncode1Bytes(NewAckBlockCount, Buffer);
+        return;
+    }
+
+    QuicVarIntEncode2Bytes(NewAckBlockCount, Buffer);
+}
+
 _Success_(return != FALSE)
 BOOLEAN
 QuicAckFrameEncode(
@@ -237,9 +273,6 @@ QuicAckFrameEncode(
     uint64_t Largest = QuicRangeGetHigh(LastSub);
     uint64_t Count = LastSub->Count;
 
-    //
-    // Write the ACK Frame Header
-    //
     QUIC_ACK_EX Frame = {
         PathId,
         Largest,                // LargestAcknowledged
@@ -248,39 +281,40 @@ QuicAckFrameEncode(
         Count - 1               // FirstAckBlock
     };
 
-    //
-    // Size the whole frame before writing any of it. The header carries
-    // AdditionalAckBlockCount, so a block that turns out not to fit cannot be
-    // dropped once the header is down, and giving up from the middle of the
-    // frame leaves a partial one in the datagram with the offset already moved
-    // past it -- which is how this used to abort on the assert below.
-    //
-    uint32_t FrameLength = QuicAckHeaderEncodedLength(MultipathNegotiated, &Frame);
-    {
-        uint64_t BlockLargest = Largest;
-        uint64_t BlockCount = Count;
-        for (uint32_t j = i; j != 0; j--) {
-            BlockLargest -= BlockCount;
-            const QUIC_SUBRANGE* NextBlock = QuicRangeGet(AckBlocks, j - 1);
-            const uint64_t NextBlockLargest = QuicRangeGetHigh(NextBlock);
-            BlockCount = NextBlock->Count;
-            FrameLength +=
-                QuicVarIntSize((BlockLargest - NextBlockLargest) - 1) +
-                QuicVarIntSize(BlockCount - 1);
-            BlockLargest = NextBlockLargest;
-        }
-    }
-    if (Ecn != NULL) {
-        FrameLength +=
-            QuicVarIntSize(Ecn->ECT_0_Count) +
-            QuicVarIntSize(Ecn->ECT_1_Count) +
-            QuicVarIntSize(Ecn->CE_Count);
-    }
-    if ((uint32_t)*Offset + FrameLength > BufferLength) {
+    const uint16_t EcnLength =
+        Ecn == NULL ? 0 : QuicAckEcnSize(Ecn);
+
+    if (BufferLength < EcnLength) {
         return FALSE;
     }
 
-    if (!QuicAckHeaderEncode(MultipathNegotiated, &Frame, Ecn, Offset, BufferLength, Buffer)) {
+    //
+    // Type -> [Path ID] -> Largest Acknowledged -> ACK Delay -> ACK Block Count.
+    //
+    // The loop below rewrites the block count in place when a block does not
+    // fit, so it needs the offset of that field. A multipath ACK puts a four
+    // byte frame type and a path ID ahead of the fields a single-path ACK
+    // starts with, and both have to be counted here or the trim would overwrite
+    // the path ID instead.
+    //
+    const uint16_t AckBlockCountOffset =
+        *Offset +
+        (MultipathNegotiated ?
+            (uint16_t)(QuicVarIntSize(QUIC_FRAME_PATH_ACK) + QuicVarIntSize(Frame.PathId)) :
+            (uint16_t)sizeof(uint8_t)) +                // Type
+        QuicVarIntSize(Frame.LargestAcknowledged) +
+        QuicVarIntSize(Frame.AckDelay);
+
+    //
+    // Write the ACK Frame Header
+    //
+    if (!QuicAckHeaderEncode(
+            MultipathNegotiated,
+            &Frame,
+            Ecn,
+            Offset,
+            BufferLength - EcnLength,
+            Buffer)) {
         return FALSE;
     }
 
@@ -304,9 +338,19 @@ QuicAckFrameEncode(
             Count - 1                       // AckBlock
         };
 
-        if (!QuicAckBlockEncode(&Block, Offset, BufferLength, Buffer)) {
-            CXPLAT_TEL_ASSERT(FALSE); // TODO - Support partial ACK array encoding by updating the 'AdditionalAckBlockCount' field.
-            return FALSE;
+        if (!QuicAckBlockEncode(
+                &Block,
+                Offset,
+                BufferLength - EcnLength,
+                Buffer)) {
+
+            // Not all ACK blocks could be written. Update the count to match what
+            // was actually written.
+            QuicAckUpdateBlockCount(
+                Frame.AdditionalAckBlockCount - i,
+                (uint8_t)QuicVarIntSize(Frame.AdditionalAckBlockCount),
+                Buffer + AckBlockCountOffset);
+            break;
         }
 
         Largest = NextLargest;
@@ -315,6 +359,7 @@ QuicAckFrameEncode(
 
     if (Ecn != NULL) {
         if (!QuicAckEcnEncode(Ecn, Offset, BufferLength, Buffer)) {
+            CXPLAT_TEL_ASSERT(FALSE);
             return FALSE;
         }
     }

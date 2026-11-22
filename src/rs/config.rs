@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 use crate::ffi::{QUIC_CREDENTIAL_CONFIG, QUIC_REGISTRATION_CONFIG};
-use std::ffi::CString;
+use std::ffi::{c_char, CString};
 
 /// Specifies the configuration for a new registration.
 #[derive(Debug, Default)]
@@ -228,14 +228,10 @@ impl CertificateHashStore {
         // Android, and the generated binding declares `StoreName` as
         // `[c_char; 128]`, so hardcoding the signedness only compiles where the
         // bindings happened to be generated.
-        let c_slice2 = unsafe {
-            std::slice::from_raw_parts(
-                c_slice.as_ptr() as *const ::std::os::raw::c_char,
-                c_slice.len(),
-            )
-        };
+        let c_slice2 =
+            unsafe { std::slice::from_raw_parts(c_slice.as_ptr() as *const c_char, c_slice.len()) };
         // copy with nul terminator
-        let mut name_buff = [0 as ::std::os::raw::c_char; 128];
+        let mut name_buff = [0 as c_char; 128];
         let chunk = &mut name_buff[..c_slice2.len()];
         chunk.copy_from_slice(c_slice2);
         Self(crate::ffi::QUIC_CERTIFICATE_HASH_STORE {

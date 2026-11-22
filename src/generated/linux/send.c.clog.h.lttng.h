@@ -76,11 +76,11 @@ TRACEPOINT_EVENT(CLOG_SEND_C, AlternativeAddressTruncated,
 
 /*----------------------------------------------------------
 // Decoder Ring for PathChallengeBuilderFailed
-// [conn][%p] Path[%hhu] could not start a packet for its challenge
+// [conn][%p] Path[%u] could not start a packet for its challenge
 // QuicTraceLogConnWarning(
                 PathChallengeBuilderFailed,
                 Connection,
-                "Path[%hhu] could not start a packet for its challenge",
+                "Path[%u] could not start a packet for its challenge",
                 Path->ID);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Path->ID = arg3
@@ -88,10 +88,10 @@ TRACEPOINT_EVENT(CLOG_SEND_C, AlternativeAddressTruncated,
 TRACEPOINT_EVENT(CLOG_SEND_C, PathChallengeBuilderFailed,
     TP_ARGS(
         const void *, arg1,
-        unsigned char, arg3), 
+        unsigned int, arg3), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg3, arg3)
     )
 )
 
@@ -99,11 +99,11 @@ TRACEPOINT_EVENT(CLOG_SEND_C, PathChallengeBuilderFailed,
 
 /*----------------------------------------------------------
 // Decoder Ring for MtuProbeTruncated
-// [conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu
+// [conn][%p] Path[%u] MTU probe of %hu not sent: peer accepts only %hu
 // QuicTraceLogConnInfo(
                 MtuProbeTruncated,
                 Connection,
-                "Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+                "Path[%u] MTU probe of %hu not sent: peer accepts only %hu",
                 Path->ID,
                 Intended,
                 (uint16_t)Builder.Datagram->Length);
@@ -115,12 +115,12 @@ TRACEPOINT_EVENT(CLOG_SEND_C, PathChallengeBuilderFailed,
 TRACEPOINT_EVENT(CLOG_SEND_C, MtuProbeTruncated,
     TP_ARGS(
         const void *, arg1,
-        unsigned char, arg3,
+        unsigned int, arg3,
         unsigned short, arg4,
         unsigned short, arg5), 
     TP_FIELDS(
         ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
-        ctf_integer(unsigned char, arg3, arg3)
+        ctf_integer(unsigned int, arg3, arg3)
         ctf_integer(unsigned short, arg4, arg4)
         ctf_integer(unsigned short, arg5, arg5)
     )

@@ -98,7 +98,10 @@ typedef struct QUIC_SENT_FRAME_METADATA {
             // frame carries no identifier of its own -- it is two addresses --
             // and the path's id is what the rest of the path machinery uses.
             //
-            uint8_t PathId;
+            // 32 bits since upstream's #6303 widened QUIC_PATH.ID; MSVC reports
+            // the narrowing (C4242) as an error.
+            //
+            uint32_t PathId;
         } STATELESS_PUNCH_ME_NOW;
         struct {
             QUIC_VAR_INT Sequence;
@@ -197,7 +200,7 @@ typedef struct QUIC_SENT_PACKET_METADATA {
     uint64_t TotalBytesSent;
     uint64_t SentTime; // In microseconds
     uint16_t PacketLength;
-    uint8_t PathId;
+    uint32_t PathId;
 
     LAST_ACKED_PACKET_INFO LastAckedPacketInfo;
 

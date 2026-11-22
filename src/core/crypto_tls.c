@@ -2087,7 +2087,7 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
             }
             QUIC_CID_LIST_ENTRY* DestCid =
                 CXPLAT_CONTAINING_RECORD(
-                    Connection->Paths[0].PathID->DestCids.Flink,
+                    Connection->Paths.Paths[0].PathID->DestCids.Flink,
                     QUIC_CID_LIST_ENTRY,
                     Link);
             if (DestCid->CID.Length == 0) {

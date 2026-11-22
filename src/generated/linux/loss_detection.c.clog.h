@@ -289,11 +289,11 @@ tracepoint(CLOG_LOSS_DETECTION_C, HandshakeConfirmedAck , arg1);\
 
 /*----------------------------------------------------------
 // Decoder Ring for PathMinMtuValidated
-// [conn][%p] Path[%hhu] Minimum MTU validated
+// [conn][%p] Path[%u] Minimum MTU validated
 // QuicTraceLogConnInfo(
                 PathMinMtuValidated,
                 Connection,
-                "Path[%hhu] Minimum MTU validated",
+                "Path[%u] Minimum MTU validated",
                 Path->ID);
 // arg1 = arg1 = Connection = arg1
 // arg3 = arg3 = Path->ID = arg3
@@ -329,11 +329,11 @@ tracepoint(CLOG_LOSS_DETECTION_C, ScheduleProbe , arg1, arg3);\
 
 /*----------------------------------------------------------
 // Decoder Ring for PathIDAbandonedOnTimeout
-// [conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection
+// [conn][%p] Path[%u][PathID][%u] dead, abandoning it rather than the connection
 // QuicTraceLogConnInfo(
                     PathIDAbandonedOnTimeout,
                     Connection,
-                    "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+                    "Path[%u][PathID][%u] dead, abandoning it rather than the connection",
                     Path->ID,
                     PathID->ID);
 // arg1 = arg1 = Connection = arg1

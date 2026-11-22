@@ -216,7 +216,7 @@ typedef enum CXPLAT_TLS_RESULT_FLAGS {
     CXPLAT_TLS_RESULT_HANDSHAKE_COMPLETE  = 0x0040, // Handshake complete.
     CXPLAT_TLS_RESULT_BUFFER_TOO_SMALL    = 0x0080, // Provided buffer was too small for the data.
     CXPLAT_TLS_RESULT_RENEGOTIATE         = 0x0100, // Renegotiation requested by the peer (Used internally to schannel).
-    CXPLAT_TLS_RESULT_ERROR               = 0x8000  // An error occured.
+    CXPLAT_TLS_RESULT_ERROR               = 0x8000  // An error occurred.
 
 } CXPLAT_TLS_RESULT_FLAGS;
 

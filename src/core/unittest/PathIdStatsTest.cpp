@@ -57,8 +57,8 @@ TEST(PathIdStatsTest, SurvivesANullPathIdWithoutMultipath)
     QUIC_CONNECTION Connection {};
     Connection.State.Started = TRUE;
     Connection.State.MultipathNegotiated = FALSE;
-    Connection.PathsCount = 1;
-    Connection.Paths[0].PathID = nullptr;
+    Connection.Paths.Count = 1;
+    Connection.Paths.Paths[0].PathID = nullptr;
 
     //
     // Dereferenced the null and took the process with it before the guard --
@@ -76,9 +76,9 @@ TEST(PathIdStatsTest, SurvivesANullPathIdWithMultipath)
     QUIC_CONNECTION Connection {};
     Connection.State.Started = TRUE;
     Connection.State.MultipathNegotiated = TRUE;
-    Connection.PathsCount = 2;
-    Connection.Paths[0].PathID = nullptr;
-    Connection.Paths[1].PathID = nullptr;
+    Connection.Paths.Count = 2;
+    Connection.Paths.Paths[0].PathID = nullptr;
+    Connection.Paths.Paths[1].PathID = nullptr;
 
     QuicConnLogPathIDStatistics(&Connection);
 }
@@ -93,8 +93,8 @@ TEST(PathIdStatsTest, LogsNothingBeforeTheConnectionStarts)
 {
     QUIC_CONNECTION Connection {};
     Connection.State.Started = FALSE;
-    Connection.PathsCount = 1;
-    Connection.Paths[0].PathID = nullptr;
+    Connection.Paths.Count = 1;
+    Connection.Paths.Paths[0].PathID = nullptr;
 
     QuicConnLogPathIDStatistics(&Connection);
 }

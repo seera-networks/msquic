@@ -1270,6 +1270,13 @@ QuicSettingsLoad(
                 AcceptableVersionsSize +
                 OfferedVersionsSize +
                 FullyDeployedVersionsSize;
+            if (OfferedVersionsSize >
+                QUIC_MAX_NEGOTIATION_VERSIONS * sizeof(uint32_t)) {
+                QuicTraceLogError(
+                    SettingsOfferedVersionsTooLong,
+                    "Too many offered versions");
+                goto VersionSettingsFail;
+            }
             VersionSettings =
                 CXPLAT_ALLOC_NONPAGED(
                     AllocSize,
@@ -2033,6 +2040,13 @@ QuicSettingsVersionSettingsToInternal(
     }
 
     InternalSettings->IsSetFlags = 0;
+
+    if (Settings->OfferedVersionsLength > QUIC_MAX_NEGOTIATION_VERSIONS) {
+        QuicTraceLogError(
+            SettingsOfferedVersionsTooLong,
+            "Too many offered versions");
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
 
     //
     // Validate the external list only contains versions which MsQuic supports.

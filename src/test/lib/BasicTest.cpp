@@ -871,17 +871,26 @@ void QuicTestUnconnectedSocketActivatePath(const FamilyArgs& Params)
     // The same pause, and this is the move that needs it: by here the test has
     // already spent CIDs on a move and an added path.
     //
+    // The wait comes before the first attempt, not only between retries.
+    // Activating a path retires the current destination CID, which needs a
+    // replacement already in hand: each attempt fails before retiring anything,
+    // so retrying does not itself prompt the peer for one. The replacement that
+    // has to arrive is the answer to the *earlier* steps' retirements, and it
+    // can only arrive while the connection is still on a path that receives --
+    // after the move, the peer answers an address this connection no longer
+    // reads. A windows-2025 BVT caught this once the path set merge spent one
+    // more CID earlier in the test: six retries over half a second, each
+    // logging "Can't retire current CID because we don't have a replacement".
+    //
     QuicAddr MovedAgainAddr = ClientAddr;
     Status = QUIC_STATUS_SUCCESS;
     Try = 0;
     do {
-        if (Try != 0) {
-            CxPlatSleep(100);
-        }
+        CxPlatSleep(200);
         MovedAgainAddr.SetEphemeralPort();
         QUIC_PATH_PARAM PathParam = { &MovedAgainAddr.SockAddr, &Peer2Addr.SockAddr };
         Status = Connection.SetParam(QUIC_PARAM_CONN_ACTIVATE_PATH, sizeof(PathParam), &PathParam);
-    } while (QUIC_FAILED(Status) && ++Try <= 5);
+    } while (QUIC_FAILED(Status) && ++Try <= 10);
     TEST_QUIC_SUCCEEDED(Status);
 
     QuicAddr PeerMovedAddr;

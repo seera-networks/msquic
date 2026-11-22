@@ -69,6 +69,22 @@
       ],
       "macroName": "QuicTraceLogStreamVerbose"
     },
+    "ActivePathCidAssignmentFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Failed to assign a destination CID to Path[%u], it will not become active",
+      "UniqueId": "ActivePathCidAssignmentFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "AddCryptoFrame": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Sending %hu crypto bytes, offset=%u",
@@ -2353,7 +2369,7 @@
     },
     "ConnPathActive": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Set active (rebind=%hhu)",
+      "TraceString": "[conn][%p] Path[%u] Set active (rebind=%hhu)",
       "UniqueId": "ConnPathActive",
       "splitArgs": [
         {
@@ -2361,7 +2377,7 @@
           "MacroVariableName": "arg2"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -2421,7 +2437,7 @@
     },
     "ConnPathInitialized": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Initialized",
+      "TraceString": "[conn][%p] Path[%u] Initialized",
       "UniqueId": "ConnPathInitialized",
       "splitArgs": [
         {
@@ -2429,7 +2445,7 @@
           "MacroVariableName": "arg2"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -2437,7 +2453,7 @@
     },
     "ConnPathRemoved": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Removed",
+      "TraceString": "[conn][%p] Path[%u] Removed",
       "UniqueId": "ConnPathRemoved",
       "splitArgs": [
         {
@@ -2445,7 +2461,7 @@
           "MacroVariableName": "arg2"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -2453,7 +2469,7 @@
     },
     "ConnPathValidated": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Validated (%hhu)",
+      "TraceString": "[conn][%p] Path[%u] Validated (%hhu)",
       "UniqueId": "ConnPathValidated",
       "splitArgs": [
         {
@@ -2461,7 +2477,7 @@
           "MacroVariableName": "arg2"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -2473,7 +2489,7 @@
     },
     "ConnPathValidationTimeout": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] validation timed out",
+      "TraceString": "[conn][%p] Path[%u] validation timed out",
       "UniqueId": "ConnPathValidationTimeout",
       "splitArgs": [
         {
@@ -2481,7 +2497,7 @@
           "MacroVariableName": "arg2"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -5151,7 +5167,7 @@
     },
     "FailedRouteResolution": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Route resolution failed on Path[%hhu]. Switching paths...",
+      "TraceString": "[conn][%p] Route resolution failed on Path[%u]. Switching paths...",
       "UniqueId": "FailedRouteResolution",
       "splitArgs": [
         {
@@ -5159,7 +5175,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -9246,7 +9262,7 @@
     },
     "MtuDiscarded": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Mtu Discovery Packet Discarded: size=%u, probe_count=%u",
+      "TraceString": "[conn][%p] Path[%u] Mtu Discovery Packet Discarded: size=%u, probe_count=%u",
       "UniqueId": "MtuDiscarded",
       "splitArgs": [
         {
@@ -9254,7 +9270,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -9270,7 +9286,7 @@
     },
     "MtuIncorrectSize": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Mtu Discovery Received Out of Order: expected=%u received=%u",
+      "TraceString": "[conn][%p] Path[%u] Mtu Discovery Received Out of Order: expected=%u received=%u",
       "UniqueId": "MtuIncorrectSize",
       "splitArgs": [
         {
@@ -9278,7 +9294,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -9294,7 +9310,7 @@
     },
     "MtuPathInitialized": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Mtu Discovery Initialized: max_mtu=%u, cur/min_mtu=%u",
+      "TraceString": "[conn][%p] Path[%u] Mtu Discovery Initialized: max_mtu=%u, cur/min_mtu=%u",
       "UniqueId": "MtuPathInitialized",
       "splitArgs": [
         {
@@ -9302,7 +9318,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -9318,7 +9334,7 @@
     },
     "MtuProbeTruncated": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu",
+      "TraceString": "[conn][%p] Path[%u] MTU probe of %hu not sent: peer accepts only %hu",
       "UniqueId": "MtuProbeTruncated",
       "splitArgs": [
         {
@@ -9326,7 +9342,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -9342,7 +9358,7 @@
     },
     "MtuSearchComplete": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Mtu Discovery Entering Search Complete at MTU %hu",
+      "TraceString": "[conn][%p] Path[%u] Mtu Discovery Entering Search Complete at MTU %hu",
       "UniqueId": "MtuSearchComplete",
       "splitArgs": [
         {
@@ -9350,7 +9366,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -9362,7 +9378,7 @@
     },
     "MtuSearching": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Mtu Discovery Search Packet Sending with MTU %hu",
+      "TraceString": "[conn][%p] Path[%u] Mtu Discovery Search Packet Sending with MTU %hu",
       "UniqueId": "MtuSearching",
       "splitArgs": [
         {
@@ -9370,7 +9386,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -10384,7 +10400,7 @@
     },
     "PathActiveFallback": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] removed; falling back to Path[%hhu]",
+      "TraceString": "[conn][%p] Path[%u] removed; falling back to Path[%u]",
       "UniqueId": "PathActiveFallback",
       "splitArgs": [
         {
@@ -10392,11 +10408,11 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg4"
         }
       ],
@@ -10468,7 +10484,7 @@
     },
     "PathChallengeBuilderFailed": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] could not start a packet for its challenge",
+      "TraceString": "[conn][%p] Path[%u] could not start a packet for its challenge",
       "UniqueId": "PathChallengeBuilderFailed",
       "splitArgs": [
         {
@@ -10476,7 +10492,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -10484,7 +10500,7 @@
     },
     "PathChallengeResend": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)",
+      "TraceString": "[conn][%p] Path[%u] re-sending PATH_CHALLENGE (%hhu of %u)",
       "UniqueId": "PathChallengeResend",
       "splitArgs": [
         {
@@ -10492,7 +10508,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -10508,7 +10524,7 @@
     },
     "PathChosen": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu][PathID][%u] Chosen",
+      "TraceString": "[conn][%p] Path[%u][PathID][%u] Chosen",
       "UniqueId": "PathChosen",
       "splitArgs": [
         {
@@ -10516,7 +10532,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -10580,7 +10596,7 @@
     },
     "PathDiscarded": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Removing invalid path[%hhu]",
+      "TraceString": "[conn][%p] Removing invalid path[%u]",
       "UniqueId": "PathDiscarded",
       "splitArgs": [
         {
@@ -10588,23 +10604,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
-          "MacroVariableName": "arg3"
-        }
-      ],
-      "macroName": "QuicTraceLogConnInfo"
-    },
-    "PathSlotYielded": {
-      "ModuleProperites": {},
-      "TraceString": "[conn][%p] Giving up path[%hhu] for an application path",
-      "UniqueId": "PathSlotYielded",
-      "splitArgs": [
-        {
-          "DefinationEncoding": "p",
-          "MacroVariableName": "arg1"
-        },
-        {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -10640,7 +10640,7 @@
     },
     "PathIDAbandonedOnTimeout": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+      "TraceString": "[conn][%p] Path[%u][PathID][%u] dead, abandoning it rather than the connection",
       "UniqueId": "PathIDAbandonedOnTimeout",
       "splitArgs": [
         {
@@ -10648,7 +10648,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -10696,7 +10696,7 @@
     },
     "PathMinMtuValidated": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] Minimum MTU validated",
+      "TraceString": "[conn][%p] Path[%u] Minimum MTU validated",
       "UniqueId": "PathMinMtuValidated",
       "splitArgs": [
         {
@@ -10704,7 +10704,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -10712,7 +10712,7 @@
     },
     "PathMtuUpdated": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] MTU updated to %hu bytes",
+      "TraceString": "[conn][%p] Path[%u] MTU updated to %hu bytes",
       "UniqueId": "PathMtuUpdated",
       "splitArgs": [
         {
@@ -10720,7 +10720,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -10812,7 +10812,7 @@
     },
     "PathQeoDisabled": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] QEO disabled",
+      "TraceString": "[conn][%p] Path[%u] QEO disabled",
       "UniqueId": "PathQeoDisabled",
       "splitArgs": [
         {
@@ -10820,7 +10820,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -10828,7 +10828,7 @@
     },
     "PathQeoEnabled": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] QEO enabled",
+      "TraceString": "[conn][%p] Path[%u] QEO enabled",
       "UniqueId": "PathQeoEnabled",
       "splitArgs": [
         {
@@ -10836,7 +10836,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -10862,6 +10862,22 @@
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Path[%hhu] Removed",
       "UniqueId": "PathRemoved",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "hhu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnInfo"
+    },
+    "PathSlotYielded": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Giving up path[%hhu] for an application path",
+      "UniqueId": "PathSlotYielded",
       "splitArgs": [
         {
           "DefinationEncoding": "p",
@@ -11722,7 +11738,7 @@
     },
     "PunchAttemptCidRetired": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Path[%hhu] punch attempt failed; retired its destination CID",
+      "TraceString": "[conn][%p] Path[%u] punch attempt failed; retired its destination CID",
       "UniqueId": "PunchAttemptCidRetired",
       "splitArgs": [
         {
@@ -11730,7 +11746,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         }
       ],
@@ -12526,7 +12542,7 @@
     },
     "RouteResolutionEnd": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Route resolution completed on Path[%hhu] with L2 address %hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+      "TraceString": "[conn][%p] Route resolution completed on Path[%u] with L2 address %hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
       "UniqueId": "RouteResolutionEnd",
       "splitArgs": [
         {
@@ -12534,7 +12550,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -12566,7 +12582,7 @@
     },
     "RouteResolutionStart": {
       "ModuleProperites": {},
-      "TraceString": "[conn][%p] Starting to look up neighbor on Path[%hhu] with status %u",
+      "TraceString": "[conn][%p] Starting to look up neighbor on Path[%u] with status %u",
       "UniqueId": "RouteResolutionStart",
       "splitArgs": [
         {
@@ -12574,7 +12590,7 @@
           "MacroVariableName": "arg1"
         },
         {
-          "DefinationEncoding": "hhu",
+          "DefinationEncoding": "u",
           "MacroVariableName": "arg3"
         },
         {
@@ -14271,6 +14287,13 @@
           "MacroVariableName": "arg3"
         }
       ],
+      "macroName": "QuicTraceLogError"
+    },
+    "SettingsOfferedVersionsTooLong": {
+      "ModuleProperites": {},
+      "TraceString": "Too many offered versions",
+      "UniqueId": "SettingsOfferedVersionsTooLong",
+      "splitArgs": [],
       "macroName": "QuicTraceLogError"
     },
     "SettingsStreamMultiReceiveEnabled": {
@@ -16563,6 +16586,11 @@
         "EncodingString": "[strm][%p] Received ack for %d bytes, offset=%llu, FF=0x%hx"
       },
       {
+        "UniquenessHash": "072e80ee-71ea-3429-e5ab-ea92765cb0be",
+        "TraceID": "ActivePathCidAssignmentFailed",
+        "EncodingString": "[conn][%p] Failed to assign a destination CID to Path[%u], it will not become active"
+      },
+      {
         "UniquenessHash": "cef32e9a-1355-7a31-bd2d-a458b02e214d",
         "TraceID": "AddCryptoFrame",
         "EncodingString": "[conn][%p] Sending %hu crypto bytes, offset=%u"
@@ -16811,6 +16839,11 @@
         "UniquenessHash": "310aaae3-93b1-6592-bf2b-37e09a696639",
         "TraceID": "CandidatePairsRebuilt",
         "EncodingString": "[conn][%p] Candidate pairs rebuilt: %u locals x %u remotes -> %hhu pairs"
+      },
+      {
+        "UniquenessHash": "55c211bc-7ef4-0b82-ef09-709e442653b9",
+        "TraceID": "CandidatePolicyExcludedLocals",
+        "EncodingString": "[conn][%p] Policy excluded %u of %u local addresses"
       },
       {
         "UniquenessHash": "bc118133-e7f5-68c2-fd22-5dba9202e2eb",
@@ -17228,9 +17261,9 @@
         "EncodingString": "[conn][%p] STATS: SendTotalPackets=%llu SendSuspectedLostPackets=%llu SendSpuriousLostPackets=%llu RecvTotalPackets=%llu RecvReorderedPackets=%llu RecvDroppedPackets=%llu RecvDuplicatePackets=%llu RecvDecryptionFailures=%llu"
       },
       {
-        "UniquenessHash": "0afbe643-9584-6130-adf3-9c1ec3825c5f",
+        "UniquenessHash": "66f6198a-daaa-0056-ec90-990d2a68e214",
         "TraceID": "ConnPathActive",
-        "EncodingString": "[conn][%p] Path[%hhu] Set active (rebind=%hhu)"
+        "EncodingString": "[conn][%p] Path[%u] Set active (rebind=%hhu)"
       },
       {
         "UniquenessHash": "4ca3aeb8-2919-6c50-9c9b-db8d0d8d910a",
@@ -17248,24 +17281,24 @@
         "EncodingString": "[conn][%p] Removed PathID %u"
       },
       {
-        "UniquenessHash": "a324b00e-cfc4-4104-a6cf-c8e9b9cb2b01",
+        "UniquenessHash": "5f171456-e432-c390-03a6-19e2ddb6dc7c",
         "TraceID": "ConnPathInitialized",
-        "EncodingString": "[conn][%p] Path[%hhu] Initialized"
+        "EncodingString": "[conn][%p] Path[%u] Initialized"
       },
       {
-        "UniquenessHash": "7d00aaa7-7a44-2e9b-2a9f-5cd3e73cc4f3",
+        "UniquenessHash": "2434e22b-f84f-2df0-0e03-480ef7ee33dd",
         "TraceID": "ConnPathRemoved",
-        "EncodingString": "[conn][%p] Path[%hhu] Removed"
+        "EncodingString": "[conn][%p] Path[%u] Removed"
       },
       {
-        "UniquenessHash": "6c9a8375-720d-7df9-6e6e-179e99ac49e0",
+        "UniquenessHash": "a53b7ce2-3363-76c6-c75a-743dd27db5f3",
         "TraceID": "ConnPathValidated",
-        "EncodingString": "[conn][%p] Path[%hhu] Validated (%hhu)"
+        "EncodingString": "[conn][%p] Path[%u] Validated (%hhu)"
       },
       {
-        "UniquenessHash": "6ef76f38-b4df-cf7d-3197-b7e4d86471da",
+        "UniquenessHash": "1834eb9b-4a7a-4bfb-b745-1b78782557c0",
         "TraceID": "ConnPathValidationTimeout",
-        "EncodingString": "[conn][%p] Path[%hhu] validation timed out"
+        "EncodingString": "[conn][%p] Path[%u] validation timed out"
       },
       {
         "UniquenessHash": "c339eadc-2eef-8e45-4a51-1fc84a3c198e",
@@ -18123,9 +18156,9 @@
         "EncodingString": "[conn][%p] Cannot export keying material [Connected=%hhu, HandshakeComplete=%hhu, HasTls=%hhu]"
       },
       {
-        "UniquenessHash": "fff5ef57-9005-a7ec-fcbc-d630c6c812fa",
+        "UniquenessHash": "c699b6c6-8e43-8d4e-6b32-af73378811c7",
         "TraceID": "FailedRouteResolution",
-        "EncodingString": "[conn][%p] Route resolution failed on Path[%hhu]. Switching paths..."
+        "EncodingString": "[conn][%p] Route resolution failed on Path[%u]. Switching paths..."
       },
       {
         "UniquenessHash": "5e023c07-7bc3-8b2f-76d0-4a38701cef2d",
@@ -19193,34 +19226,34 @@
         "EncodingString": "[conn][%p] App configured max stream count of %hu (type=%hhu)."
       },
       {
-        "UniquenessHash": "1aa1d324-af31-356c-0738-863e209f6f21",
+        "UniquenessHash": "03564dae-539b-4e8a-57b6-a1a71a2fb9e0",
         "TraceID": "MtuDiscarded",
-        "EncodingString": "[conn][%p] Path[%hhu] Mtu Discovery Packet Discarded: size=%u, probe_count=%u"
+        "EncodingString": "[conn][%p] Path[%u] Mtu Discovery Packet Discarded: size=%u, probe_count=%u"
       },
       {
-        "UniquenessHash": "a20786c3-f6b7-176d-7e63-b6c558f7d394",
+        "UniquenessHash": "ddb7281d-8e2f-0851-34e0-3aa0173cb522",
         "TraceID": "MtuIncorrectSize",
-        "EncodingString": "[conn][%p] Path[%hhu] Mtu Discovery Received Out of Order: expected=%u received=%u"
+        "EncodingString": "[conn][%p] Path[%u] Mtu Discovery Received Out of Order: expected=%u received=%u"
       },
       {
-        "UniquenessHash": "3f758826-f3d7-22eb-b7df-0453cdad3bc8",
+        "UniquenessHash": "2751725a-a120-72cd-5e92-9a5d56b30b2d",
         "TraceID": "MtuPathInitialized",
-        "EncodingString": "[conn][%p] Path[%hhu] Mtu Discovery Initialized: max_mtu=%u, cur/min_mtu=%u"
+        "EncodingString": "[conn][%p] Path[%u] Mtu Discovery Initialized: max_mtu=%u, cur/min_mtu=%u"
       },
       {
-        "UniquenessHash": "9e4e7454-ea15-1ec6-3fb1-13a2b761f340",
+        "UniquenessHash": "0c5c6ebf-d8d6-35b9-62ac-2f3ffa27f7d2",
         "TraceID": "MtuProbeTruncated",
-        "EncodingString": "[conn][%p] Path[%hhu] MTU probe of %hu not sent: peer accepts only %hu"
+        "EncodingString": "[conn][%p] Path[%u] MTU probe of %hu not sent: peer accepts only %hu"
       },
       {
-        "UniquenessHash": "92ab8084-33fb-0565-da7b-d2278d05c642",
+        "UniquenessHash": "59d53545-f3fd-6288-5343-f7360c467c68",
         "TraceID": "MtuSearchComplete",
-        "EncodingString": "[conn][%p] Path[%hhu] Mtu Discovery Entering Search Complete at MTU %hu"
+        "EncodingString": "[conn][%p] Path[%u] Mtu Discovery Entering Search Complete at MTU %hu"
       },
       {
-        "UniquenessHash": "c7a85c07-7d70-b24f-313d-2db9a20333bd",
+        "UniquenessHash": "af061074-69c0-cf5d-d770-0aa63ac01629",
         "TraceID": "MtuSearching",
-        "EncodingString": "[conn][%p] Path[%hhu] Mtu Discovery Search Packet Sending with MTU %hu"
+        "EncodingString": "[conn][%p] Path[%u] Mtu Discovery Search Packet Sending with MTU %hu"
       },
       {
         "UniquenessHash": "7c8ed181-6e73-0552-43f1-7e00ce4948af",
@@ -19553,9 +19586,9 @@
         "EncodingString": "[conn][%p] Path[%hhu] Set active (rebind=%hhu)"
       },
       {
-        "UniquenessHash": "dbe0fbfc-98b0-3033-000e-dd52c892d6e1",
+        "UniquenessHash": "c9b1243d-9f3b-c990-fb47-cd81603f7ce5",
         "TraceID": "PathActiveFallback",
-        "EncodingString": "[conn][%p] Path[%hhu] removed; falling back to Path[%hhu]"
+        "EncodingString": "[conn][%p] Path[%u] removed; falling back to Path[%u]"
       },
       {
         "UniquenessHash": "6b54ac2e-75de-681f-d15a-31fdcfd26c69",
@@ -19568,19 +19601,19 @@
         "EncodingString": "[conn][%p][pathid][%hhu] BBR: State=%u RState=%u CongestionWindow=%u BytesInFlight=%u BytesInFlightMax=%u MinRttEst=%lu EstBw=%lu AppLimited=%u"
       },
       {
-        "UniquenessHash": "56360bc8-5a1f-0bfa-3b0a-90bdf87ac489",
+        "UniquenessHash": "2b6fc9bd-7353-2279-4b71-eaddf6cdfff5",
         "TraceID": "PathChallengeBuilderFailed",
-        "EncodingString": "[conn][%p] Path[%hhu] could not start a packet for its challenge"
+        "EncodingString": "[conn][%p] Path[%u] could not start a packet for its challenge"
       },
       {
-        "UniquenessHash": "95ff69a6-fa4b-062d-a323-d8e079e8341a",
+        "UniquenessHash": "c65ed665-b401-6e4c-522d-5dd15a646c6c",
         "TraceID": "PathChallengeResend",
-        "EncodingString": "[conn][%p] Path[%hhu] re-sending PATH_CHALLENGE (%hhu of %u)"
+        "EncodingString": "[conn][%p] Path[%u] re-sending PATH_CHALLENGE (%hhu of %u)"
       },
       {
-        "UniquenessHash": "774db9aa-c37a-ad1e-6fae-d6b5d61f82f8",
+        "UniquenessHash": "2df0eb65-afd9-2df3-15ad-623c72cda48c",
         "TraceID": "PathChosen",
-        "EncodingString": "[conn][%p] Path[%hhu][PathID][%u] Chosen"
+        "EncodingString": "[conn][%p] Path[%u][PathID][%u] Chosen"
       },
       {
         "UniquenessHash": "466f74a4-9c7f-8bee-f6b3-df16acf9493f",
@@ -19593,9 +19626,9 @@
         "EncodingString": "[conn][%p][pathid][%u] CUBIC: SlowStartThreshold=%u K=%u WindowMax=%u WindowLastMax=%u"
       },
       {
-        "UniquenessHash": "8843a66a-349f-e5a2-a63c-5120fb187f69",
+        "UniquenessHash": "41d39427-3e79-a800-a73b-7111c591ee12",
         "TraceID": "PathDiscarded",
-        "EncodingString": "[conn][%p] Removing invalid path[%hhu]"
+        "EncodingString": "[conn][%p] Removing invalid path[%u]"
       },
       {
         "UniquenessHash": "bdd8ce5d-e489-65db-7c1a-dc483295d1b0",
@@ -19603,9 +19636,9 @@
         "EncodingString": "[conn][%p][pathid][%u] HyStart: State=%u CongestionWindow=%u SlowStartThreshold=%u"
       },
       {
-        "UniquenessHash": "3f38bc82-ff15-134b-3886-3fbe978840c5",
+        "UniquenessHash": "5b948ad8-5944-d185-1609-2d4fe811f86d",
         "TraceID": "PathIDAbandonedOnTimeout",
-        "EncodingString": "[conn][%p] Path[%hhu][PathID][%u] dead, abandoning it rather than the connection"
+        "EncodingString": "[conn][%p] Path[%u][PathID][%u] dead, abandoning it rather than the connection"
       },
       {
         "UniquenessHash": "894e7ef6-f0d0-5ee0-bfd0-f63945bfa39a",
@@ -19618,14 +19651,14 @@
         "EncodingString": "[conn][%p] Path[%hhu] Initialized"
       },
       {
-        "UniquenessHash": "cda9bb97-fd6c-a4a5-a61c-2e2931d2ce2c",
+        "UniquenessHash": "0c378220-a756-57a1-a654-1e19b56e34dd",
         "TraceID": "PathMinMtuValidated",
-        "EncodingString": "[conn][%p] Path[%hhu] Minimum MTU validated"
+        "EncodingString": "[conn][%p] Path[%u] Minimum MTU validated"
       },
       {
-        "UniquenessHash": "e4b7c3f7-0733-40b5-95d7-af81de6568ec",
+        "UniquenessHash": "360205d0-262e-37a7-4593-00e29dee9966",
         "TraceID": "PathMtuUpdated",
-        "EncodingString": "[conn][%p] Path[%hhu] MTU updated to %hu bytes"
+        "EncodingString": "[conn][%p] Path[%u] MTU updated to %hu bytes"
       },
       {
         "UniquenessHash": "bb1e998d-41e5-31d9-6efa-5e70ee344107",
@@ -19643,14 +19676,14 @@
         "EncodingString": "[conn][%p][pathid][%u] Persistent congestion event"
       },
       {
-        "UniquenessHash": "77bae646-5d83-b78d-08aa-24b36955b7e4",
+        "UniquenessHash": "cb0a6349-cde6-2fb5-342e-710b5811fd44",
         "TraceID": "PathQeoDisabled",
-        "EncodingString": "[conn][%p] Path[%hhu] QEO disabled"
+        "EncodingString": "[conn][%p] Path[%u] QEO disabled"
       },
       {
-        "UniquenessHash": "f27d6a99-3be1-a404-0883-01df858eb372",
+        "UniquenessHash": "86cd2be9-e6a8-22ac-38e6-da0332e2da32",
         "TraceID": "PathQeoEnabled",
-        "EncodingString": "[conn][%p] Path[%hhu] QEO enabled"
+        "EncodingString": "[conn][%p] Path[%u] QEO enabled"
       },
       {
         "UniquenessHash": "4ee9e7dd-b388-39ad-0324-a938e491b343",
@@ -19661,6 +19694,11 @@
         "UniquenessHash": "2e3024b8-4329-c124-05b3-9801c51b9346",
         "TraceID": "PathRemoved",
         "EncodingString": "[conn][%p] Path[%hhu] Removed"
+      },
+      {
+        "UniquenessHash": "60ad153c-88bc-6b5a-76b1-5a62d400b928",
+        "TraceID": "PathSlotYielded",
+        "EncodingString": "[conn][%p] Giving up path[%u] for an application path"
       },
       {
         "UniquenessHash": "ca15f2c4-b255-2e1f-6987-380babed5b44",
@@ -19943,9 +19981,9 @@
         "EncodingString": "[conn][%p] Ignoring a second punch request in one packet"
       },
       {
-        "UniquenessHash": "460ecd4b-2c37-8fc5-8a10-7f1c6d51ff6e",
+        "UniquenessHash": "d76f4876-3e8f-723c-000e-b00acebc743d",
         "TraceID": "PunchAttemptCidRetired",
-        "EncodingString": "[conn][%p] Path[%hhu] punch attempt failed; retired its destination CID"
+        "EncodingString": "[conn][%p] Path[%u] punch attempt failed; retired its destination CID"
       },
       {
         "UniquenessHash": "7752ab7d-ac45-024e-c096-3a6663acc4d9",
@@ -20061,6 +20099,11 @@
         "UniquenessHash": "c993beb7-b05c-66d6-7fa7-677e5604cfb1",
         "TraceID": "ReconcileDeferredNoDestCid",
         "EncodingString": "[conn][%p] Reconciler has no destination CID for a new path; retrying later"
+      },
+      {
+        "UniquenessHash": "89205005-0f41-220b-7872-5cf44e1ad36f",
+        "TraceID": "ReconcileDeferredNoPathID",
+        "EncodingString": "[conn][%p] Reconciler has no unused path ID for a new path; retrying later"
       },
       {
         "UniquenessHash": "4e629e20-48c1-7e50-e8e0-623b9071339d",
@@ -20213,14 +20256,14 @@
         "EncodingString": "[conn][%p] No route-derived local address, status=0x%x"
       },
       {
-        "UniquenessHash": "9bc1fa4d-99a3-dcfe-2650-d4effac253ba",
+        "UniquenessHash": "5fdf12c4-fd48-2676-0646-898b20379f54",
         "TraceID": "RouteResolutionEnd",
-        "EncodingString": "[conn][%p] Route resolution completed on Path[%hhu] with L2 address %hhx:%hhx:%hhx:%hhx:%hhx:%hhx"
+        "EncodingString": "[conn][%p] Route resolution completed on Path[%u] with L2 address %hhx:%hhx:%hhx:%hhx:%hhx:%hhx"
       },
       {
-        "UniquenessHash": "8662b462-9871-7631-034d-9d175232ab4f",
+        "UniquenessHash": "4fc6e02e-f085-ac20-635c-e7814d322c54",
         "TraceID": "RouteResolutionStart",
-        "EncodingString": "[conn][%p] Starting to look up neighbor on Path[%hhu] with status %u"
+        "EncodingString": "[conn][%p] Starting to look up neighbor on Path[%u] with status %u"
       },
       {
         "UniquenessHash": "ff41b02a-ac3e-3b07-30f1-3040e2416019",
@@ -20806,6 +20849,11 @@
         "UniquenessHash": "81035efa-7e5c-22d0-3a02-16a2f7cc7f1f",
         "TraceID": "SettingsLoadInvalidOfferedVersion",
         "EncodingString": "Invalid OfferedVersion loaded from storage! 0x%x at position %d"
+      },
+      {
+        "UniquenessHash": "c8209584-0467-56dd-404a-4ccf28b153cb",
+        "TraceID": "SettingsOfferedVersionsTooLong",
+        "EncodingString": "Too many offered versions"
       },
       {
         "UniquenessHash": "7db0f817-cc89-749d-01ec-356d35f7189a",

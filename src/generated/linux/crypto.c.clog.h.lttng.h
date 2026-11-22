@@ -596,16 +596,16 @@ TRACEPOINT_EVENT(CLOG_CRYPTO_C, ConnHandshakeComplete,
 // Decoder Ring for ConnSourceCidRemoved
 // [conn][%p][pathid][%u] (SeqNum=%llu) Removed Source CID: %!CID!
 // QuicTraceEvent(
-                ConnSourceCidRemoved,
-                "[conn][%p][pathid][%u] (SeqNum=%llu) Removed Source CID: %!CID!",
-                Connection,
-                Connection->Paths[0].PathID->ID,
-                InitialSourceCid->CID.SequenceNumber,
-                CASTED_CLOG_BYTEARRAY(InitialSourceCid->CID.Length, InitialSourceCid->CID.Data));
+                        ConnSourceCidRemoved,
+                        "[conn][%p][pathid][%u] (SeqNum=%llu) Removed Source CID: %!CID!",
+                        Connection,
+                        InitialPathID->ID,
+                        CidEntry->CID.SequenceNumber,
+                        CASTED_CLOG_BYTEARRAY(CidEntry->CID.Length, CidEntry->CID.Data));
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = Connection->Paths[0].PathID->ID = arg3
-// arg4 = arg4 = InitialSourceCid->CID.SequenceNumber = arg4
-// arg5 = arg5 = CASTED_CLOG_BYTEARRAY(InitialSourceCid->CID.Length, InitialSourceCid->CID.Data) = arg5
+// arg3 = arg3 = InitialPathID->ID = arg3
+// arg4 = arg4 = CidEntry->CID.SequenceNumber = arg4
+// arg5 = arg5 = CASTED_CLOG_BYTEARRAY(CidEntry->CID.Length, CidEntry->CID.Data) = arg5
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_CRYPTO_C, ConnSourceCidRemoved,
     TP_ARGS(

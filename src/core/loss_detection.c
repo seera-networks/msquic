@@ -283,7 +283,7 @@ QuicLossDetectionUpdateTimer(
         return;
     }
 
-    QUIC_PATH* Path = &Connection->Paths[0]; // TODO - Is this right?
+    QUIC_PATH* Path = QuicPathGetActive(&Connection->Paths); // TODO - Is this right?
 
     if (!Path->IsPeerValidated && Path->Allowance < QuicPathGetMinSendAllowance(Path)) {
         //
@@ -504,15 +504,13 @@ QuicLossDetectionOnPacketAcknowledged(
 {
     QUIC_PATHID* LossPathID = QuicLossDetectionGetPathID(LossDetection);
     QUIC_CONNECTION* Connection = LossPathID->Connection;
-    uint8_t PathIndex;
     //
     // Path may be NULL if the QUIC_PATH the packet was sent on has since been
     // removed (e.g. after connection migration). Path-specific processing below
     // is guarded accordingly; packet-space state lives on the path id that owns
     // this loss detection (LossPathID), which is always valid here.
     //
-    QUIC_PATH* Path = QuicConnGetPathByID(Connection, Packet->PathId, &PathIndex);
-    UNREFERENCED_PARAMETER(PathIndex);
+    QUIC_PATH* Path = QuicConnGetPathByID(Connection, Packet->PathId);
 
     _Analysis_assume_(
         EncryptLevel >= QUIC_ENCRYPT_LEVEL_INITIAL &&
@@ -636,7 +634,7 @@ QuicLossDetectionOnPacketAcknowledged(
     #pragma prefast(suppress:6001, "TODO - Why does compiler think: Using uninitialized memory '*DestCid'")
                     CXPLAT_DBG_ASSERT(DestCid->CID.Retired);
                     CXPLAT_DBG_ASSERT(Path == NULL || Path->DestCid != DestCid);
-                    QUIC_CID_VALIDATE_NULL(Connection, DestCid);
+                    QuicCidValidateUnused(&Connection->Paths, DestCid);
                     CXPLAT_DBG_ASSERT(PathID->RetiredDestCidCount > 0);
                     PathID->RetiredDestCidCount--;
                     CXPLAT_FREE(DestCid, QUIC_POOL_CIDLIST);
@@ -786,7 +784,7 @@ QuicLossDetectionOnPacketAcknowledged(
             QuicTraceLogConnInfo(
                 PathMinMtuValidated,
                 Connection,
-                "Path[%hhu] Minimum MTU validated",
+                "Path[%u] Minimum MTU validated",
                 Path->ID);
         }
 
@@ -974,7 +972,7 @@ QuicLossDetectionRetransmitFrames(
                         FALSE);
                 if (DestCid != NULL) {
                     CXPLAT_DBG_ASSERT(DestCid->CID.Retired);
-                    QUIC_CID_VALIDATE_NULL(Connection, DestCid);
+                    QuicCidValidateUnused(&Connection->Paths, DestCid);
                     DestCid->CID.NeedsToSend = TRUE;
                     NewDataQueued |=
                         QuicSendSetSendFlag(
@@ -987,8 +985,7 @@ QuicLossDetectionRetransmitFrames(
         }
 
         case QUIC_FRAME_PATH_CHALLENGE: {
-            uint8_t PathIndex;
-            QUIC_PATH* Path = QuicConnGetPathByID(Connection, Packet->PathId, &PathIndex);
+            QUIC_PATH* Path = QuicConnGetPathByID(Connection, Packet->PathId);
             if (Path != NULL && !Path->IsPeerValidated) {
                 Path->SendChallenge = TRUE;
                 NewDataQueued |=
@@ -1274,8 +1271,8 @@ QuicLossDetectionRetransmitFrames(
             // abandoned" asks for: no separate cancellation is needed, because
             // abandoning the attempt is removing the path.
             //
-            for (uint8_t j = 0; j < Connection->PathsCount; ++j) {
-                QUIC_PATH* TempPath = &Connection->Paths[j];
+            for (uint8_t j = 0; j < Connection->Paths.Count; ++j) {
+                QUIC_PATH* TempPath = &Connection->Paths.Paths[j];
                 if (TempPath->ID ==
                         Packet->Frames[i].STATELESS_PUNCH_ME_NOW.PathId) {
                     TempPath->SendStatelessPunch = TRUE;
@@ -1311,9 +1308,7 @@ QuicLossDetectionOnPacketDiscarded(
     QUIC_CONNECTION* Connection = QuicLossDetectionGetPathID(LossDetection)->Connection;
 
     if (Packet->Flags.IsMtuProbe && DiscardedForLoss) {
-        uint8_t PathIndex;
-        QUIC_PATH* Path = QuicConnGetPathByID(Connection, Packet->PathId, &PathIndex);
-        UNREFERENCED_PARAMETER(PathIndex);
+        QUIC_PATH* Path = QuicConnGetPathByID(Connection, Packet->PathId);
         if (Path != NULL) {
             uint16_t PacketMtu =
                 PacketSizeFromUdpPayloadSize(
@@ -2241,7 +2236,7 @@ QuicLossDetectionProcessTimerOperation(
                 QuicTraceLogConnInfo(
                     PathIDAbandonedOnTimeout,
                     Connection,
-                    "Path[%hhu][PathID][%u] dead, abandoning it rather than the connection",
+                    "Path[%u][PathID][%u] dead, abandoning it rather than the connection",
                     Path->ID,
                     PathID->ID);
                 QuicPathIDAbandonLocally(PathID);
