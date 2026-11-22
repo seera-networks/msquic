@@ -126,6 +126,37 @@ struct QMuxClientContext {
 };
 
 //
+// QMux runs over TCP, so it needs a datapath that can create TCP sockets.
+// Only the epoll and Windows user-mode datapaths advertise
+// CXPLAT_DATAPATH_FEATURE_TCP; io_uring, kqueue and the Windows kernel
+// datapath leave SocketCreateTcp and SocketCreateTcpListener as stubs that
+// return QUIC_STATUS_NOT_SUPPORTED, so a QMux listener cannot even start
+// there -- ListenerStart fails with 0x5f and every QMux test fails with it.
+// There is nothing to test in that case, so the tests return early, the way
+// the raw-datapath checks in HandshakeTest.cpp and QuicDrill.cpp do.
+//
+// Call this only once a registration exists. The datapath is created lazily
+// -- QuicRegistrationOpen is what calls QuicLibraryLazyInitialize -- and
+// QUIC_PARAM_GLOBAL_DATAPATH_FEATURES fails with QUIC_STATUS_INVALID_STATE
+// until then, which reads as "no features" and would skip the tests
+// everywhere, including on the epoll datapath that does support them.
+//
+static
+bool
+QMuxDatapathSupportsTcp()
+{
+    if (QuitTestIsFeatureSupported(CXPLAT_DATAPATH_FEATURE_TCP)) {
+        return true;
+    }
+    //
+    // Leave a mark in the log, so a run that quietly passed every QMux test in
+    // no time is distinguishable from one that actually tested something.
+    //
+    TestScopeLogger Skipped("QMux test skipped: datapath does not support TCP");
+    return false;
+}
+
+//
 // Brings up a QMux listener and returns its bound address. QMux listeners bind
 // the supplied address literally (unlike UDP listeners, which always take the
 // dual-mode wildcard), so the family passed here is the family actually used.
@@ -155,6 +186,10 @@ QuicTestQMuxConnect(
 
     MsQuicRegistration Registration(true);
     TEST_TRUE(Registration.IsValid());
+
+    if (!QMuxDatapathSupportsTcp()) {
+        return;
+    }
 
     MsQuicConfiguration ServerConfiguration(
         Registration, "MsQuicTest", MsQuicSettings{}, ServerSelfSignedCredConfig);
@@ -215,6 +250,10 @@ QuicTestQMuxStreamData(
 
     MsQuicRegistration Registration(true);
     TEST_TRUE(Registration.IsValid());
+
+    if (!QMuxDatapathSupportsTcp()) {
+        return;
+    }
 
     MsQuicSettings Settings;
     Settings.SetPeerBidiStreamCount(1);
@@ -287,6 +326,10 @@ QuicTestQMuxKeepAlive(
 
     MsQuicRegistration Registration(true);
     TEST_TRUE(Registration.IsValid());
+
+    if (!QMuxDatapathSupportsTcp()) {
+        return;
+    }
 
     MsQuicSettings Settings;
     Settings.SetIdleTimeoutMs(IdleTimeoutMs);
@@ -434,6 +477,10 @@ QuicTestQMuxDatagramBurst(
 
     MsQuicRegistration Registration(true);
     TEST_TRUE(Registration.IsValid());
+
+    if (!QMuxDatapathSupportsTcp()) {
+        return;
+    }
 
     MsQuicSettings Settings;
     Settings.SetDatagramReceiveEnabled(true);
