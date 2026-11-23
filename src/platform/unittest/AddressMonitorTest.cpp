@@ -552,6 +552,16 @@ TEST_F(AddressMonitorTest, DownInterfaceAddressesAreDropped)
 }
 
 //
+// Everything below drives the host's interfaces by shelling out, so it needs a
+// shell -- and system() is unavailable on iOS, where there is no process to
+// spawn one in. Compiled out there, which costs nothing: these tests skip at
+// runtime wherever they cannot create an interface, and iOS runs no tests at
+// all in CI. TARGET_OS_IPHONE comes from address_monitor.h, which includes
+// TargetConditionals.h on Apple.
+//
+#if !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
+
+//
 // The netlink backend end to end, against a dummy interface in a network
 // namespace of its own. Needs to be run under `unshare -rn`, which needs no
 // root; outside one it cannot create an interface and skips rather than
@@ -1059,4 +1069,6 @@ TEST_F(AddressMonitorRealTest, RefreshWithResubscribeKeepsDelivering)
     Run("ip link del qmonresub >/dev/null 2>&1");
 }
 
-#endif
+#endif // !TARGET_OS_IPHONE
+
+#endif // CXPLAT_ADDRESS_MONITOR_SUPPORTED
