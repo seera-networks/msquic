@@ -36,7 +36,13 @@ else()
     # libraries we do not wish to archive for distribution.
     set(EXCLUDE_LIST "inc")
     if (CX_PLATFORM STREQUAL "darwin")
-        list(APPEND EXCLUDE_LIST "-framework CoreFoundation" "-framework Security")
+        # A framework is not an archive, so the walk below must not try to feed
+        # one to libtool -- it appends the static library suffix to anything it
+        # does not recognise, and "-framework Network.a" is what libtool then
+        # refuses. Seeding them as already visited is how the other two avoid
+        # it.
+        list(APPEND EXCLUDE_LIST
+            "-framework CoreFoundation" "-framework Security" "-framework Network")
     endif()
     set_property(GLOBAL PROPERTY VISITED_TARGETS_PROP "${EXCLUDE_LIST}")
     set_property(GLOBAL PROPERTY QUIC_STATIC_LIBS "")
@@ -232,7 +238,13 @@ else()
         ${QUIC_STATIC_LIBRARY}
     )
     if (CX_PLATFORM STREQUAL "darwin")
-        target_link_libraries(msquic INTERFACE "-framework CoreFoundation" "-framework Security")
+        #
+        # Excluded from the archive above, so an application linking the static
+        # library has to be told to link them itself. Network is here for the
+        # address monitor's nw_path_monitor subscription.
+        #
+        target_link_libraries(msquic INTERFACE
+            "-framework CoreFoundation" "-framework Security" "-framework Network")
     endif()
     add_dependencies(msquic msquic_lib)
 endif()
