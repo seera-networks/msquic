@@ -693,6 +693,43 @@ CxPlatAddressMonitorInitialize(
     );
 
 //
+// What CxPlatAddressMonitorRefresh may be asked to do beyond re-examining the
+// addresses.
+//
+typedef enum CXPLAT_ADDRESS_MONITOR_REFRESH_FLAGS {
+    CXPLAT_ADDRESS_MONITOR_REFRESH_NONE         = 0x00000000,
+    //
+    // Drop and re-arm the platform subscription as well. For a subscription
+    // that may have been left stale rather than merely behind -- an iOS
+    // application coming back from suspension is the case this exists for.
+    //
+    // N.B. Honoured by the Apple and Linux backends. The Windows backend
+    // accepts it and does a plain refresh: a NETIO registration does not go
+    // stale, and re-registering would mean restructuring the callback
+    // lifetime for no case that needs it.
+    //
+    CXPLAT_ADDRESS_MONITOR_REFRESH_RESUBSCRIBE  = 0x00000001,
+} CXPLAT_ADDRESS_MONITOR_REFRESH_FLAGS;
+
+//
+// Asks the monitor to re-examine the host's addresses now, as if the platform
+// had reported a change. For a consumer that knows its notifications may have
+// been missed -- an iOS application returning to the foreground, where a
+// suspended process receives no path updates and its snapshot is stale.
+//
+// Posts the request to the monitor's own execution context and returns; the
+// enumeration does not run on the calling thread. What follows is exactly what
+// a platform notification produces: the debounce window, a resync, and a
+// callback only if the snapshot actually changed.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorRefresh(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _In_ uint32_t Flags            // CXPLAT_ADDRESS_MONITOR_REFRESH_FLAGS
+    );
+
+//
 // Blocks until no callback is in flight, after which none is delivered. Must
 // not be called from inside the callback.
 //

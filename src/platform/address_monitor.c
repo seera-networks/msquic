@@ -411,6 +411,20 @@ CxPlatAddressMonitorInitialize(
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorRefresh(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _In_ uint32_t Flags
+    )
+{
+    if ((Flags & ~(uint32_t)CXPLAT_ADDRESS_MONITOR_REFRESH_RESUBSCRIBE) != 0) {
+        return QUIC_STATUS_INVALID_PARAMETER;
+    }
+
+    return CxPlatAddressMonitorOsRefresh(Monitor, Flags);
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 CxPlatAddressMonitorUninitialize(
     _In_ CXPLAT_ADDRESS_MONITOR* Monitor
@@ -491,6 +505,18 @@ CxPlatAddressMonitorInitialize(
     UNREFERENCED_PARAMETER(Datapath);
     UNREFERENCED_PARAMETER(Config);
     UNREFERENCED_PARAMETER(Monitor);
+    return QUIC_STATUS_NOT_SUPPORTED;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorRefresh(
+    _In_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _In_ uint32_t Flags
+    )
+{
+    UNREFERENCED_PARAMETER(Monitor);
+    UNREFERENCED_PARAMETER(Flags);
     return QUIC_STATUS_NOT_SUPPORTED;
 }
 

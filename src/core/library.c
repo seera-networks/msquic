@@ -1158,6 +1158,60 @@ Exit:
     return Status;
 }
 
+//
+// The API's flags are passed to the platform unchanged, so the two have to
+// agree. One enum rather than a translation, because every bit means the same
+// thing on both sides of that boundary and a mapping would only be a place for
+// them to drift.
+//
+CXPLAT_STATIC_ASSERT(
+    (uint32_t)QUIC_REFRESH_LOCAL_ADDRESSES_RESUBSCRIBE ==
+        (uint32_t)CXPLAT_ADDRESS_MONITOR_REFRESH_RESUBSCRIBE,
+    "Refresh flags must match the platform's");
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+QuicLibraryRefreshAddressMonitor(
+    _In_ uint32_t Flags
+    )
+{
+    //
+    // A reference for the duration of the call, taken only if a monitor is
+    // already running, so that a concurrent release cannot free the monitor
+    // under the refresh. Not QuicLibraryAddRefAddressMonitor, which would
+    // start one -- the point of this is to prod a monitor somebody else asked
+    // for.
+    //
+    CXPLAT_ADDRESS_MONITOR* Monitor = NULL;
+
+    CxPlatLockAcquire(&MsQuicLib.Lock);
+    if (MsQuicLib.AddressMonitor != NULL) {
+        Monitor = MsQuicLib.AddressMonitor;
+        MsQuicLib.AddressMonitorRefCount++;
+    }
+    CxPlatLockRelease(&MsQuicLib.Lock);
+
+    if (Monitor == NULL) {
+        //
+        // Nothing is watching the host's addresses, so there is nothing to
+        // bring up to date. Success, not an error: an application calls this
+        // from its foreground transition and should not have to know whether
+        // any connection asked for monitoring.
+        //
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    //
+    // Outside MsQuicLib.Lock, for the reason the release path gives: the
+    // callback this may lead to takes that lock to fan out.
+    //
+    const QUIC_STATUS Status = CxPlatAddressMonitorRefresh(Monitor, Flags);
+
+    QuicLibraryReleaseAddressMonitor();
+
+    return Status;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicLibraryReleaseAddressMonitor(
@@ -2185,6 +2239,35 @@ QuicLibrarySetGlobalParam(
         MsQuicLib.XdpMapConfigs = NewConfigs;
         MsQuicLib.XdpMapConfigCount = Count;
         CxPlatLockRelease(&MsQuicLib.Lock);
+        break;
+    }
+
+    case QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES: {
+        //
+        // Empty or a uint32_t of flags. The empty form is the common one -- an
+        // application saying only "I may have missed something" -- and is why
+        // the parameter does not simply require the four bytes.
+        //
+        uint32_t Flags = QUIC_REFRESH_LOCAL_ADDRESSES_NONE;
+        if (BufferLength != 0) {
+            if (BufferLength != sizeof(uint32_t) || Buffer == NULL) {
+                Status = QUIC_STATUS_INVALID_PARAMETER;
+                break;
+            }
+            Flags = *(const uint32_t*)Buffer;
+        }
+
+        //
+        // An unknown bit is rejected rather than ignored. This is a parameter
+        // meant to be called blindly on every foreground transition, so a typo
+        // that silently did nothing would be invisible forever.
+        //
+        if ((Flags & ~(uint32_t)QUIC_REFRESH_LOCAL_ADDRESSES_RESUBSCRIBE) != 0) {
+            Status = QUIC_STATUS_INVALID_PARAMETER;
+            break;
+        }
+
+        Status = QuicLibraryRefreshAddressMonitor(Flags);
         break;
     }
 

@@ -5,8 +5,9 @@
 
 Abstract:
 
-    Apple backend for the local address monitor: a PF_ROUTE subscription and a
-    getifaddrs enumeration.
+    Apple backend for the local address monitor: a getifaddrs enumeration, and
+    a subscription that is a PF_ROUTE socket on macOS and nw_path_monitor on
+    iOS.
 
     Shaped like the Linux backend, which it is much closer to than to Windows:
     a socket to read notifications from, a thread of its own, and the poll
@@ -21,12 +22,18 @@ Abstract:
     debounce timer. One thread, created only when a consumer asks for
     monitoring, costs less.
 
-    macOS only, which CI settled rather than speculation: the iOS SDK does not
-    ship net/route.h, so there is no routing socket to subscribe to there at
-    all -- the question #138 raised about PF_ROUTE delivery to a sandboxed
-    application does not even get as far as delivery. address_monitor.h records
-    why iOS gets the not-supported stub instead of an enumeration with nothing
-    behind it.
+    The iOS SDK ships no net/route.h, so there is no routing socket to
+    subscribe to there -- the question #138 raised about PF_ROUTE delivery to a
+    sandboxed application does not even get as far as delivery. iOS therefore
+    takes its notifications from nw_path_monitor (#223), which is public API
+    and does reach a sandboxed application. That changes only where the wake-up
+    comes from: nw_path carries interfaces and a status, not addresses, so the
+    snapshot still comes from getifaddrs, and the shared filter, diff and
+    resync are untouched.
+
+    Both subscriptions feed the same thread through a notify pipe, and the
+    refresh a consumer asks for writes into that same pipe. One path from
+    "something may have changed" to a resync, however the news arrived.
 
 --*/
 
@@ -39,20 +46,33 @@ Abstract:
 
 #if defined(CXPLAT_ADDRESS_MONITOR_SUPPORTED)
 
+#include <fcntl.h>
 #include <ifaddrs.h>
 #include <net/if.h>
-#include <net/route.h>
 #include <netinet/in.h>
-#include <netinet6/in6_var.h>
 #include <poll.h>
-#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
+#include <net/route.h>
+#include <netinet6/in6_var.h>
+#include <sys/ioctl.h>
 
 //
 // Enough for the largest routing message the kernel will hand us in one read.
 //
 #define CXPLAT_ROUTE_BUFFER_SIZE 4096
+#else
+//
+// nw_path_monitor and the queue its handlers run on. Network framework is iOS
+// 12 and later and the build targets 13 (scripts/build.ps1), so no
+// availability check is needed. ENABLE_ARC is 0 there as well, which is why the
+// releases below are explicit.
+//
+#include <Network/Network.h>
+#include <dispatch/dispatch.h>
+#endif
 
 //
 // How long to wait before retrying an enumeration that failed, doubling to
@@ -61,8 +81,37 @@ Abstract:
 #define CXPLAT_ADDRESS_MONITOR_MAX_RETRY_MS 5000
 
 typedef struct CXPLAT_ADDRESS_MONITOR_OS {
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
     int RouteFd;            // PF_ROUTE subscription, read by the thread
+#else
+    //
+    // The nw_path_monitor subscription and the serial queue its handlers run
+    // on. The queue outlives any one subscription, so a resubscribe reuses it.
+    //
+    nw_path_monitor_t PathMonitor;
+    dispatch_queue_t Queue;
+    //
+    // Signalled by the cancel handler. nw_path_monitor_cancel is asynchronous,
+    // and this is how teardown knows no update handler can run again -- the
+    // handler writes NotifyFds, so the pipe must outlive the last one.
+    //
+    CXPLAT_EVENT CancelComplete;
+    BOOLEAN CancelCompleteInitialized;
+#endif
+    //
+    // pipe; one byte written by whatever noticed something, read by the
+    // thread. On macOS that is a refresh; on iOS the path update handler as
+    // well, which does nothing else -- no work of ours runs on Network
+    // framework's queue.
+    //
+    int NotifyFds[2];
     int ShutdownFds[2];     // pipe; one byte written to stop the thread
+    //
+    // Set by CxPlatAddressMonitorOsRefresh before it writes NotifyFds, read
+    // and cleared by the thread with the interlocked helpers, because both
+    // sides write it.
+    //
+    BOOLEAN volatile ResubscribePending;
     CXPLAT_THREAD Thread;
     BOOLEAN ThreadStarted;
 } CXPLAT_ADDRESS_MONITOR_OS;
@@ -102,10 +151,18 @@ CxPlatAddressMonitorIfType(
     return (Flags & IFF_LOOPBACK) ? 24 : 1; // softwareLoopback : other
 }
 
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
 //
 // The IPv6 per-address flags, which getifaddrs does not carry. Needs a socket
 // to ioctl on; the caller makes one for the whole enumeration rather than one
 // per address.
+//
+// macOS only. SIOCGIFAFLAG_IN6 and netinet6/in6_var.h are not in the iOS SDK,
+// and Apple exposes no public substitute, so on iOS TEMPORARY and DEPRECATED
+// are never set and an address in duplicate address detection is not
+// recognised. Declaring the ioctl locally would answer the question at the
+// cost of depending on a kernel interface Apple has deliberately not
+// published; #223 chose to leave it unanswered instead.
 //
 static
 void
@@ -152,6 +209,7 @@ CxPlatAddressMonitorApplyIn6Flags(
         Entry->Tentative = TRUE;
     }
 }
+#endif // CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
@@ -214,12 +272,14 @@ CxPlatAddressMonitorOsEnumerate(
         goto Exit;
     }
 
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
     //
     // One socket for every SIOCGIFAFLAG_IN6 below. Its failure is not fatal:
     // without it the IPv6 per-address flags are simply unknown, which the
     // filter handles.
     //
     Ioctl6Fd = socket(AF_INET6, SOCK_DGRAM, 0);
+#endif
 
     uint32_t Index = 0;
     for (const struct ifaddrs* Iter = Addrs; Iter != NULL && Index < Count; Iter = Iter->ifa_next) {
@@ -268,12 +328,14 @@ CxPlatAddressMonitorOsEnumerate(
                 Entry->Address.Flags |= CXPLAT_ADDRESS_FLAG_LINK_LOCAL;
             }
 
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
             //
             // The ioctl is given the address as the kernel handed it over,
             // before the normalization below, because that is the form the
             // kernel indexes its addresses by.
             //
             CxPlatAddressMonitorApplyIn6Flags(Ioctl6Fd, Iter->ifa_name, Sin6, Entry);
+#endif
 
             if (IN6_IS_ADDR_LINKLOCAL(&Entry->Address.Address.Ipv6.sin6_addr)) {
                 //
@@ -322,6 +384,7 @@ Exit:
     return Status;
 }
 
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
 //
 // Drains everything the route socket has. The content is ignored beyond "is
 // this worth a resync": the snapshot comes from re-enumerating, not from the
@@ -383,6 +446,138 @@ CxPlatAddressMonitorDrain(
         }
     }
 }
+#endif // CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET
+
+//
+// One byte into the notify pipe: the thread checks the descriptor rather than
+// the content, so the value carries nothing. Called from the path update
+// handler on iOS and from a refresh on both, so it must stay this small --
+// EAGAIN is success, because a pipe with a byte still in it already says
+// everything this one would.
+//
+static
+void
+CxPlatAddressMonitorPoke(
+    _In_ const CXPLAT_ADDRESS_MONITOR_OS* Os
+    )
+{
+    const uint8_t One = 1;
+    const ssize_t Written = write(Os->NotifyFds[1], &One, sizeof(One));
+    //
+    // EAGAIN -- a byte already waiting that the thread has not read yet --
+    // says everything this one would, and there is nothing a path update
+    // handler could usefully do about any other failure either.
+    //
+    UNREFERENCED_PARAMETER(Written);
+}
+
+//
+// Opens the subscription, which both backends do before the first enumeration
+// so that a change landing during startup is not lost: on macOS it sits in the
+// socket buffer, and on iOS nw_path_monitor_start delivers the current path
+// once by itself.
+//
+static
+QUIC_STATUS
+CxPlatAddressMonitorSubscribe(
+    _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor
+    )
+{
+    CXPLAT_ADDRESS_MONITOR_OS* Os = Monitor->Os;
+
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
+
+    CXPLAT_DBG_ASSERT(Os->RouteFd == -1);
+    Os->RouteFd = socket(PF_ROUTE, SOCK_RAW, AF_UNSPEC);
+    if (Os->RouteFd == -1) {
+        const int Error = errno;
+        QuicTraceEvent(
+            LibraryErrorStatus,
+            "[ lib] ERROR, %u, %s.",
+            (uint32_t)Error,
+            "socket(PF_ROUTE) failed");
+        return CxPlatAddressMonitorStatusFromError(Error);
+    }
+
+    return QUIC_STATUS_SUCCESS;
+
+#else
+
+    CXPLAT_DBG_ASSERT(Os->PathMonitor == NULL);
+    CXPLAT_DBG_ASSERT(Os->Queue != NULL);
+
+    nw_path_monitor_t PathMonitor = nw_path_monitor_create();
+    if (PathMonitor == NULL) {
+        QuicTraceEvent(
+            LibraryError,
+            "[ lib] ERROR, %s.",
+            "nw_path_monitor_create failed");
+        return QUIC_STATUS_OUT_OF_MEMORY;
+    }
+
+    nw_path_monitor_set_queue(PathMonitor, Os->Queue);
+
+    //
+    // The handler writes the pipe and returns. Everything the snapshot needs
+    // comes from getifaddrs on the monitor's own thread, so nw_path itself is
+    // not read -- its interface list would be a second, less direct way to
+    // learn what the enumeration is about to say.
+    //
+    nw_path_monitor_set_update_handler(PathMonitor, ^(nw_path_t Path) {
+        UNREFERENCED_PARAMETER(Path);
+        CxPlatAddressMonitorPoke(Os);
+    });
+
+    //
+    // Cancellation is asynchronous, and this is what teardown waits on: the
+    // update handler writes NotifyFds, so no handler may run after the pipe is
+    // closed.
+    //
+    nw_path_monitor_set_cancel_handler(PathMonitor, ^{
+        CxPlatEventSet(Os->CancelComplete);
+    });
+
+    Os->PathMonitor = PathMonitor;
+    nw_path_monitor_start(Os->PathMonitor);
+
+    return QUIC_STATUS_SUCCESS;
+
+#endif
+}
+
+static
+void
+CxPlatAddressMonitorUnsubscribe(
+    _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor
+    )
+{
+    CXPLAT_ADDRESS_MONITOR_OS* Os = Monitor->Os;
+
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
+
+    if (Os->RouteFd != -1) {
+        close(Os->RouteFd);
+        Os->RouteFd = -1;
+    }
+
+#else
+
+    if (Os->PathMonitor != NULL) {
+        CxPlatEventReset(Os->CancelComplete);
+        nw_path_monitor_cancel(Os->PathMonitor);
+        //
+        // The cancel handler is the only thing that sets this, and Network
+        // framework runs it on our own serial queue after the last update
+        // handler has returned -- so waiting here is what makes the interface's
+        // "no callback is in flight" promise hold for this backend.
+        //
+        CxPlatEventWaitForever(Os->CancelComplete);
+        nw_release(Os->PathMonitor);
+        Os->PathMonitor = NULL;
+    }
+
+#endif
+}
 
 //
 // The subscription thread. Its poll timeout is the debounce window, so a burst
@@ -414,15 +609,26 @@ CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
                     0 : (int)US_TO_MS_CEIL(DebounceDeadline - Now);
         }
 
-        struct pollfd PollFds[2];
+        //
+        // The notify pipe is always polled; the route socket only exists on
+        // macOS, so the count is what differs between the two.
+        //
+        struct pollfd PollFds[3];
         PollFds[0].fd = Os->ShutdownFds[0];
         PollFds[0].events = POLLIN;
         PollFds[0].revents = 0;
-        PollFds[1].fd = Os->RouteFd;
+        PollFds[1].fd = Os->NotifyFds[0];
         PollFds[1].events = POLLIN;
         PollFds[1].revents = 0;
+        nfds_t PollCount = 2;
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
+        PollFds[2].fd = Os->RouteFd;
+        PollFds[2].events = POLLIN;
+        PollFds[2].revents = 0;
+        PollCount = 3;
+#endif
 
-        const int Ready = poll(PollFds, 2, Timeout);
+        const int Ready = poll(PollFds, PollCount, Timeout);
         if (Ready < 0) {
             if (errno == EINTR) {
                 continue;
@@ -445,6 +651,47 @@ CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
         }
 
         if (PollFds[1].revents != 0) {
+            //
+            // Drained so the pipe does not stay readable. How many bytes are
+            // in it says how many wake-ups arrived and is of no interest: one
+            // resync answers all of them.
+            //
+            uint8_t Drain[64];
+            while (read(Os->NotifyFds[0], Drain, sizeof(Drain)) > 0) {
+                // Keep reading until EAGAIN.
+            }
+
+            if (InterlockedFetchAndClearBoolean(&Os->ResubscribePending)) {
+                //
+                // Re-armed rather than reused: the point of a resubscribe is a
+                // subscription the caller believes is no longer delivering --
+                // an iOS process that has been suspended. A notification
+                // arriving in the gap is not lost, because the resync below
+                // re-enumerates everything regardless.
+                //
+                CxPlatAddressMonitorUnsubscribe(Monitor);
+                if (QUIC_FAILED(CxPlatAddressMonitorSubscribe(Monitor))) {
+                    //
+                    // Nothing to fall back to, and no reason to tear the
+                    // monitor down: the snapshot is still correct after the
+                    // resync below, and a later refresh can try again.
+                    //
+                    QuicTraceEvent(
+                        LibraryError,
+                        "[ lib] ERROR, %s.",
+                        "address monitor resubscribe failed");
+                }
+            }
+
+            if (!DebouncePending) {
+                DebouncePending = TRUE;
+                DebounceDeadline =
+                    CxPlatTimeUs64() + MS_TO_US((uint64_t)Monitor->DebounceMs);
+            }
+        }
+
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
+        if (PollFds[2].revents != 0) {
             BOOLEAN Notified = FALSE;
             CxPlatAddressMonitorDrain(Os->RouteFd, &Notified, &RouteChanged);
             if (Notified && !DebouncePending) {
@@ -453,6 +700,7 @@ CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
                     CxPlatTimeUs64() + MS_TO_US((uint64_t)Monitor->DebounceMs);
             }
         }
+#endif
 
         if (DebouncePending && CxPlatTimeAtOrBefore64(DebounceDeadline, CxPlatTimeUs64())) {
             if (CxPlatAddressMonitorResync(
@@ -501,27 +749,14 @@ CxPlatAddressMonitorOsInitialize(
         return QUIC_STATUS_OUT_OF_MEMORY;
     }
     CxPlatZeroMemory(Os, sizeof(*Os));
+#if defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
     Os->RouteFd = -1;
+#endif
     Os->ShutdownFds[0] = -1;
     Os->ShutdownFds[1] = -1;
+    Os->NotifyFds[0] = -1;
+    Os->NotifyFds[1] = -1;
     Monitor->Os = Os;
-
-    //
-    // Subscribed before the first enumeration, so a change arriving during
-    // startup is not lost: it sits in the socket buffer and the thread sees it
-    // on its first poll.
-    //
-    Os->RouteFd = socket(PF_ROUTE, SOCK_RAW, AF_UNSPEC);
-    if (Os->RouteFd == -1) {
-        const int Error = errno;
-        QuicTraceEvent(
-            LibraryErrorStatus,
-            "[ lib] ERROR, %u, %s.",
-            (uint32_t)Error,
-            "socket(PF_ROUTE) failed");
-        Status = CxPlatAddressMonitorStatusFromError(Error);
-        goto Error;
-    }
 
     if (pipe(Os->ShutdownFds) != 0) {
         const int Error = errno;
@@ -531,6 +766,64 @@ CxPlatAddressMonitorOsInitialize(
             (uint32_t)Error,
             "pipe(address monitor) failed");
         Status = CxPlatAddressMonitorStatusFromError(Error);
+        goto Error;
+    }
+
+    if (pipe(Os->NotifyFds) != 0) {
+        const int Error = errno;
+        QuicTraceEvent(
+            LibraryErrorStatus,
+            "[ lib] ERROR, %u, %s.",
+            (uint32_t)Error,
+            "pipe(address monitor notify) failed");
+        Status = CxPlatAddressMonitorStatusFromError(Error);
+        goto Error;
+    }
+
+    //
+    // Both ends non-blocking. The write end because a path update handler must
+    // never block on a pipe the thread has not drained yet -- a byte already
+    // in it says everything another would -- and the read end because the
+    // thread drains it to EAGAIN.
+    //
+    if (fcntl(Os->NotifyFds[0], F_SETFL, O_NONBLOCK) != 0 ||
+        fcntl(Os->NotifyFds[1], F_SETFL, O_NONBLOCK) != 0) {
+        const int Error = errno;
+        QuicTraceEvent(
+            LibraryErrorStatus,
+            "[ lib] ERROR, %u, %s.",
+            (uint32_t)Error,
+            "fcntl(address monitor notify) failed");
+        Status = CxPlatAddressMonitorStatusFromError(Error);
+        goto Error;
+    }
+
+#if !defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
+    //
+    // The queue the path handlers run on, and the event the cancel handler
+    // signals. Both outlive any one subscription, so a resubscribe reuses
+    // them.
+    //
+    Os->Queue = dispatch_queue_create("quic_addrmon", DISPATCH_QUEUE_SERIAL);
+    if (Os->Queue == NULL) {
+        QuicTraceEvent(
+            LibraryError,
+            "[ lib] ERROR, %s.",
+            "dispatch_queue_create(address monitor) failed");
+        Status = QUIC_STATUS_OUT_OF_MEMORY;
+        goto Error;
+    }
+
+    CxPlatEventInitialize(&Os->CancelComplete, TRUE, FALSE);
+    Os->CancelCompleteInitialized = TRUE;
+#endif
+
+    //
+    // Subscribed before the first enumeration, so a change arriving during
+    // startup is not lost.
+    //
+    Status = CxPlatAddressMonitorSubscribe(Monitor);
+    if (QUIC_FAILED(Status)) {
         goto Error;
     }
 
@@ -595,6 +888,26 @@ Error:
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorOsRefresh(
+    _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _In_ uint32_t Flags
+    )
+{
+    CXPLAT_ADDRESS_MONITOR_OS* Os = Monitor->Os;
+
+    if (Flags & CXPLAT_ADDRESS_MONITOR_REFRESH_RESUBSCRIBE) {
+        //
+        // Set before the wake, so a thread that reads the pipe also sees this.
+        //
+        (void)InterlockedFetchAndSetBoolean(&Os->ResubscribePending);
+    }
+
+    CxPlatAddressMonitorPoke(Os);
+    return QUIC_STATUS_SUCCESS;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 CxPlatAddressMonitorOsUninitialize(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor
@@ -605,6 +918,13 @@ CxPlatAddressMonitorOsUninitialize(
         return;
     }
 
+    //
+    // The thread goes first, so that nothing is polling a descriptor while it
+    // is closed, and the subscription second, because a path update handler
+    // writes the notify pipe and the pipe must outlive the last one. In
+    // between, handlers may still write into a pipe nobody drains, which is
+    // what the non-blocking write end is for.
+    //
     if (Os->ThreadStarted) {
         //
         // One byte is all the thread reads for; it checks the descriptor rather
@@ -617,24 +937,36 @@ CxPlatAddressMonitorOsUninitialize(
                 "[ lib] ERROR, %u, %s.",
                 (uint32_t)errno,
                 "write(address monitor shutdown) failed");
-            //
-            // Fall through to the wait regardless. Closing the route socket
-            // below would make poll return on it, so the thread still leaves.
-            //
         }
         CxPlatThreadWait(&Os->Thread);
         CxPlatThreadDelete(&Os->Thread);
         Os->ThreadStarted = FALSE;
     }
 
+    CxPlatAddressMonitorUnsubscribe(Monitor);
+
+#if !defined(CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET)
+    if (Os->CancelCompleteInitialized) {
+        CxPlatEventUninitialize(Os->CancelComplete);
+        Os->CancelCompleteInitialized = FALSE;
+    }
+    if (Os->Queue != NULL) {
+        dispatch_release(Os->Queue);
+        Os->Queue = NULL;
+    }
+#endif
+
+    if (Os->NotifyFds[0] != -1) {
+        close(Os->NotifyFds[0]);
+    }
+    if (Os->NotifyFds[1] != -1) {
+        close(Os->NotifyFds[1]);
+    }
     if (Os->ShutdownFds[0] != -1) {
         close(Os->ShutdownFds[0]);
     }
     if (Os->ShutdownFds[1] != -1) {
         close(Os->ShutdownFds[1]);
-    }
-    if (Os->RouteFd != -1) {
-        close(Os->RouteFd);
     }
 
     CXPLAT_FREE(Os, QUIC_POOL_DATAPATH);

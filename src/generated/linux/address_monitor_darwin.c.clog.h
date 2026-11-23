@@ -61,6 +61,24 @@ tracepoint(CLOG_ADDRESS_MONITOR_DARWIN_C, AllocFailure , arg2, arg3);\
 
 
 
+/*----------------------------------------------------------
+// Decoder Ring for LibraryError
+// [ lib] ERROR, %s.
+// QuicTraceEvent(
+            LibraryError,
+            "[ lib] ERROR, %s.",
+            "nw_path_monitor_create failed");
+// arg2 = arg2 = "nw_path_monitor_create failed" = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_LibraryError
+#define _clog_3_ARGS_TRACE_LibraryError(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_ADDRESS_MONITOR_DARWIN_C, LibraryError , arg2);\
+
+#endif
+
+
+
+
 #ifdef __cplusplus
 }
 #endif

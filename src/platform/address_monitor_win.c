@@ -519,6 +519,30 @@ Error:
 
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorOsRefresh(
+    _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _In_ uint32_t Flags
+    )
+{
+    //
+    // RESUBSCRIBE is accepted and does nothing beyond the refresh. A NETIO
+    // registration does not go stale -- the case the flag exists for is an
+    // iOS process coming back from suspension -- and re-registering would mean
+    // restructuring the callback lifetime, which CancelMibChangeNotify2's wait
+    // makes delicate, for no case that needs it.
+    //
+    UNREFERENCED_PARAMETER(Flags);
+
+    //
+    // The same wake the notification callbacks use, so the debounce window and
+    // the resync that follows are the ones that already run.
+    //
+    CxPlatEventSet(Monitor->Os->NotifyEvent);
+    return QUIC_STATUS_SUCCESS;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 CxPlatAddressMonitorOsUninitialize(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor

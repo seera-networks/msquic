@@ -102,6 +102,14 @@ if (MSVC AND (QUIC_TLS_LIB STREQUAL "quictls" OR QUIC_TLS_LIB STREQUAL "schannel
     target_compile_options(msquic_platform PRIVATE /analyze)
 endif()
 
+# The address monitor takes its notifications from nw_path_monitor on iOS,
+# where there is no routing socket. Linked for every Apple target rather than
+# only iOS: macOS links it harmlessly, and the alternative is a second place
+# where the two platforms differ.
+if (CX_PLATFORM STREQUAL "darwin")
+    target_link_libraries(msquic_platform PUBLIC "-framework Network")
+endif()
+
 if(QUIC_TLS_LIB STREQUAL "quictls" OR QUIC_TLS_LIB STREQUAL "openssl")
     target_link_libraries(msquic_platform PUBLIC OpenSSL)
     if (CX_PLATFORM STREQUAL "darwin")
