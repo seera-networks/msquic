@@ -1466,6 +1466,14 @@ TEST(ParameterValidation, GetLocalAddresses) {
     TestLogger Logger("QuicTestGetLocalAddressesParam");
     QuicTestGetLocalAddressesParam();
 }
+
+TEST(ParameterValidation, RefreshLocalAddresses) {
+    if (TestingKernelMode) {
+        GTEST_SKIP() << "QuicTestRefreshLocalAddressesParam is user-mode only.";
+    }
+    TestLogger Logger("QuicTestRefreshLocalAddressesParam");
+    QuicTestRefreshLocalAddressesParam();
+}
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Alpn, ValidAlpnLengths) {

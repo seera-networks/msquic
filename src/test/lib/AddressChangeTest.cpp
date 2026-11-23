@@ -353,6 +353,116 @@ QuicTestGetLocalAddressesParam(
     }
 }
 
+//
+// The parameter surface of the foreground re-check. What it does when a monitor
+// is running belongs to the platform tests, which can watch the resync; what is
+// asserted here is that an application can call it blindly -- with no buffer,
+// with flags, with none of its own connections watching anything -- and that a
+// malformed call is refused rather than quietly doing nothing.
+//
+void
+QuicTestRefreshLocalAddressesParam(
+    )
+{
+    //
+    // No monitor is running at this point, and on a platform with no backend
+    // none ever will be. Success either way: an application calls this from a
+    // foreground transition and cannot be expected to know.
+    //
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->SetParam(
+            nullptr, QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES, 0, nullptr));
+
+    uint32_t Flags = QUIC_REFRESH_LOCAL_ADDRESSES_NONE;
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->SetParam(
+            nullptr,
+            QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES,
+            sizeof(Flags),
+            &Flags));
+
+    Flags = QUIC_REFRESH_LOCAL_ADDRESSES_RESUBSCRIBE;
+    TEST_QUIC_SUCCEEDED(
+        MsQuic->SetParam(
+            nullptr,
+            QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES,
+            sizeof(Flags),
+            &Flags));
+
+    //
+    // A buffer that is neither absent nor the right size.
+    //
+    uint8_t Short[3] = {0};
+    TEST_QUIC_STATUS(
+        QUIC_STATUS_INVALID_PARAMETER,
+        MsQuic->SetParam(
+            nullptr,
+            QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES,
+            sizeof(Short),
+            Short));
+
+    TEST_QUIC_STATUS(
+        QUIC_STATUS_INVALID_PARAMETER,
+        MsQuic->SetParam(
+            nullptr,
+            QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES,
+            sizeof(Flags),
+            nullptr));
+
+    //
+    // An undefined bit. Rejected rather than ignored, because this parameter
+    // is meant to be called blindly and a typo that did nothing would never be
+    // noticed.
+    //
+    Flags = 0x80000000;
+    TEST_QUIC_STATUS(
+        QUIC_STATUS_INVALID_PARAMETER,
+        MsQuic->SetParam(
+            nullptr,
+            QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES,
+            sizeof(Flags),
+            &Flags));
+
+    //
+    // And with a monitor actually running, which the getter starts for the
+    // length of its own call -- not long enough to catch, so this starts one
+    // the honest way, with a connection configured to watch.
+    //
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(
+        Registration,
+        "MsQuicTest",
+        MsQuicSettings{}.SetAddAddressMode(QUIC_ADD_ADDRESS_MANUAL),
+        ClientCredConfig);
+    if (ClientConfiguration.IsValid()) {
+        MsQuicConnection Connection(Registration);
+        TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+        //
+        // Started so the monitor reference is taken. Where it connects does not
+        // matter -- nothing is listening, and the parameter is what is under
+        // test.
+        //
+        if (QUIC_SUCCEEDED(
+                Connection.Start(
+                    ClientConfiguration, QUIC_ADDRESS_FAMILY_INET, "127.0.0.1", 9))) {
+            TEST_QUIC_SUCCEEDED(
+                MsQuic->SetParam(
+                    nullptr, QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES, 0, nullptr));
+
+            Flags = QUIC_REFRESH_LOCAL_ADDRESSES_RESUBSCRIBE;
+            TEST_QUIC_SUCCEEDED(
+                MsQuic->SetParam(
+                    nullptr,
+                    QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES,
+                    sizeof(Flags),
+                    &Flags));
+        }
+    }
+}
+
 #if DEBUG
 
 //

@@ -937,4 +937,126 @@ TEST_F(AddressMonitorRealTest, Ipv4SecondaryIsNotTemporary)
     ASSERT_TRUE(Found);
 }
 
+//
+// A refresh is a wake-up, not a report: it asks the monitor to look again, and
+// a monitor that finds the same addresses says nothing. Validation is in the
+// shared layer, so the unknown-flag case is the same everywhere.
+//
+TEST_F(AddressMonitorRealTest, RefreshIsAcceptedAndSilentWhenNothingChanged)
+{
+    Observed State;
+
+    CXPLAT_ADDRESS_MONITOR_CONFIG Config;
+    CxPlatZeroMemory(&Config, sizeof(Config));
+    Config.Callback = ChangeCallback;
+    Config.Context = &State;
+    Config.DebounceMs = 50;
+
+    CXPLAT_ADDRESS_MONITOR* Monitor = nullptr;
+    ASSERT_TRUE(QUIC_SUCCEEDED(CxPlatAddressMonitorInitialize(nullptr, &Config, &Monitor)));
+
+    uint64_t Before = 0;
+    {
+        CXPLAT_LOCAL_ADDRESS* Addresses = nullptr;
+        uint32_t Count = 0;
+        ASSERT_TRUE(
+            QUIC_SUCCEEDED(
+                CxPlatAddressMonitorGetSnapshot(Monitor, &Addresses, &Count, &Before)));
+        if (Addresses != nullptr) {
+            CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+    }
+
+    ASSERT_EQ(
+        QUIC_STATUS_INVALID_PARAMETER,
+        CxPlatAddressMonitorRefresh(Monitor, 0x80000000));
+
+    ASSERT_TRUE(
+        QUIC_SUCCEEDED(
+            CxPlatAddressMonitorRefresh(Monitor, CXPLAT_ADDRESS_MONITOR_REFRESH_NONE)));
+    ASSERT_TRUE(
+        QUIC_SUCCEEDED(
+            CxPlatAddressMonitorRefresh(
+                Monitor, CXPLAT_ADDRESS_MONITOR_REFRESH_RESUBSCRIBE)));
+
+    //
+    // Several debounce windows, so a resync has certainly run.
+    //
+    CxPlatSleep(600);
+
+    uint64_t After = 0;
+    {
+        CXPLAT_LOCAL_ADDRESS* Addresses = nullptr;
+        uint32_t Count = 0;
+        ASSERT_TRUE(
+            QUIC_SUCCEEDED(
+                CxPlatAddressMonitorGetSnapshot(Monitor, &Addresses, &Count, &After)));
+        if (Addresses != nullptr) {
+            CXPLAT_FREE(Addresses, QUIC_POOL_DATAPATH_ADDRESSES);
+        }
+    }
+
+    //
+    // Nothing was asked to change, so nothing was reported and the generation
+    // stands. Asserted on a monitor over the real host, where an address
+    // appearing by itself mid-test is conceivable -- hence a skip rather than
+    // a failure if the host does move under the test.
+    //
+    std::lock_guard<std::mutex> Guard(State.Lock);
+    if (State.CallbackCount != 0) {
+        CxPlatAddressMonitorUninitialize(Monitor);
+        GTEST_SKIP() << "the host's addresses changed during the test";
+    }
+    ASSERT_EQ(Before, After);
+
+    CxPlatAddressMonitorUninitialize(Monitor);
+}
+
+//
+// The point of RESUBSCRIBE: the subscription is dropped and re-armed, and the
+// monitor still reports what happens afterwards. A backend that re-armed
+// badly -- the descriptor closed and not replaced, or a path monitor cancelled
+// and not restarted -- would pass the test above and fail this one.
+//
+TEST_F(AddressMonitorRealTest, RefreshWithResubscribeKeepsDelivering)
+{
+    if (!CanCreateInterface()) {
+        GTEST_SKIP() << "needs a network namespace; run under `unshare -rn`";
+    }
+
+    ASSERT_TRUE(Run("ip link add qmonresub type dummy"));
+    ASSERT_TRUE(Run("ip link set qmonresub up"));
+
+    Observed State;
+
+    CXPLAT_ADDRESS_MONITOR_CONFIG Config;
+    CxPlatZeroMemory(&Config, sizeof(Config));
+    Config.Callback = ChangeCallback;
+    Config.Context = &State;
+    Config.DebounceMs = 50;
+
+    CXPLAT_ADDRESS_MONITOR* Monitor = nullptr;
+    ASSERT_TRUE(QUIC_SUCCEEDED(CxPlatAddressMonitorInitialize(nullptr, &Config, &Monitor)));
+
+    ASSERT_TRUE(
+        QUIC_SUCCEEDED(
+            CxPlatAddressMonitorRefresh(
+                Monitor, CXPLAT_ADDRESS_MONITOR_REFRESH_RESUBSCRIBE)));
+
+    //
+    // Long enough for the thread to have acted on it, so the add below is
+    // delivered by the new subscription rather than the old one.
+    //
+    CxPlatSleep(300);
+
+    ASSERT_TRUE(Run("ip addr add 192.0.2.88/24 dev qmonresub"));
+    ASSERT_TRUE(WaitForChange(State, CXPLAT_ADDRESS_CHANGE_ADDED, "192.0.2.88"));
+
+    ASSERT_TRUE(Run("ip addr del 192.0.2.88/24 dev qmonresub"));
+    ASSERT_TRUE(WaitForChange(State, CXPLAT_ADDRESS_CHANGE_REMOVED, "192.0.2.88"));
+
+    CxPlatAddressMonitorUninitialize(Monitor);
+    Run("ip link del qmonresub >/dev/null 2>&1");
+}
+
 #endif

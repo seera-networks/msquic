@@ -61,6 +61,24 @@ tracepoint(CLOG_ADDRESS_MONITOR_LINUX_C, AllocFailure , arg2, arg3);\
 
 
 
+/*----------------------------------------------------------
+// Decoder Ring for LibraryError
+// [ lib] ERROR, %s.
+// QuicTraceEvent(
+                        LibraryError,
+                        "[ lib] ERROR, %s.",
+                        "address monitor resubscribe failed, keeping the old socket");
+// arg2 = arg2 = "address monitor resubscribe failed, keeping the old socket" = arg2
+----------------------------------------------------------*/
+#ifndef _clog_3_ARGS_TRACE_LibraryError
+#define _clog_3_ARGS_TRACE_LibraryError(uniqueId, encoded_arg_string, arg2)\
+tracepoint(CLOG_ADDRESS_MONITOR_LINUX_C, LibraryError , arg2);\
+
+#endif
+
+
+
+
 #ifdef __cplusplus
 }
 #endif

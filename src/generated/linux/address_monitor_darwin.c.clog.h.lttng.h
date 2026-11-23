@@ -44,3 +44,22 @@ TRACEPOINT_EVENT(CLOG_ADDRESS_MONITOR_DARWIN_C, AllocFailure,
         ctf_integer(uint64_t, arg3, arg3)
     )
 )
+
+
+
+/*----------------------------------------------------------
+// Decoder Ring for LibraryError
+// [ lib] ERROR, %s.
+// QuicTraceEvent(
+            LibraryError,
+            "[ lib] ERROR, %s.",
+            "nw_path_monitor_create failed");
+// arg2 = arg2 = "nw_path_monitor_create failed" = arg2
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_ADDRESS_MONITOR_DARWIN_C, LibraryError,
+    TP_ARGS(
+        const char *, arg2), 
+    TP_FIELDS(
+        ctf_string(arg2, arg2)
+    )
+)

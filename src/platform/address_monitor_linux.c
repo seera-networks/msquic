@@ -70,6 +70,21 @@ Abstract:
 typedef struct CXPLAT_ADDRESS_MONITOR_OS {
     int NetlinkFd;      // Subscription, read by the thread
     int ShutdownFd;     // eventfd, written once to stop the thread
+    //
+    // eventfd, written by CxPlatAddressMonitorOsRefresh. Separate from the
+    // shutdown one because the thread has to tell the two apart, and separate
+    // from the netlink socket because a refresh is not a notification: there
+    // is nothing to drain and nothing to learn from it beyond that someone
+    // asked.
+    //
+    int RefreshFd;
+    //
+    // Set by CxPlatAddressMonitorOsRefresh before it writes RefreshFd, read
+    // and cleared by the thread with the interlocked helpers, because both
+    // sides write it.
+    //
+    BOOLEAN volatile ResubscribePending;
+    uint32_t SubscribeGroups;   // What to re-bind to on a resubscribe
     CXPLAT_THREAD Thread;
     BOOLEAN ThreadStarted;
 } CXPLAT_ADDRESS_MONITOR_OS;
@@ -707,15 +722,18 @@ static CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
                     0 : (int)US_TO_MS_CEIL(DebounceDeadline - Now);
         }
 
-        struct pollfd PollFds[2];
+        struct pollfd PollFds[3];
         PollFds[0].fd = Os->ShutdownFd;
         PollFds[0].events = POLLIN;
         PollFds[0].revents = 0;
         PollFds[1].fd = Os->NetlinkFd;
         PollFds[1].events = POLLIN;
         PollFds[1].revents = 0;
+        PollFds[2].fd = Os->RefreshFd;
+        PollFds[2].events = POLLIN;
+        PollFds[2].revents = 0;
 
-        const int Ready = poll(PollFds, 2, Timeout);
+        const int Ready = poll(PollFds, 3, Timeout);
         if (Ready < 0) {
             if (errno == EINTR) {
                 continue;
@@ -741,6 +759,47 @@ static CXPLAT_THREAD_CALLBACK(CxPlatAddressMonitorThread, Context)
             BOOLEAN Notified = FALSE;
             CxPlatAddressMonitorDrain(Os->NetlinkFd, &Notified, &RouteChanged);
             if (Notified && !DebouncePending) {
+                DebouncePending = TRUE;
+                DebounceDeadline = CxPlatTimeUs64() + MS_TO_US(Monitor->DebounceMs);
+            }
+        }
+
+        if (PollFds[2].revents != 0) {
+            //
+            // A refresh. Read so the eventfd does not stay signalled; the
+            // counter's value says how many were asked for and is of no
+            // interest, since one resync answers all of them.
+            //
+            uint64_t Ignored;
+            while (read(Os->RefreshFd, &Ignored, sizeof(Ignored)) > 0) {
+                // Drained when the read fails with EAGAIN.
+            }
+
+            if (InterlockedFetchAndClearBoolean(&Os->ResubscribePending)) {
+                //
+                // Re-opened rather than reused: the point of a resubscribe is
+                // a subscription the caller believes is no longer delivering.
+                // A notification arriving in the gap is not lost, because the
+                // resync below re-enumerates everything anyway.
+                //
+                int NewFd = -1;
+                if (QUIC_SUCCEEDED(CxPlatNetlinkOpen(Os->SubscribeGroups, &NewFd)) &&
+                    NewFd >= 0) {
+                    close(Os->NetlinkFd);
+                    Os->NetlinkFd = NewFd;
+                } else {
+                    //
+                    // Kept rather than dropped: a subscription that may be
+                    // stale still beats none, and the refresh itself resyncs.
+                    //
+                    QuicTraceEvent(
+                        LibraryError,
+                        "[ lib] ERROR, %s.",
+                        "address monitor resubscribe failed, keeping the old socket");
+                }
+            }
+
+            if (!DebouncePending) {
                 DebouncePending = TRUE;
                 DebounceDeadline = CxPlatTimeUs64() + MS_TO_US(Monitor->DebounceMs);
             }
@@ -801,12 +860,14 @@ CxPlatAddressMonitorOsInitialize(
     CxPlatZeroMemory(Os, sizeof(*Os));
     Os->NetlinkFd = -1;
     Os->ShutdownFd = -1;
+    Os->RefreshFd = -1;
     Monitor->Os = Os;
 
     uint32_t Groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR;
     if (Monitor->WatchRoutes) {
         Groups |= RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE;
     }
+    Os->SubscribeGroups = Groups;
 
     //
     // Subscribed before the first enumeration, not after, so that a change
@@ -826,6 +887,18 @@ CxPlatAddressMonitorOsInitialize(
             "[ lib] ERROR, %u, %s.",
             Error,
             "eventfd(address monitor) failed");
+        Status = CxPlatAddressMonitorStatusFromError(Error);
+        goto Error;
+    }
+
+    Os->RefreshFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    if (Os->RefreshFd == -1) {
+        const int Error = errno;
+        QuicTraceEvent(
+            LibraryErrorStatus,
+            "[ lib] ERROR, %u, %s.",
+            Error,
+            "eventfd(address monitor refresh) failed");
         Status = CxPlatAddressMonitorStatusFromError(Error);
         goto Error;
     }
@@ -899,6 +972,44 @@ Error:
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorOsRefresh(
+    _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _In_ uint32_t Flags
+    )
+{
+    CXPLAT_ADDRESS_MONITOR_OS* Os = Monitor->Os;
+
+    if (Flags & CXPLAT_ADDRESS_MONITOR_REFRESH_RESUBSCRIBE) {
+        //
+        // Set before the wake, so a thread that sees the eventfd also sees
+        // this.
+        //
+        (void)InterlockedFetchAndSetBoolean(&Os->ResubscribePending);
+    }
+
+    const uint64_t One = 1;
+    if (write(Os->RefreshFd, &One, sizeof(One)) != sizeof(One)) {
+        const int Error = errno;
+        //
+        // EAGAIN means the counter is already at its maximum, which only
+        // happens if the thread has not drained it yet -- the refresh it has
+        // not acted on covers this one, so that is success.
+        //
+        if (Error != EAGAIN) {
+            QuicTraceEvent(
+                LibraryErrorStatus,
+                "[ lib] ERROR, %u, %s.",
+                Error,
+                "write(address monitor refresh) failed");
+            return CxPlatAddressMonitorStatusFromError(Error);
+        }
+    }
+
+    return QUIC_STATUS_SUCCESS;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 void
 CxPlatAddressMonitorOsUninitialize(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor
@@ -925,6 +1036,7 @@ CxPlatAddressMonitorOsUninitialize(
     }
 
     close(Os->ShutdownFd);
+    close(Os->RefreshFd);
     close(Os->NetlinkFd);
     CXPLAT_FREE(Os, QUIC_POOL_DATAPATH_ADDRESSES);
     Monitor->Os = NULL;
