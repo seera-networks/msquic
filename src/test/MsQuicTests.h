@@ -827,6 +827,11 @@ QuicTestMultipathPathDeath(
     );
 
 void
+QuicTestMultipathBackupPathSurvivesActivePathDeath(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestMultipathPathValidationFailed(
     _In_ const FamilyArgs& Params
     );

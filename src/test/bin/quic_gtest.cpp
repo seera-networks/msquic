@@ -977,6 +977,17 @@ TEST_P(WithFamilyArgs, MultipathPathDeath) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathBackupPathSurvivesActivePathDeath) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathBackupPathSurvivesActivePathDeath", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(
+            InvokeKernelTest(
+                FUNC(QuicTestMultipathBackupPathSurvivesActivePathDeath), GetParam()));
+    } else {
+        QuicTestMultipathBackupPathSurvivesActivePathDeath(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, MultipathPathValidationFailed) {
     TestLoggerT<ParamType> Logger("QuicTestMultipathPathValidationFailed", GetParam());
     if (TestingKernelMode) {

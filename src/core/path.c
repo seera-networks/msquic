@@ -111,15 +111,40 @@ QuicPathGetActive(
 {
     CXPLAT_DBG_ASSERT(PathSet->Count > 0);
     //
-    // Upstream also asserts Paths[0].IsActive here. Under multipath IsActive is
-    // per path and the path in slot 0 can be closed while others still carry
-    // traffic, so what slot 0 means on this fork is "the path connection-level
-    // work runs on", not "the one active path".
+    // Upstream asserts Paths[0].IsActive here, and off multipath that still
+    // holds: slot 0 is the active path, and QuicPathSetActive swaps it there.
     //
+    // Under multipath it says nothing. IsActive is the per-path preference the
+    // peer was told with PATH_AVAILABLE and PATH_BACKUP, several paths carry it
+    // at once, and slot 0 is just "the path connection-level work runs on".
+    // Three states reach here with slot 0 not active:
+    //
+    //  - slot 0 closed while others still carry traffic, which the earlier
+    //    relaxation allowed;
+    //  - a connection whose only remaining paths are backups, which is what a
+    //    backup counting as usable buys (#228) -- the active path is abandoned
+    //    and the connection goes on;
+    //  - and then QuicPathRemove taking the abandoned path away, which shifts
+    //    one of those backups into slot 0.
+    //
+    // The last one aborted here: a live backup in slot 0 is neither active nor
+    // closed. Keeping the assertion for the single-path case and dropping it
+    // for multipath is the whole of the fix -- there is no invariant left to
+    // assert there, and inventing one would mean promoting a backup behind the
+    // application's back.
+    //
+    // NOLINTBEGIN(clang-analyzer-security.ArrayBound): False positive: the
+    // path set is a member of the connection, so walking back to it is in
+    // bounds -- which the analyser cannot see from the offset arithmetic.
+    const QUIC_CONNECTION* Connection =
+        CXPLAT_CONTAINING_RECORD(PathSet, QUIC_CONNECTION, Paths);
     CXPLAT_DBG_ASSERT(
+        Connection->State.MultipathNegotiated ||
         PathSet->Paths[0].IsActive ||
         PathSet->Paths[0].LocalClose ||
         PathSet->Paths[0].RemoteClose);
+    // NOLINTEND(clang-analyzer-security.ArrayBound)
+    UNREFERENCED_PARAMETER(Connection); // The assert is all that reads it.
     return (QUIC_PATH*)&PathSet->Paths[0];
 }
 
@@ -934,6 +959,33 @@ QuicConnGetPathForPacket(
     return Path;
 }
 
+//
+// Whether this path could carry a packet right now: nothing has closed it, and
+// the send path would accept it. The second half is
+// QuicPacketBuilderInitialize read backwards -- it refuses a path whose path
+// ID is missing or whose path ID has no source CID ("No src CID to send
+// with"), and asserts a destination CID -- because a path the builder turns
+// away is not a path, however healthy the network under it looks.
+//
+// The destination CID is the one of those that is routine rather than
+// exceptional: a path ID whose CIDs the peer has not issued yet sits here with
+// none, asking for them (#196), and cannot send until they arrive.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicPathCanSend(
+    _In_ const QUIC_PATH* Path
+    )
+{
+    return
+        !Path->LocalClose &&
+        !Path->RemoteClose &&
+        Path->PathID != NULL &&
+        Path->PathID->SourceCids.Next != NULL &&
+        Path->DestCid != NULL;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 _Ret_notnull_
 QUIC_PATH*
@@ -947,23 +999,21 @@ QuicConnChoosePath(
         QUIC_PATH* ActivePaths[QUIC_MAX_PATH_COUNT];
         uint8_t ActivePathCount = 0;
         for (uint8_t i = 0; i < Connection->Paths.Count; ++i) {
+            //
+            // QuicPathCanSend is what #213 asked for and a little more: a path
+            // with no path ID is not a candidate, and neither is one the
+            // builder would refuse for want of CIDs.
+            //
+            // None of those is a half-built path to be tolerated for a
+            // moment. QuicConnAssignPathIDs leaves a path here on purpose when
+            // no path ID is free, to be picked up when one is, and a path ID
+            // waits here for CIDs the peer has not issued. Until then the path
+            // cannot carry anything, so choosing it spends a flush on a path
+            // that cannot send -- and the trace below used to read PathID->ID
+            // through the NULL and take the process with it.
+            //
             if (Connection->Paths.Paths[i].IsActive &&
-                !Connection->Paths.Paths[i].LocalClose &&
-                !Connection->Paths.Paths[i].RemoteClose &&
-                //
-                // A path with no path ID is not a candidate, which is #213.
-                //
-                // It is not a half-built path to be tolerated for a moment
-                // either: QuicConnAssignPathIDs leaves one here on purpose
-                // when no path ID is free, to be picked up when one is. Until
-                // then the path cannot carry anything --
-                // QuicPacketBuilderInitialize refuses a path whose path ID has
-                // no source CID ("No src CID to send with") -- so choosing it
-                // spends a flush on a path that cannot send, and the trace
-                // below used to read PathID->ID through the NULL and take the
-                // process with it.
-                //
-                Connection->Paths.Paths[i].PathID != NULL) {
+                QuicPathCanSend(&Connection->Paths.Paths[i])) {
                 ActivePaths[ActivePathCount++] = &Connection->Paths.Paths[i];
             }
         }
@@ -971,6 +1021,33 @@ QuicConnChoosePath(
             uint8_t Random;
             CxPlatRandom(sizeof(Random), &Random);
             Path = ActivePaths[Random % ActivePathCount];
+        } else if (!QuicPathCanSend(Path)) {
+            //
+            // No active path left and slot 0 cannot send -- the state the
+            // connection is in the instant its last active path is abandoned,
+            // since the abandoned path is usually slot 0 itself.
+            //
+            // Falling through to it would put the PATH_ABANDON frame that
+            // announces the abandonment on the path being abandoned, and every
+            // packet after it too, until the application promotes a backup.
+            // draft-ietf-quic-multipath section 3.4 recommends another path
+            // for that frame for exactly this reason, and an application that
+            // does not watch for PATH_REMOVED would not be sending into a hole
+            // for a moment but until the idle timeout.
+            //
+            // This does not overrule the preference PATH_BACKUP expressed:
+            // that preference is between paths that can carry traffic, and the
+            // alternative here is a path that cannot. Which backup to promote
+            // is still the application's to decide -- the first that can send
+            // will do until it does, and the moment it does, IsActive is
+            // honoured again above.
+            //
+            for (uint8_t i = 0; i < Connection->Paths.Count; ++i) {
+                if (QuicPathCanSend(&Connection->Paths.Paths[i])) {
+                    Path = &Connection->Paths.Paths[i];
+                    break;
+                }
+            }
         }
     }
 
@@ -995,6 +1072,32 @@ QuicConnChoosePath(
     return Path;
 }
 
+//
+// A path declared backup counts here, and that is the point of this function.
+// PATH_BACKUP says "prefer not to send here", not "cannot": QuicConnChoosePath
+// honours the preference while any active path remains, and an application can
+// promote a backup the moment it needs to. The question here is whether the
+// connection has anywhere left to go at all, and a live backup is somewhere.
+//
+// Testing IsActive answered a different question and made a reasonable
+// application fragile. A sender spreads traffic over every active path --
+// QuicConnChoosePath picks among them at random -- so an application that
+// wants one stable path has to declare every other one backup. With that done
+// the only active path is the one carrying traffic, so when *it* died both
+// callers, loss detection giving up on a path and a path validation that timed
+// out, found "no other usable path" and closed the whole connection.
+//
+// Two things this test deliberately does not ask:
+//
+//  - whether the other path has been validated. Under multipath IsActive is
+//    only set once PATH_RESPONSE arrives, so requiring it also excluded a path
+//    whose challenge is still in flight -- a path the application has just
+//    added and is waiting on. One of those is worth keeping the connection for:
+//    if it never comes up, its own validation timeout closes the connection a
+//    few PTOs later, which is a later close and not a missed one.
+//  - whether the application prefers it, which is IsActive and is the thing
+//    this function used to get wrong.
+//
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicConnHasOtherUsablePath(
@@ -1014,35 +1117,12 @@ QuicConnHasOtherUsablePath(
     for (uint8_t i = 0; i < Connection->Paths.Count; ++i) {
         const QUIC_PATH* Path = &Connection->Paths.Paths[i];
         //
-        // **A path declared backup counts, and that is the point of this
-        // function.** PATH_BACKUP says "prefer not to send here", not "cannot":
-        // QuicConnChoosePath honours the preference while any active path
-        // remains, and an application can promote a backup the moment it needs
-        // to. The question here is whether the connection has anywhere left to
-        // go at all, which a live backup path is.
+        // QuicPathCanSend, not a test of its own: a path that the send path
+        // would turn away is not somewhere to go. Answering otherwise would
+        // get this wrong in the opposite direction -- abandon the dead path,
+        // then have nothing that can carry the PATH_ABANDON frame.
         //
-        // Testing IsActive answered a different question and made a reasonable
-        // application fragile. A sender that spreads traffic over every active
-        // path -- QuicConnChoosePath picks among them at random -- forces an
-        // application that wants one stable path to declare every other one
-        // backup. With that done, the only active path is the one carrying
-        // traffic, so when *it* died both callers -- loss detection giving up
-        // on a path, and a path validation that timed out -- found "no other
-        // usable path" and closed the whole connection: a path failure became a connection
-        // failure, for the application that had followed the mechanism this
-        // fork offers it.
-        //
-        // The path ID test is new here and is the other half of being usable:
-        // QuicConnChoosePath already refuses a path without one (#213) and
-        // QuicPacketBuilderInitialize refuses to send on it ("No src CID to
-        // send with"), so counting such a path would answer this question
-        // wrongly in the opposite direction -- abandon the dead path, then have
-        // nothing that can actually carry the PATH_ABANDON frame.
-        //
-        if (Path != ExcludedPath &&
-            !Path->LocalClose &&
-            !Path->RemoteClose &&
-            Path->PathID != NULL) {
+        if (Path != ExcludedPath && QuicPathCanSend(Path)) {
             return TRUE;
         }
     }

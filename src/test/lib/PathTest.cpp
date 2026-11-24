@@ -1747,6 +1747,13 @@ struct PathDeathClientContext {
     CxPlatEvent ShutdownEvent;
     CxPlatEvent StreamCountEvent;
     MsQuicConnection* Connection {nullptr};
+    //
+    // The path id and local port the last PATH_ADDED carried. Nothing else
+    // tells an application which path id a path it just added was given, and
+    // QUIC_PARAM_CONN_PATH_STATUS is named by path id.
+    //
+    uint32_t AddedPathId {UINT32_MAX};
+    uint16_t AddedPathLocalPort {0};
 
     static QUIC_STATUS ConnCallback(_In_ MsQuicConnection* Conn, _In_opt_ void* Context, _Inout_ QUIC_CONNECTION_EVENT* Event) {
         PathDeathClientContext* Ctx = static_cast<PathDeathClientContext*>(Context);
@@ -1758,6 +1765,9 @@ struct PathDeathClientContext {
         } else if (Event->Type == QUIC_CONNECTION_EVENT_CONNECTED) {
             Ctx->HandshakeCompleteEvent.Set();
         } else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_ADDED) {
+            Ctx->AddedPathId = Event->PATH_ADDED.PathId;
+            Ctx->AddedPathLocalPort =
+                QuicAddrGetPort(Event->PATH_ADDED.LocalAddress);
             Ctx->PathAddedEvent.Set();
         } else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_REMOVED) {
             Ctx->PathRemovedEvent.Set();
@@ -1793,6 +1803,42 @@ struct PathBlackholeHelper : public DatapathHook
             Armed &&
             (QuicAddrGetPort(&Datagram->Route->LocalAddress) == PathPort ||
              QuicAddrGetPort(&Datagram->Route->RemoteAddress) == PathPort);
+    }
+};
+
+//
+// Drops what the peer would receive from one local port, and nothing in the
+// other direction.
+//
+// One direction matters because an acknowledgement is sent on whichever path
+// QuicConnChoosePath picks, not on the path that received the packet it
+// acknowledges. Dropping both directions on one path therefore strands the
+// acks for *every* path ID behind it, and the peer watches its healthy path go
+// unacknowledged too. Blocking only the sends from this port leaves that
+// return path intact, so the path under test is the only one that dies.
+//
+struct PathOneWayBlackholeHelper : public DatapathHook
+{
+    uint16_t SourcePort;
+    bool Armed {false};
+    PathOneWayBlackholeHelper(uint16_t Port) : SourcePort(Port) {
+        DatapathHooks::Instance->AddHook(this);
+    }
+    ~PathOneWayBlackholeHelper() {
+        DatapathHooks::Instance->RemoveHook(this);
+    }
+    _IRQL_requires_max_(DISPATCH_LEVEL)
+    BOOLEAN
+    Receive(
+        _Inout_ struct CXPLAT_RECV_DATA* Datagram
+        ) {
+        //
+        // The receiver's remote address is the sender's local one, so this is
+        // "sent from SourcePort" seen from the other end.
+        //
+        return
+            Armed &&
+            QuicAddrGetPort(&Datagram->Route->RemoteAddress) == SourcePort;
     }
 };
 
@@ -1907,6 +1953,178 @@ QuicTestMultipathPathDeath(
     //
     const uint32_t PathDeathTimeout = 5000;
     TEST_TRUE(ClientContext.PathRemovedEvent.WaitTimeout(PathDeathTimeout));
+}
+
+//
+// The shape #228 is about: an application that wants one stable path has to
+// declare every other path backup, because QuicConnChoosePath spreads traffic
+// over all the active ones. Having done that, the death of the single active
+// path used to take the connection with it -- QuicConnHasOtherUsablePath
+// counted only active paths, so a healthy backup was no path at all.
+//
+// So: two paths, the second declared backup, and the *first* one blackholed.
+// The connection has to lose the path and keep going, and keep going means
+// carrying traffic in both directions afterwards -- on the backup, which is
+// all that is left.
+//
+void
+QuicTestMultipathBackupPathSurvivesActivePathDeath(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    //
+    // The two sides get different disconnect timeouts on purpose, and the
+    // reason is worth knowing before reading the rest.
+    //
+    // An acknowledgement is sent on whichever path QuicConnChoosePath picks,
+    // not on the path that received the packet it acknowledges. So while the
+    // client's only active path is blackholed, the client's acks for packets
+    // the server sent on the *backup* path are lost with everything else, and
+    // the server watches its healthy path go unacknowledged too. Give the
+    // server the same short timeout and it abandons both path IDs and closes
+    // the connection before the client has even noticed its own path is dead.
+    //
+    // So: a short timeout on the client, which is the side under test, and a
+    // long one on the server, which only has to stay alive long enough for the
+    // client to move to the backup and its acks to start arriving again.
+    //
+    const uint32_t ClientDisconnectTimeoutMs = 300;
+    const uint32_t ServerDisconnectTimeoutMs = 20000;
+
+    PathTestContext Context;
+    PathDeathClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings ServerSettings;
+    ServerSettings.SetMultipathEnabled(TRUE).SetDisconnectTimeoutMs(ServerDisconnectTimeoutMs);
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", ServerSettings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicSettings ClientSettings;
+    ClientSettings.SetMultipathEnabled(TRUE).SetDisconnectTimeoutMs(ClientDisconnectTimeoutMs);
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", ClientSettings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(Registration, ServerConfiguration, PathTestContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration, MsQuicCleanUpMode::CleanUpManual, PathDeathClientContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+
+    Connection.SetShareUdpBinding();
+
+    //
+    // Keeps the first path carrying packets, so its loss detection has
+    // something outstanding to time out on once the blackhole is armed.
+    //
+    Connection.SetSettings(MsQuicSettings{}.SetKeepAlive(25));
+
+    TEST_QUIC_SUCCEEDED(Connection.Start(ClientConfiguration, ServerLocalAddr.GetFamily(), QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()), ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    QuicAddr FirstLocalAddr, SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(FirstLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    PathProbeHelper* ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+    TEST_NOT_EQUAL(nullptr, ProbeHelper);
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    int Try = 0;
+    do {
+        Status = Connection.SetParam(
+            QUIC_PARAM_CONN_ADD_PATH,
+            sizeof(PathParam),
+            &PathParam);
+        if (QUIC_FAILED(Status)) {
+            delete ProbeHelper;
+            SecondLocalAddr.SetEphemeralPort();
+            ProbeHelper = new(std::nothrow) PathProbeHelper(SecondLocalAddr.GetPort());
+            PathParam.LocalAddress = &SecondLocalAddr.SockAddr;
+        }
+    } while (QUIC_FAILED(Status) && ++Try <= 3);
+    if (QUIC_FAILED(Status)) {
+        delete ProbeHelper;
+    }
+    TEST_QUIC_SUCCEEDED(Status);
+
+    TEST_TRUE(ProbeHelper->ServerReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ProbeHelper->ClientReceiveProbeEvent.WaitTimeout(TestWaitTimeout));
+    delete ProbeHelper;
+
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+
+    //
+    // The second path, which validating has just made active, is declared
+    // backup: the application wants its traffic on the first path only. This
+    // is the lever that made the bug reachable, and the only one the API
+    // offers for it.
+    //
+    TEST_EQUAL(SecondLocalAddr.GetPort(), ClientContext.AddedPathLocalPort);
+    TEST_NOT_EQUAL(UINT32_MAX, ClientContext.AddedPathId);
+    QUIC_PATH_STATUS BackupStatus = { ClientContext.AddedPathId, FALSE };
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(
+            QUIC_PARAM_CONN_PATH_STATUS, sizeof(BackupStatus), &BackupStatus));
+
+    //
+    // One active path and one live backup. Kill the active one, in the
+    // direction that makes it look dead to the client without taking the
+    // client's acknowledgements for the backup path with it.
+    //
+    PathOneWayBlackholeHelper Blackhole(FirstLocalAddr.GetPort());
+    Blackhole.Armed = true;
+
+    //
+    // The path goes, not the connection. Before #228 this was a
+    // QuicConnCloseLocally with QUIC_STATUS_CONNECTION_TIMEOUT and no
+    // PATH_REMOVED at all.
+    //
+    const uint32_t PathDeathTimeout = 10000;
+    TEST_TRUE(ClientContext.PathRemovedEvent.WaitTimeout(PathDeathTimeout));
+    TEST_FALSE(ClientContext.ShutdownEvent.WaitTimeout(100));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    //
+    // And it still works. Both directions, because the abandoned path is
+    // typically slot 0 and QuicConnChoosePath falls back to slot 0 when no
+    // active path is left: without the fallback test added with this, every
+    // packet after the abandonment -- including the PATH_ABANDON frame itself
+    // -- goes onto the path just abandoned, and the connection is up in name
+    // only.
+    //
+    // Driven with the stream-count pokes the other multipath tests use: a
+    // settings change the peer has to receive, acknowledge and report.
+    //
+    ClientContext.StreamCountEvent.Reset();
+    Context.PeerStreamChangedEvent.Reset();
+
+    MsQuicSettings UpdatedSettings;
+    Context.Connection->GetSettings(&UpdatedSettings);
+    UpdatedSettings.IsSetFlags = 0;
+    UpdatedSettings.SetPeerBidiStreamCount(UpdatedSettings.PeerBidiStreamCount + 1);
+    Context.Connection->SetSettings(UpdatedSettings);
+    TEST_TRUE(ClientContext.StreamCountEvent.WaitTimeout(TestWaitTimeout));
+
+    Connection.GetSettings(&UpdatedSettings);
+    UpdatedSettings.IsSetFlags = 0;
+    UpdatedSettings.SetPeerBidiStreamCount(UpdatedSettings.PeerBidiStreamCount + 1);
+    Connection.SetSettings(UpdatedSettings);
+    TEST_TRUE(Context.PeerStreamChangedEvent.WaitTimeout(TestWaitTimeout));
 }
 
 void
