@@ -1013,10 +1013,36 @@ QuicConnHasOtherUsablePath(
 
     for (uint8_t i = 0; i < Connection->Paths.Count; ++i) {
         const QUIC_PATH* Path = &Connection->Paths.Paths[i];
+        //
+        // **A path declared backup counts, and that is the point of this
+        // function.** PATH_BACKUP says "prefer not to send here", not "cannot":
+        // QuicConnChoosePath honours the preference while any active path
+        // remains, and an application can promote a backup the moment it needs
+        // to. The question here is whether the connection has anywhere left to
+        // go at all, which a live backup path is.
+        //
+        // Testing IsActive answered a different question and made a reasonable
+        // application fragile. A sender that spreads traffic over every active
+        // path -- QuicConnChoosePath picks among them at random -- forces an
+        // application that wants one stable path to declare every other one
+        // backup. With that done, the only active path is the one carrying
+        // traffic, so when *it* died both callers -- loss detection giving up
+        // on a path, and a path validation that timed out -- found "no other
+        // usable path" and closed the whole connection: a path failure became a connection
+        // failure, for the application that had followed the mechanism this
+        // fork offers it.
+        //
+        // The path ID test is new here and is the other half of being usable:
+        // QuicConnChoosePath already refuses a path without one (#213) and
+        // QuicPacketBuilderInitialize refuses to send on it ("No src CID to
+        // send with"), so counting such a path would answer this question
+        // wrongly in the opposite direction -- abandon the dead path, then have
+        // nothing that can actually carry the PATH_ABANDON frame.
+        //
         if (Path != ExcludedPath &&
-            Path->IsActive &&
             !Path->LocalClose &&
-            !Path->RemoteClose) {
+            !Path->RemoteClose &&
+            Path->PathID != NULL) {
             return TRUE;
         }
     }
