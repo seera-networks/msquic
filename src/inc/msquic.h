@@ -143,6 +143,22 @@ typedef enum QUIC_ADD_ADDRESS_MODE {
 } QUIC_ADD_ADDRESS_MODE;
 
 //
+// Flags for QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES.
+//
+typedef enum QUIC_REFRESH_LOCAL_ADDRESSES_FLAGS {
+    QUIC_REFRESH_LOCAL_ADDRESSES_NONE           = 0x00000000,
+    //
+    // Also have the platform drop and re-arm its subscription, for one that
+    // may have been left stale rather than merely behind. This is the iOS
+    // case: a suspended process receives no path updates at all.
+    //
+    // Honoured on Apple and Linux. Accepted elsewhere, where a subscription
+    // does not go stale, and behaves as a plain refresh.
+    //
+    QUIC_REFRESH_LOCAL_ADDRESSES_RESUBSCRIBE    = 0x00000001,
+} QUIC_REFRESH_LOCAL_ADDRESSES_FLAGS;
+
+//
 // DEPRECATED. Setting QUIC_SETTINGS.LocalAddressChangeMode has no effect; it is
 // accepted and ignored. QUIC_ADD_ADDRESS_MODE governs the host's own addresses
 // as well as the peer's -- AUTO behaves as this setting's AUTO did, MANUAL as
@@ -1161,6 +1177,7 @@ void
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
 #define QUIC_PARAM_GLOBAL_XDP_MAP_CONFIG                0x0100000E  // QUIC_XDP_MAP_CONFIG[]
 #define QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES               0x0100000F  // QUIC_ADDR[] - Get-only. The host's usable local addresses, port zero.
+#define QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES       0x01000010  // No payload, or uint32_t of QUIC_REFRESH_LOCAL_ADDRESSES_FLAGS. Set-only.
 #endif
 
 //

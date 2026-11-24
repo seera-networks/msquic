@@ -140,6 +140,8 @@ if (Status == QUIC_STATUS_BUFFER_TOO_SMALL) {
 
 To be told when this set changes rather than polling it, set `QUIC_SETTINGS.AddAddressMode` to `QUIC_ADD_ADDRESS_MANUAL` and handle [QUIC_CONNECTION_EVENT_LOCAL_ADDRESSES_CHANGED](QUIC_CONNECTION_EVENT.md#quic_connection_event_local_addresses_changed). (`QUIC_SETTINGS.LocalAddressChangeMode` used to control this and is now deprecated and ignored.)
 
+On iOS, where a suspended process receives no platform notifications at all, an application should also set [QUIC_PARAM_GLOBAL_REFRESH_LOCAL_ADDRESSES](SetParam.md#quic_param_global_refresh_local_addresses) when it returns to the foreground, so that a change it slept through is noticed.
+
 # See Also
 
 [Settings](../Settings.md#api-object-parameters)<br>

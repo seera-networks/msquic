@@ -262,6 +262,12 @@ fn cmake_build() {
             //
             println!("cargo:rustc-link-lib=framework=CoreFoundation");
             println!("cargo:rustc-link-lib=framework=Security");
+            //
+            // Network framework backs the address monitor's nw_path_monitor
+            // subscription, which is how iOS -- with no routing socket -- sees
+            // address changes at all.
+            //
+            println!("cargo:rustc-link-lib=framework=Network");
         } else if target_os == "windows" {
             // Windows system libraries that the static msquic.lib depends on.
             // These are excluded from the monolithic archive (via the inc/base_link

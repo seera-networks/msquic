@@ -29,22 +29,28 @@ extern "C" {
 #endif
 
 //
-// macOS specifically. Not "anything that is not Linux", because FreeBSD shares
-// the kqueue datapath and has no backend here; and not iOS, because the iOS
-// SDK does not ship net/route.h at all -- routing sockets are not available to
-// an application there, so there is no notification source to build on.
+// Apple, both macOS and iOS. Not "anything that is not Linux", because FreeBSD
+// shares the kqueue datapath and has no backend here.
 //
-// iOS therefore stays on the not-supported stub rather than getting the
-// enumeration with no subscription behind it. A monitor that answers
-// successfully and never reports a change would be worse than none: an
-// application that set NOTIFY or AUTO would believe it had address tracking
-// that could not possibly fire, with nothing to detect that from. #138 records
-// nw_path_monitor as what iOS would need instead.
+// The two differ in where notifications come from, and the backend picks with
+// CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET below: the iOS SDK ships no net/route.h,
+// so there is no routing socket for an application to subscribe to, and iOS
+// uses nw_path_monitor instead (#223). The enumeration is getifaddrs on both.
 //
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
-#if TARGET_OS_OSX
 #define CXPLAT_ADDRESS_MONITOR_SUPPORTED 1
+#if TARGET_OS_OSX
+//
+// The routing socket, and with it the IPv6 per-address flags: SIOCGIFAFLAG_IN6
+// and netinet6/in6_var.h are macOS-only as well. On iOS the TEMPORARY and
+// DEPRECATED flags are therefore never set and an address in duplicate address
+// detection cannot be recognised -- Apple exposes no public way to ask. Only
+// public interfaces are used rather than declaring the ioctl locally, so what
+// iOS cannot answer is left unanswered; CxPlatAddressMonitorFilter treats a
+// missing flag the same way it does for a platform that tracks no lifetimes.
+//
+#define CXPLAT_ADDRESS_MONITOR_ROUTE_SOCKET 1
 #endif
 #endif
 
@@ -179,6 +185,22 @@ CxPlatAddressMonitorOsEnumerate(
     _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
     _Outptr_result_buffer_maybenull_(*RawCount) CXPLAT_ADDRESS_MONITOR_RAW_ADDRESS** Raw,
     _Out_ uint32_t* RawCount
+    );
+
+//
+// Posts a refresh to the backend's own execution context: re-examine the
+// addresses now, as a notification would have. Flags are
+// CXPLAT_ADDRESS_MONITOR_REFRESH_FLAGS, already validated by the shared layer.
+//
+// Must not block, and must not enumerate on the calling thread -- an
+// application calls this from its foreground transition, on whatever thread
+// that is.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+CxPlatAddressMonitorOsRefresh(
+    _Inout_ CXPLAT_ADDRESS_MONITOR* Monitor,
+    _In_ uint32_t Flags
     );
 
 //

@@ -203,6 +203,10 @@ QuicTestGetLocalAddressesParam(
     );
 
 void
+QuicTestRefreshLocalAddressesParam(
+    );
+
+void
 QuicTestLocalAddressChangeAuto(
     );
 

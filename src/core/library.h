@@ -568,6 +568,21 @@ QuicLibraryAddRefAddressMonitor(
     );
 
 //
+// Asks a monitor that is already running to re-examine the host's addresses,
+// as a platform notification would. Does not start one: an application calls
+// this when it suspects it missed notifications, and whether anything is
+// watching is not its business. QUIC_STATUS_SUCCESS and nothing done when no
+// monitor is running -- which includes a platform with no backend, where one
+// never can be. An application learns that from
+// QUIC_PARAM_GLOBAL_LOCAL_ADDRESSES, which does start one.
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+QUIC_STATUS
+QuicLibraryRefreshAddressMonitor(
+    _In_ uint32_t Flags
+    );
+
+//
 // Releases a reference taken by QuicLibraryAddRefAddressMonitor, stopping the
 // monitor when the last one goes.
 //
