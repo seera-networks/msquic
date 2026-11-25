@@ -26,7 +26,7 @@ class PathTest : public ::testing::Test {
 protected:
     QUIC_CONNECTION Connection{};
     QUIC_PATHID PathID{};
-    QUIC_CID_SLIST_ENTRY SourceCid{};
+    QUIC_CID_SLIST_ENTRY* SourceCid{nullptr};
     QUIC_CID_LIST_ENTRY* EmptyCid{nullptr};
 
     void SetUp() override
@@ -55,7 +55,14 @@ protected:
         // of each so that a path in this fixture is sendable by default, and a
         // test that wants the opposite takes one away.
         //
-        PathID.SourceCids.Next = &SourceCid.Link;
+        // Allocated rather than embedded: a CID entry ends in a zero-length
+        // array, which MSVC refuses as a member ("illegal zero-sized array"),
+        // and QuicCidNewNullSource allocates exactly this for a zero-length
+        // source CID.
+        //
+        SourceCid = QuicCidNewNullSource(&PathID);
+        ASSERT_NE(nullptr, SourceCid);
+        PathID.SourceCids.Next = &SourceCid->Link;
 
         EmptyCid = QuicCidNewDestination(0, nullptr);
         ASSERT_NE(nullptr, EmptyCid);
@@ -64,6 +71,7 @@ protected:
     void TearDown() override
     {
         CXPLAT_FREE(EmptyCid, QUIC_POOL_CIDLIST);
+        CXPLAT_FREE(SourceCid, QUIC_POOL_CIDSLIST);
     }
 
     void InitializePaths(uint8_t Count)
@@ -293,7 +301,7 @@ TEST_F(PathTest, HasOtherUsablePathRejectsWhatCannotSend)
 
     PathID.SourceCids.Next = nullptr;
     ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, Excluded));
-    PathID.SourceCids.Next = &SourceCid.Link;
+    PathID.SourceCids.Next = &SourceCid->Link;
 
     Other->LocalClose = TRUE;
     ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, Excluded));
