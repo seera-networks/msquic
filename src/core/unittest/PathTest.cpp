@@ -26,6 +26,7 @@ class PathTest : public ::testing::Test {
 protected:
     QUIC_CONNECTION Connection{};
     QUIC_PATHID PathID{};
+    QUIC_CID_SLIST_ENTRY SourceCid{};
     QUIC_CID_LIST_ENTRY* EmptyCid{nullptr};
 
     void SetUp() override
@@ -46,6 +47,15 @@ protected:
         }
 #endif
         CxPlatListInitializeHead(&PathID.DestCids);
+
+        //
+        // A path can only send with a source CID on its path id and a
+        // destination CID of its own -- QuicPacketBuilderInitialize refuses
+        // otherwise, and QuicPathCanSend says the same. The mock carries one
+        // of each so that a path in this fixture is sendable by default, and a
+        // test that wants the opposite takes one away.
+        //
+        PathID.SourceCids.Next = &SourceCid.Link;
 
         EmptyCid = QuicCidNewDestination(0, nullptr);
         ASSERT_NE(nullptr, EmptyCid);
@@ -69,6 +79,13 @@ protected:
         Connection.Paths.Paths[0].IsActive = TRUE;
         Connection.Paths.PendingActivePathId = Connection.Paths.Paths[0].ID;
         PathID.Path = &Connection.Paths.Paths[0];
+
+        //
+        // Sendable by default, for the reason the source CID above gives.
+        //
+        for (uint8_t i = 0; i < Count; ++i) {
+            Connection.Paths.Paths[i].DestCid = EmptyCid;
+        }
 
         //
         // Promoting a path resets its path id's congestion control, so the mock
@@ -229,6 +246,139 @@ TEST_F(PathTest, RemoveWhileIteratingBackward)
 // it wants a fixture that builds a path id set and a binding, which is its own
 // piece of work.
 //
+//
+// #228: a path declared backup is still somewhere for the connection to go.
+// The two callers of this -- loss detection giving up on a path and a path
+// validation that timed out -- close the connection when it answers FALSE, so
+// counting only active paths took the connection down with the one path an
+// application had deliberately left active.
+//
+TEST_F(PathTest, HasOtherUsablePathCountsABackup)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+    Connection.State.HandshakeConfirmed = TRUE;
+
+    //
+    // The shape an application that wants one stable path ends up in: one
+    // active path carrying traffic, and the rest declared backup.
+    //
+    Connection.Paths.Paths[1].IsActive = FALSE;
+
+    ASSERT_TRUE(QuicConnHasOtherUsablePath(&Connection, &Connection.Paths.Paths[0]));
+}
+
+//
+// The other half of usable: the send path has to accept it. Each of these is a
+// path QuicPacketBuilderInitialize would refuse -- counting one would abandon
+// the dead path and leave nothing to carry the PATH_ABANDON frame.
+//
+TEST_F(PathTest, HasOtherUsablePathRejectsWhatCannotSend)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+    Connection.State.HandshakeConfirmed = TRUE;
+    Connection.Paths.Paths[1].IsActive = FALSE;
+
+    QUIC_PATH* Excluded = &Connection.Paths.Paths[0];
+    QUIC_PATH* Other = &Connection.Paths.Paths[1];
+
+    Other->PathID = nullptr;
+    ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, Excluded));
+    Other->PathID = &PathID;
+
+    Other->DestCid = nullptr;
+    ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, Excluded));
+    Other->DestCid = EmptyCid;
+
+    PathID.SourceCids.Next = nullptr;
+    ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, Excluded));
+    PathID.SourceCids.Next = &SourceCid.Link;
+
+    Other->LocalClose = TRUE;
+    ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, Excluded));
+    Other->LocalClose = FALSE;
+
+    Other->RemoteClose = TRUE;
+    ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, Excluded));
+    Other->RemoteClose = FALSE;
+
+    //
+    // And with none of those taken away, it is usable -- so each assertion
+    // above failed for the reason it names.
+    //
+    ASSERT_TRUE(QuicConnHasOtherUsablePath(&Connection, Excluded));
+}
+
+//
+// Off multipath there is nowhere else by definition: QuicConnChoosePath
+// returns slot 0 whatever the other paths say, so neither caller may abandon.
+//
+TEST_F(PathTest, HasOtherUsablePathNeedsMultipath)
+{
+    InitializePaths(2);
+    Connection.Paths.Paths[1].IsActive = TRUE;
+
+    Connection.State.MultipathNegotiated = FALSE;
+    Connection.State.HandshakeConfirmed = TRUE;
+    ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, &Connection.Paths.Paths[0]));
+
+    Connection.State.MultipathNegotiated = TRUE;
+    Connection.State.HandshakeConfirmed = FALSE;
+    ASSERT_FALSE(QuicConnHasOtherUsablePath(&Connection, &Connection.Paths.Paths[0]));
+
+    Connection.State.HandshakeConfirmed = TRUE;
+    ASSERT_TRUE(QuicConnHasOtherUsablePath(&Connection, &Connection.Paths.Paths[0]));
+}
+
+//
+// What a connection looks like the instant its only active path is abandoned,
+// and the reason the fallback exists: slot 0 cannot send, so returning it
+// would put the PATH_ABANDON frame that announces the abandonment -- and every
+// packet after it -- on the path being abandoned.
+//
+TEST_F(PathTest, ChoosePathFallsBackToASendableBackup)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+    Connection.State.HandshakeConfirmed = TRUE;
+
+    Connection.Paths.Paths[0].LocalClose = TRUE;
+    Connection.Paths.Paths[1].IsActive = FALSE;
+
+    ASSERT_EQ(&Connection.Paths.Paths[1], QuicConnChoosePath(&Connection));
+
+    //
+    // With nothing sendable at all it still has to answer, and slot 0 is the
+    // only answer there is. The promise this function makes is a path, not a
+    // working one.
+    //
+    Connection.Paths.Paths[1].LocalClose = TRUE;
+    ASSERT_EQ(&Connection.Paths.Paths[0], QuicConnChoosePath(&Connection));
+}
+
+//
+// An active path is still preferred over a backup, which is what makes the
+// fallback above a fallback rather than a change of policy.
+//
+TEST_F(PathTest, ChoosePathPrefersAnActivePath)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+    Connection.State.HandshakeConfirmed = TRUE;
+
+    Connection.Paths.Paths[0].IsActive = FALSE;
+    Connection.Paths.Paths[1].IsActive = TRUE;
+
+    //
+    // Repeated because the choice among active paths is random: one active
+    // path means every draw has to be that path.
+    //
+    for (uint32_t i = 0; i < 20; ++i) {
+        ASSERT_EQ(&Connection.Paths.Paths[1], QuicConnChoosePath(&Connection));
+    }
+}
+
 TEST_F(PathTest, UpdateDestCidsPrioritizesActivePathForReplacement)
 {
     InitializePaths(4);

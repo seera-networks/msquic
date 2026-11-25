@@ -979,6 +979,20 @@ TEST_P(WithFamilyArgs, MultipathPathDeath) {
 
 TEST_P(WithFamilyArgs, MultipathBackupPathSurvivesActivePathDeath) {
     TestLoggerT<ParamType> Logger("QuicTestMultipathBackupPathSurvivesActivePathDeath", GetParam());
+    if (UseDuoNic) {
+        //
+        // The test kills one direction of one path with a port-keyed datapath
+        // hook, and on DuoNIC -- which every XDP leg implies -- that does not
+        // hold: PATH_ADDED reports a port the path is not using, and dropping
+        // by port stopped the path dying at all on one QTIP leg while another
+        // passed. The behaviour under test is in the core and has nothing to
+        // do with the datapath, so it is covered unconditionally by
+        // PathTest.HasOtherUsablePath* and PathTest.ChoosePath* in
+        // msquiccoretest; this test adds the end-to-end half on the datapaths
+        // where killing a path means what it says.
+        //
+        GTEST_SKIP_("DuoNIC is not supported");
+    }
     if (TestingKernelMode) {
         ASSERT_TRUE(
             InvokeKernelTest(
