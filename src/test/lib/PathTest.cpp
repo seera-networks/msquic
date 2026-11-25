@@ -1294,6 +1294,204 @@ QuicTestMultipathUnsharedBinding(
     TEST_FALSE(Settings.MultipathEnabled);
 }
 
+//
+// #229: the handshake-confirmed cleanup on a server has to find the
+// client-chosen source CID even when that CID is in a binding's lookup table.
+//
+// It gets there by the route an application takes:
+// QUIC_PARAM_CONN_ADD_BOUND_ADDRESS on a connection that shares its binding
+// registers *every* source CID of the
+// connection on the new binding (QuicBindingAddAllSourceConnectionIDs), the
+// client-chosen one included. Set from the listener's NEW_CONNECTION, that
+// lands before the handshake is confirmed, which is what the identification by
+// "the entry with no lookup registrations" could not survive -- a debug build
+// asserted in QuicCryptoProcessTlsCompletion and a release build left the CID
+// in the list and the lookup table for the life of the connection.
+//
+struct AddBoundAddressOnAcceptContext {
+    CxPlatEvent HandshakeCompleteEvent;
+    CxPlatEvent ShutdownEvent;
+    HQUIC Configuration {nullptr};
+    QUIC_ADDR BoundAddress {};
+    QUIC_STATUS AddBoundAddressStatus {QUIC_STATUS_PENDING};
+    bool Connected {false};
+    //
+    // Accepting by hand means owning the handle. It is closed by a
+    // ConnectionScope in the test, which has to outlive nothing but this
+    // context: a callback arriving after the context dies -- which is what
+    // happens if the connection is left for the registration to close --
+    // signals an event that is no longer there.
+    //
+    HQUIC AcceptedConnection {nullptr};
+
+    static QUIC_STATUS QUIC_API ConnCallback(
+        _In_ HQUIC /* Connection */,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_CONNECTION_EVENT* Event
+        )
+    {
+        auto* Ctx = static_cast<AddBoundAddressOnAcceptContext*>(Context);
+        if (Event->Type == QUIC_CONNECTION_EVENT_CONNECTED) {
+            Ctx->Connected = true;
+            Ctx->HandshakeCompleteEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE) {
+            Ctx->ShutdownEvent.Set();
+            Ctx->HandshakeCompleteEvent.Set();
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    static QUIC_STATUS QUIC_API ListenerCallback(
+        _In_ MsQuicListener* /* Listener */,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_LISTENER_EVENT* Event
+        )
+    {
+        auto* Ctx = static_cast<AddBoundAddressOnAcceptContext*>(Context);
+        if (Event->Type != QUIC_LISTENER_EVENT_NEW_CONNECTION) {
+            return QUIC_STATUS_SUCCESS;
+        }
+
+        Ctx->AcceptedConnection = Event->NEW_CONNECTION.Connection;
+        MsQuic->SetCallbackHandler(
+            Event->NEW_CONNECTION.Connection, (void*)ConnCallback, Ctx);
+
+        const QUIC_STATUS Status =
+            MsQuic->ConnectionSetConfiguration(
+                Event->NEW_CONNECTION.Connection, Ctx->Configuration);
+        if (QUIC_FAILED(Status)) {
+            return Status;
+        }
+
+        //
+        // The address to add is derived from the one this connection is
+        // already on, with a port of its own -- the shape an application
+        // advertises, and the shape the bound-address tests in this file use.
+        //
+        QUIC_ADDR LocalAddress;
+        uint32_t AddressLength = sizeof(LocalAddress);
+        if (QUIC_FAILED(
+                MsQuic->GetParam(
+                    Event->NEW_CONNECTION.Connection,
+                    QUIC_PARAM_CONN_LOCAL_ADDRESS,
+                    &AddressLength,
+                    &LocalAddress))) {
+            return QUIC_STATUS_SUCCESS;
+        }
+
+        //
+        // Clear the scope id first. The local address of a server connection
+        // is read off the arriving packet, and the datapath records the
+        // interface it arrived on in the scope id (ipi6_ifindex). Windows
+        // will not bind an IPv6 address that is not link-local and carries
+        // one -- bind fails with WSAEADDRNOTAVAIL -- while an address an
+        // application enumerated for itself has no scope id to begin with,
+        // which is the shape this test is standing in for.
+        //
+        if (QuicAddrGetFamily(&LocalAddress) == QUIC_ADDRESS_FAMILY_INET6) {
+            LocalAddress.Ipv6.sin6_scope_id = 0;
+        }
+
+        //
+        // The point of the test, and it has to be here rather than from the
+        // connection's own CONNECTED event: by then the cleanup this is about
+        // has already run.
+        //
+        // Retried on a fresh port, since an ephemeral one can be taken.
+        //
+        QuicAddr BoundAddr;
+        BoundAddr.SockAddr = LocalAddress;
+        for (uint32_t Try = 0; Try < 4; ++Try) {
+            BoundAddr.SetEphemeralPort();
+            Ctx->BoundAddress = BoundAddr.SockAddr;
+            Ctx->AddBoundAddressStatus =
+                MsQuic->SetParam(
+                    Event->NEW_CONNECTION.Connection,
+                    QUIC_PARAM_CONN_ADD_BOUND_ADDRESS,
+                    sizeof(Ctx->BoundAddress),
+                    &Ctx->BoundAddress);
+            if (QUIC_SUCCEEDED(Ctx->AddBoundAddressStatus)) {
+                break;
+            }
+        }
+
+        return QUIC_STATUS_SUCCESS;
+    }
+};
+
+void
+QuicTestAddBoundAddressOnAccept(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+    const QUIC_ADDRESS_FAMILY QuicAddrFamily =
+        (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetIdleTimeoutMs(10000);
+
+    MsQuicConfiguration ServerConfiguration(
+        Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    AddBoundAddressOnAcceptContext ServerContext;
+    ServerContext.Configuration = ServerConfiguration;
+
+    //
+    // Declared here so it is destroyed before ServerContext, whatever the test
+    // does in between -- including returning early from a failed assertion.
+    //
+    ConnectionScope AcceptedScope;
+
+    MsQuicListener Listener(
+        Registration,
+        MsQuicCleanUpMode::CleanUpManual,
+        AddBoundAddressOnAcceptContext::ListenerCallback,
+        &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(Registration);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            ServerLocalAddr.GetFamily(),
+            QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()),
+            ServerLocalAddr.GetPort()));
+
+    //
+    // Both sides have to get through it. Without the fix the server aborted
+    // inside the handshake in a debug build, so there is nothing subtle to
+    // assert here: the handshake completing is the test.
+    //
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Connection.HandshakeComplete);
+    TEST_TRUE(ServerContext.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    AcceptedScope.Handle = ServerContext.AcceptedConnection;
+    TEST_TRUE(ServerContext.Connected);
+    TEST_QUIC_SUCCEEDED(ServerContext.AddBoundAddressStatus);
+
+    //
+    // And it stays up: a cleanup that silently failed would leave the CID
+    // registered, which nothing here can see, but a connection that falls over
+    // afterwards would.
+    //
+    TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(500));
+}
+
 void
 QuicTestMultipath(
     _In_ const FamilyArgs& Params

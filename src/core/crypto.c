@@ -1675,9 +1675,32 @@ QuicCryptoProcessTlsCompletion(
             // Found by searching the list rather than by its position in it.
             // Three asserts about the list's exact shape used to stand here;
             // upstream's #6476 replaced the equivalent assumption after a
-            // 0-RTT handshake could leave another CID ahead of this one. The
-            // client-chosen CID is the only one that is both marked IsInitial
-            // and absent from the lookup table.
+            // 0-RTT handshake could leave another CID ahead of this one.
+            //
+            // Identified by the flag QuicConnAlloc sets on it, because nothing
+            // about the entry itself identifies it on this fork. Upstream can
+            // say "the one marked IsInitial and absent from the lookup table":
+            // there the client-chosen CID is never registered. Here it can be.
+            // An application that adds a bound address to a connection sharing
+            // its binding has every source CID of the connection registered on
+            // the new binding (QuicBindingAddAllSourceConnectionIDs), the
+            // client-chosen one included -- and
+            // QUIC_PARAM_CONN_ADD_BOUND_ADDRESS is called on a freshly
+            // accepted connection, so it races this cleanup. Testing the
+            // registrations then found nothing at all: a debug build asserted
+            // here, and a release build left the CID in the list and in the
+            // lookup table for the life of the connection.
+            //
+            // IsInitial alone will not do either: the server's own first CID
+            // carries it too (QuicPathIDInitialize), and freeing that one out
+            // from under the binding's lookup table leaks a
+            // QUIC_CONN_REF_LOOKUP_TABLE and the connection with it.
+            //
+            // Nor will comparing against Connection->OrigDestCID, which is
+            // this CID only until a Retry: the token then replaces OrigDestCID
+            // with the client's pre-retry CID, while the connection was
+            // created -- and this CID adopted -- from the Initial that came
+            // after it. VersionNegotiationRetry catches exactly that.
             //
             QUIC_PATHID* InitialPathID = QuicPathGetActive(&Connection->Paths)->PathID;
             CXPLAT_DBG_ASSERT(InitialPathID != NULL);
@@ -1689,17 +1712,7 @@ QuicCryptoProcessTlsCompletion(
                         *PrevLink,
                         QUIC_CID_SLIST_ENTRY,
                         Link);
-                //
-                // Both the client-chosen CID and the server's own first CID are
-                // marked IsInitial on this fork, and CID.IsInLookupTable is not
-                // maintained here (the registrations hang off HashEntries), so
-                // the test upstream uses would match the server's own CID and
-                // free it out from under the binding's lookup table -- one
-                // leaked QUIC_CONN_REF_LOOKUP_TABLE, and a connection that
-                // never gets freed. The client-chosen CID is the one with no
-                // lookup registrations of its own.
-                //
-                if (CidEntry->CID.IsInitial && CidEntry->HashEntries.Next == NULL) {
+                if (CidEntry->CID.IsClientChosen) {
                     *PrevLink = (*PrevLink)->Next;
                     QuicTraceEvent(
                         ConnSourceCidRemoved,
@@ -1708,6 +1721,24 @@ QuicCryptoProcessTlsCompletion(
                         InitialPathID->ID,
                         CidEntry->CID.SequenceNumber,
                         CASTED_CLOG_BYTEARRAY(CidEntry->CID.Length, CidEntry->CID.Data));
+                    //
+                    // Its registrations go with it, which the old test made
+                    // unnecessary by only ever matching an unregistered CID.
+                    // Freeing a registered entry without this leaves the
+                    // binding's lookup table pointing at freed memory, and the
+                    // next packet carrying that CID reads it.
+                    //
+                    while (CidEntry->HashEntries.Next != NULL) {
+                        QUIC_CID_HASH_ENTRY* HashEntry =
+                            CXPLAT_CONTAINING_RECORD(
+                                CxPlatListPopEntry(&CidEntry->HashEntries),
+                                QUIC_CID_HASH_ENTRY,
+                                Link);
+                        QuicBindingRemoveSourceConnectionID(
+                            HashEntry->Binding,
+                            HashEntry);
+                        CXPLAT_FREE(HashEntry, QUIC_POOL_CIDHASH);
+                    }
                     CXPLAT_FREE(CidEntry, QUIC_POOL_CIDSLIST);
                     Found = TRUE;
                     break;

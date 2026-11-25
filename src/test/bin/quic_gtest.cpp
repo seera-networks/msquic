@@ -950,6 +950,19 @@ TEST_P(WithFamilyArgs, LocalPathChanges) {
 }
 
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+TEST_P(WithFamilyArgs, AddBoundAddressOnAccept) {
+    if (TestingKernelMode) {
+        //
+        // The test accepts by hand and sets a connection parameter from inside
+        // the listener's callback, which the driver's IOCTL harness does not
+        // host the same way. What it covers is in core and is covered here.
+        //
+        GTEST_SKIP() << "QuicTestAddBoundAddressOnAccept is user-mode only.";
+    }
+    TestLoggerT<ParamType> Logger("QuicTestAddBoundAddressOnAccept", GetParam());
+    QuicTestAddBoundAddressOnAccept(GetParam());
+}
+
 TEST_P(WithFamilyArgs, Multipath) {
     TestLoggerT<ParamType> Logger("QuicTestMultipath", GetParam());
     if (TestingKernelMode) {

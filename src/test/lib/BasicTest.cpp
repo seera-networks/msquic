@@ -1040,11 +1040,21 @@ void QuicTestSharedBindingPathRemoval(const FamilyArgs& Params)
     {
         MsQuicStream Stream(*Context.ServerConnection, QUIC_STREAM_OPEN_FLAG_UNIDIRECTIONAL, CleanUpManual, MsQuicStream::NoOpCallback);
         TEST_QUIC_SUCCEEDED(Stream.GetInitStatus());
-        TEST_QUIC_SUCCEEDED(Stream.Start(QUIC_STREAM_START_FLAG_IMMEDIATE));
 
+        //
+        // Started by the send rather than before it. The client closes the
+        // stream the moment it hears of it, which stops the sending side, and
+        // a separate Start gives that STOP_SENDING time to arrive first and
+        // turn this send into QUIC_STATUS_ABORTED -- which is what it did on
+        // the kernel-mode leg.
+        //
         uint8_t RawBuffer[16] = {0};
         QUIC_BUFFER SendBuffer { sizeof(RawBuffer), RawBuffer };
-        TEST_QUIC_SUCCEEDED(Stream.Send(&SendBuffer, 1, QUIC_SEND_FLAG_FIN));
+        TEST_QUIC_SUCCEEDED(
+            Stream.Send(
+                &SendBuffer,
+                1,
+                QUIC_SEND_FLAG_START | QUIC_SEND_FLAG_FIN));
 
         TEST_TRUE(Context.ClientPeerStreamEvent.WaitTimeout(TestWaitTimeout));
     }

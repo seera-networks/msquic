@@ -120,6 +120,22 @@ typedef struct QUIC_CID {
     // Used for source CIDs. The CID is in the binding's lookup table.
     //
     uint8_t IsInLookupTable : 1;
+    //
+    // Used for source CIDs on a server: the CID the client put in the Initial
+    // that created this connection, which the server adopts as a source CID of
+    // its own and retires once the handshake is confirmed.
+    //
+    // A flag rather than something derived at the point of use, because every
+    // derivation is wrong somewhere on this fork. IsInitial is set on the
+    // server's own first CID too (QuicPathIDInitialize). The absence of lookup
+    // registrations, which is how upstream tells them apart, says nothing here:
+    // QuicBindingAddAllSourceConnectionIDs registers every source CID of a
+    // connection when an application adds a bound address to a shared binding.
+    // And comparing against Connection->OrigDestCID is right only until a
+    // Retry, after which OrigDestCID is the client's *pre-retry* CID from the
+    // token while this one came from the Initial that followed it.
+    //
+    uint8_t IsClientChosen : 1;
 
     uint8_t Length;
     QUIC_VAR_INT SequenceNumber;
