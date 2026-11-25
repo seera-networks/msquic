@@ -607,6 +607,7 @@ ExecuteTestRequest(
     RegisterTestFunction(QuicTestMultipath);
     RegisterTestFunction(QuicTestMultipathUnsharedBinding);
     RegisterTestFunction(QuicTestMultipathPathDeath);
+    RegisterTestFunction(QuicTestMultipathBackupPathSurvivesActivePathDeath);
     RegisterTestFunction(QuicTestMultipathPathValidationFailed);
     RegisterTestFunction(QuicTestMultipathPathValidationRetry);
     RegisterTestFunction(QuicTestMultipathPathIdReclaimed);

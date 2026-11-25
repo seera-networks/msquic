@@ -516,10 +516,19 @@ QuicConnChoosePath(
     );
 
 //
-// Whether any path other than the excluded one is still something
-// QuicConnChoosePath would send on -- including the state it requires before
-// it distributes at all. Uses the same test, so a TRUE answer means the
-// connection has somewhere to go without the excluded path.
+// Whether any path other than the excluded one could carry the connection: one
+// the send path would accept, with multipath negotiated and the handshake
+// confirmed.
+//
+// Not the same test as QuicConnChoosePath, which this used to claim it was.
+// That one picks among paths declared *active*, because active is the
+// preference the peer was told about with PATH_AVAILABLE and PATH_BACKUP. This
+// one asks whether there is anywhere left to go at all, and a live path
+// declared backup is somewhere -- PATH_BACKUP never meant unusable, and an
+// application can promote one. Requiring active turned a path failure into a
+// connection failure for an application that keeps a single active path on
+// purpose; path.c has the detail, including what this deliberately does not
+// ask.
 //
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
