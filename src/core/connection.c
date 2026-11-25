@@ -220,6 +220,13 @@ QuicConnAlloc(
         }
         SourceCid->CID.IsInitial = TRUE;
         SourceCid->CID.UsedByPeer = TRUE;
+        //
+        // This is the one the handshake-confirmed cleanup in
+        // QuicCryptoProcessTlsCompletion goes looking for, and here is the only
+        // place that knows which it is: Packet is the Initial that created the
+        // connection, whatever came before it.
+        //
+        SourceCid->CID.IsClientChosen = TRUE;
         QuicPathIDAddSourceCID(PathID, SourceCid, TRUE);
 
         //
@@ -9656,6 +9663,42 @@ QuicConnAssignPathIDs(
     return Assigned;
 }
 
+//
+// Fills in the fields of a new binding's configuration that say who the
+// binding belongs to. Both come from the connection's configuration -- except
+// that a server connection has none until the application's
+// ConnectionSetConfiguration call has been processed by the worker, which is
+// after any SetParam the application makes from its NEW_CONNECTION callback.
+// Reading through that null pointer was an access violation on Windows, the
+// only platform where these fields are compiled at all. With no configuration
+// to consult, answer as a listener does for its own binding; see
+// QuicListenerStart.
+//
+static
+void
+QuicConnSetUdpConfigOwnership(
+    _In_ const QUIC_CONNECTION* Connection,
+    _Inout_ CXPLAT_UDP_CONFIG* UdpConfig
+    )
+{
+#ifdef QUIC_COMPARTMENT_ID
+    UdpConfig->CompartmentId =
+        Connection->Configuration != NULL ?
+            Connection->Configuration->CompartmentId :
+            QuicCompartmentIdGetCurrent();
+#endif
+#ifdef QUIC_OWNING_PROCESS
+    UdpConfig->OwningProcess =
+        Connection->Configuration != NULL ?
+            Connection->Configuration->OwningProcess :
+            NULL;   // Owning process not supported for listeners, nor here.
+#endif
+#if !defined(QUIC_COMPARTMENT_ID) && !defined(QUIC_OWNING_PROCESS)
+    UNREFERENCED_PARAMETER(Connection);
+    UNREFERENCED_PARAMETER(UdpConfig);
+#endif
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 QUIC_STATUS
 QuicConnOpenNewPath(
@@ -9743,12 +9786,7 @@ QuicConnOpenNewPath(
     UdpConfig.InterfaceIndex = 0;
     // Open a new binding with the same partition as the connection.
     UdpConfig.PartitionIndex = QuicPartitionIdGetIndex(Connection->PartitionID);
-#ifdef QUIC_COMPARTMENT_ID
-    UdpConfig.CompartmentId = Connection->Configuration->CompartmentId;
-#endif
-#ifdef QUIC_OWNING_PROCESS
-    UdpConfig.OwningProcess = Connection->Configuration->OwningProcess;
-#endif
+    QuicConnSetUdpConfigOwnership(Connection, &UdpConfig);
 
     if (Connection->State.ShareBinding) {
         UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_SHARE;
@@ -10103,12 +10141,7 @@ QuicConnAddBoundAddress(
     UdpConfig.InterfaceIndex = 0;
     // Open a new binding with the same partition as the connection.
     UdpConfig.PartitionIndex = QuicPartitionIdGetIndex(Connection->PartitionID);
-#ifdef QUIC_COMPARTMENT_ID
-    UdpConfig.CompartmentId = Connection->Configuration->CompartmentId;
-#endif
-#ifdef QUIC_OWNING_PROCESS
-    UdpConfig.OwningProcess = Connection->Configuration->OwningProcess;
-#endif
+    QuicConnSetUdpConfigOwnership(Connection, &UdpConfig);
 
     if (Connection->State.ShareBinding) {
         UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_SHARE;
@@ -10522,12 +10555,7 @@ QuicConnActivatePath(
         Connection->State.UnconnectedSocket ? NULL : Param->RemoteAddress;
     UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
     UdpConfig.InterfaceIndex = 0;
-#ifdef QUIC_COMPARTMENT_ID
-    UdpConfig.CompartmentId = Connection->Configuration->CompartmentId;
-#endif
-#ifdef QUIC_OWNING_PROCESS
-    UdpConfig.OwningProcess = Connection->Configuration->OwningProcess;
-#endif
+    QuicConnSetUdpConfigOwnership(Connection, &UdpConfig);
     if (Connection->State.ShareBinding) {
         UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_SHARE;
     }
@@ -13591,12 +13619,7 @@ QuicConnParamSet(
                 Connection->State.UnconnectedSocket ? NULL : &Connection->Paths.Paths[0].Route.RemoteAddress;
             UdpConfig.Flags = CXPLAT_SOCKET_FLAG_NONE;
             UdpConfig.InterfaceIndex = 0;
-#ifdef QUIC_COMPARTMENT_ID
-            UdpConfig.CompartmentId = Connection->Configuration->CompartmentId;
-#endif
-#ifdef QUIC_OWNING_PROCESS
-            UdpConfig.OwningProcess = Connection->Configuration->OwningProcess;
-#endif
+            QuicConnSetUdpConfigOwnership(Connection, &UdpConfig);
             if (Connection->State.ShareBinding) {
                 UdpConfig.Flags |= CXPLAT_SOCKET_FLAG_SHARE;
             }

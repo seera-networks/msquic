@@ -812,6 +812,11 @@ QuicTestServerMigration(
     );
 
 void
+QuicTestAddBoundAddressOnAccept(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestMultipath(
     _In_ const FamilyArgs& Params
     );
