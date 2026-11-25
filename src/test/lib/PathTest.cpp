@@ -1748,12 +1748,16 @@ struct PathDeathClientContext {
     CxPlatEvent StreamCountEvent;
     MsQuicConnection* Connection {nullptr};
     //
-    // The path id and local port the last PATH_ADDED carried. Nothing else
-    // tells an application which path id a path it just added was given, and
+    // The path id the first PATH_ADDED carried. Nothing else tells an
+    // application which path id a path it just added was given, and
     // QUIC_PARAM_CONN_PATH_STATUS is named by path id.
     //
+    // The first and not the last, because a test that adds one path wants that
+    // path: overwriting would hand it whatever came later. The event's
+    // addresses are deliberately not recorded -- see the port note in
+    // QuicTestMultipathBackupPathSurvivesActivePathDeath.
+    //
     uint32_t AddedPathId {UINT32_MAX};
-    uint16_t AddedPathLocalPort {0};
 
     static QUIC_STATUS ConnCallback(_In_ MsQuicConnection* Conn, _In_opt_ void* Context, _Inout_ QUIC_CONNECTION_EVENT* Event) {
         PathDeathClientContext* Ctx = static_cast<PathDeathClientContext*>(Context);
@@ -1765,9 +1769,9 @@ struct PathDeathClientContext {
         } else if (Event->Type == QUIC_CONNECTION_EVENT_CONNECTED) {
             Ctx->HandshakeCompleteEvent.Set();
         } else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_ADDED) {
-            Ctx->AddedPathId = Event->PATH_ADDED.PathId;
-            Ctx->AddedPathLocalPort =
-                QuicAddrGetPort(Event->PATH_ADDED.LocalAddress);
+            if (Ctx->AddedPathId == UINT32_MAX) {
+                Ctx->AddedPathId = Event->PATH_ADDED.PathId;
+            }
             Ctx->PathAddedEvent.Set();
         } else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_REMOVED) {
             Ctx->PathRemovedEvent.Set();
@@ -1990,7 +1994,7 @@ QuicTestMultipathBackupPathSurvivesActivePathDeath(
     // long one on the server, which only has to stay alive long enough for the
     // client to move to the backup and its acks to start arriving again.
     //
-    const uint32_t ClientDisconnectTimeoutMs = 300;
+    const uint32_t ClientDisconnectTimeoutMs = 1000;
     const uint32_t ServerDisconnectTimeoutMs = 20000;
 
     PathTestContext Context;
@@ -2074,12 +2078,28 @@ QuicTestMultipathBackupPathSurvivesActivePathDeath(
     // is the lever that made the bug reachable, and the only one the API
     // offers for it.
     //
-    TEST_EQUAL(SecondLocalAddr.GetPort(), ClientContext.AddedPathLocalPort);
+    // Identified by being the only path this test adds, not by matching the
+    // event's local address against the one asked for. On the XDP datapath
+    // those do not agree -- the path is where the probe helper above just saw
+    // it, but PATH_ADDED reports a different port -- and the path id is the
+    // only thing the parameter below needs.
+    //
     TEST_NOT_EQUAL(UINT32_MAX, ClientContext.AddedPathId);
     QUIC_PATH_STATUS BackupStatus = { ClientContext.AddedPathId, FALSE };
     TEST_QUIC_SUCCEEDED(
         Connection.SetParam(
             QUIC_PARAM_CONN_PATH_STATUS, sizeof(BackupStatus), &BackupStatus));
+
+    //
+    // Long enough for the PATH_BACKUP frame to be acknowledged before the
+    // blackhole goes up. It is sent on the backup path itself and is
+    // ack-eliciting, so it is the one packet outstanding there: leave it in
+    // flight and the backup path's own loss detection can reach
+    // DisconnectTimeoutMs first, which would abandon the backup and then close
+    // the connection on the dead path -- a pass turning into a failure on a
+    // slow machine, for reasons that have nothing to do with the subject.
+    //
+    CxPlatSleep(200);
 
     //
     // One active path and one live backup. Kill the active one, in the
