@@ -69,6 +69,18 @@ typedef union QUIC_PATHID_FLAGS {
         //
         BOOLEAN PeerStatusKnown         : 1;
         BOOLEAN PeerStatusActive        : 1;
+        //
+        // The status this end last asked for with QUIC_PARAM_CONN_PATH_STATUS,
+        // which is also what the peer was last told about this path.
+        //
+        // Kept for the same reason as the pair above, in the other direction:
+        // the application can ask before the path is in a state to show it,
+        // and activating the path later must not answer a question the
+        // application has already answered. It also says what the peer
+        // believes, which is what decides whether there is a frame to send.
+        //
+        BOOLEAN LocalStatusKnown        : 1;
+        BOOLEAN LocalStatusActive       : 1;
     };
 } QUIC_PATHID_FLAGS;
 

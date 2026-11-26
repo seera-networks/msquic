@@ -14385,9 +14385,43 @@ QuicConnParamSet(
             Status = QUIC_STATUS_INVALID_PARAMETER;
             break;
         }
-        BOOLEAN PrevIsActive = Path->IsActive;
-        Path->IsActive = PathStatus->Active;
-        if (PrevIsActive != Path->IsActive) {
+        const BOOLEAN Requested = PathStatus->Active != FALSE ? TRUE : FALSE;
+
+        //
+        // Announced when it differs from what the peer was last told, rather
+        // than from this end's IsActive.
+        //
+        // A path that has not been validated is not active yet, so testing
+        // IsActive made declaring such a path backup a silent success: no
+        // frame was sent, nothing was remembered, and activating the path on
+        // validation then left it available -- the opposite of what the
+        // application asked for, with no way to ask again (asking a second
+        // time compares equal and does nothing too). #234.
+        //
+        // A path the peer has never been told about is one the peer may use,
+        // which is what a new path is: calling such a path available still
+        // changes nothing and sends nothing, as before.
+        //
+        const BOOLEAN PeerBelievesActive =
+            !Path->PathID->Flags.LocalStatusKnown ||
+            Path->PathID->Flags.LocalStatusActive;
+
+        //
+        // Recorded on the path ID so that QuicPathSetActive does not overturn
+        // it when the path becomes usable; see the peer's half of the same
+        // question there.
+        //
+        Path->PathID->Flags.LocalStatusKnown = TRUE;
+        Path->PathID->Flags.LocalStatusActive = Requested;
+
+        //
+        // Still written here, unvalidated path included, because the writers
+        // read it to tell which of the two frames a pending status is
+        // (QuicSendPathHasStatusToSend).
+        //
+        Path->IsActive = Requested;
+
+        if (PeerBelievesActive != Requested) {
             Path->SendStatus = TRUE;
             if (Path->IsActive) {
                 QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_AVAILABLE);

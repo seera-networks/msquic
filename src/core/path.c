@@ -1188,10 +1188,18 @@ QuicPathSetActive(
         // per change of its own mind. The connection then split what it sent
         // across a path the peer had asked it to keep in reserve. #232.
         //
+        // This end's own status counts for as much, and for the same reason:
+        // an application can declare a path backup before anything has
+        // validated it (#234), and that answer must survive the activation
+        // too. Active, then, only while neither end has asked for the path to
+        // be held back.
+        //
         Path->IsActive =
             (Path->PathID == NULL ||
-             !Path->PathID->Flags.PeerStatusKnown ||
-             Path->PathID->Flags.PeerStatusActive) ? TRUE : FALSE;
+             ((!Path->PathID->Flags.PeerStatusKnown ||
+               Path->PathID->Flags.PeerStatusActive) &&
+              (!Path->PathID->Flags.LocalStatusKnown ||
+               Path->PathID->Flags.LocalStatusActive))) ? TRUE : FALSE;
     } else if (Path == ActivePath) {
         CXPLAT_DBG_ASSERT(!Path->IsActive);
         Path->IsActive = TRUE;

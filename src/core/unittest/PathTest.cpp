@@ -416,6 +416,50 @@ TEST_F(PathTest, SetActiveKeepsWhatThePeerCalledBackup)
 }
 
 //
+// #234: the same for a status this end asked for before anything validated
+// the path. The application's answer has to survive the activation as much as
+// the peer's does.
+//
+TEST_F(PathTest, SetActiveKeepsWhatThisEndCalledBackup)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+    Connection.State.HandshakeConfirmed = TRUE;
+
+    PathID.Flags.LocalStatusKnown = TRUE;
+    PathID.Flags.LocalStatusActive = FALSE;
+
+    QuicPathSetActive(&Connection, Connection.Paths.Paths[1].ID);
+    ASSERT_FALSE(Connection.Paths.Paths[1].IsActive);
+
+    for (uint32_t i = 0; i < 20; ++i) {
+        ASSERT_EQ(&Connection.Paths.Paths[0], QuicConnChoosePath(&Connection));
+    }
+}
+
+//
+// Either end asking is enough, and the two do not cancel out: a path this end
+// calls available while the peer calls it backup stays held back.
+//
+TEST_F(PathTest, SetActiveNeedsBothEndsToAgreeToActivate)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+
+    PathID.Flags.LocalStatusKnown = TRUE;
+    PathID.Flags.LocalStatusActive = TRUE;
+    PathID.Flags.PeerStatusKnown = TRUE;
+    PathID.Flags.PeerStatusActive = FALSE;
+
+    QuicPathSetActive(&Connection, Connection.Paths.Paths[1].ID);
+    ASSERT_FALSE(Connection.Paths.Paths[1].IsActive);
+
+    PathID.Flags.PeerStatusActive = TRUE;
+    QuicPathSetActive(&Connection, Connection.Paths.Paths[1].ID);
+    ASSERT_TRUE(Connection.Paths.Paths[1].IsActive);
+}
+
+//
 // A peer that has said nothing about a path gets the old behaviour: becoming
 // usable makes the path active.
 //
