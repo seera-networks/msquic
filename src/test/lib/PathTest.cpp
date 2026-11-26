@@ -2169,6 +2169,180 @@ QuicTestMultipathPathDeath(
 // carrying traffic in both directions afterwards -- on the backup, which is
 // all that is left.
 //
+//
+// Server side of QuicTestMultipathBackupStatusBeforeValidation: records the
+// status the peer gives a path, which is all an application is told about it.
+//
+struct BackupBeforeValidationContext {
+    CxPlatEvent HandshakeCompleteEvent;
+    CxPlatEvent ShutdownEvent;
+    CxPlatEvent PathAddedEvent;
+    CxPlatEvent PathStatusChangedEvent;
+    MsQuicConnection* Connection {nullptr};
+    uint32_t StatusPathId {UINT32_MAX};
+    BOOLEAN StatusIsActive {TRUE};
+
+    static QUIC_STATUS QUIC_API ConnCallback(
+        _In_ MsQuicConnection* Conn,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_CONNECTION_EVENT* Event
+        )
+    {
+        auto* Ctx = static_cast<BackupBeforeValidationContext*>(Context);
+        Ctx->Connection = Conn;
+        if (Event->Type == QUIC_CONNECTION_EVENT_CONNECTED) {
+            Ctx->HandshakeCompleteEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE) {
+            Ctx->Connection = nullptr;
+            Ctx->HandshakeCompleteEvent.Set();
+            Ctx->PathAddedEvent.Set();
+            Ctx->PathStatusChangedEvent.Set();
+            Ctx->ShutdownEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED) {
+            MsQuic->StreamClose(Event->PEER_STREAM_STARTED.Stream);
+        }
+#if defined(QUIC_API_ENABLE_PREVIEW_FEATURES)
+        else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_ADDED) {
+            Ctx->PathAddedEvent.Set();
+        } else if (Event->Type == QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED) {
+            Ctx->StatusPathId = Event->PATH_STATUS_CHANGED.PathId;
+            Ctx->StatusIsActive = Event->PATH_STATUS_CHANGED.IsActive;
+            Ctx->PathStatusChangedEvent.Set();
+        }
+#endif
+        return QUIC_STATUS_SUCCESS;
+    }
+};
+
+//
+// A path status that cannot be acted on when it is given is honoured once the
+// path can carry it -- at both ends of the wire (#232, #234).
+//
+// The ordering is a race in the field, won by the frame about half the time,
+// so it is made deterministic here: the client's packets on the new path are
+// dropped, which keeps the server from validating it and leaves the server's
+// QUIC_PATH unbound, while the PATH_BACKUP travels on the first path and
+// arrives at a server that can do nothing with it yet. Declaring the path
+// backup before it is validated is what #234 made possible; keeping that
+// answer across the activation that follows is #232.
+//
+void
+QuicTestMultipathBackupStatusBeforeValidation(
+    _In_ const FamilyArgs& Params
+    )
+{
+    const int Family = Params.Family;
+
+    BackupBeforeValidationContext Context;
+    PathDeathClientContext ClientContext;
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    MsQuicSettings Settings;
+    Settings.SetMultipathEnabled(TRUE);
+    MsQuicConfiguration ServerConfiguration(Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, ServerConfiguration, BackupBeforeValidationContext::ConnCallback, &Context);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+    QUIC_ADDRESS_FAMILY QuicAddrFamily = (Family == 4) ? QUIC_ADDRESS_FAMILY_INET : QUIC_ADDRESS_FAMILY_INET6;
+    QuicAddr ServerLocalAddr(QuicAddrFamily);
+    TEST_QUIC_SUCCEEDED(Listener.Start("MsQuicTest", &ServerLocalAddr.SockAddr));
+    TEST_QUIC_SUCCEEDED(Listener.GetLocalAddr(ServerLocalAddr));
+
+    MsQuicConnection Connection(
+        Registration, MsQuicCleanUpMode::CleanUpManual, PathDeathClientContext::ConnCallback, &ClientContext);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    Connection.SetShareUdpBinding();
+
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            ServerLocalAddr.GetFamily(),
+            QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()),
+            ServerLocalAddr.GetPort()));
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_NOT_EQUAL(nullptr, Context.Connection);
+
+    QuicAddr SecondLocalAddr, PairAddr;
+    TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
+    TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
+    SecondLocalAddr.SetEphemeralPort();
+
+    //
+    // Armed before the path is added, so nothing on it reaches the server. The
+    // path validation deadline is at least six times the initial RTT and the
+    // challenge is requeued at a third of it, so the window held below is far
+    // inside the time the client keeps trying.
+    //
+    PathOneWayBlackholeHelper Blackhole(SecondLocalAddr.GetPort());
+    Blackhole.Armed = true;
+
+    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+    TEST_QUIC_SUCCEEDED(
+        Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam));
+
+    //
+    // Declared backup before anything has validated it, which is the point.
+    //
+    // By path id rather than from PATH_ADDED, which is how the other tests
+    // here learn it: PATH_ADDED cannot have arrived, since it follows the
+    // validation this test is holding up. The first path a connection adds is
+    // path id 1, and the PATH_ADDED that eventually arrives is checked against
+    // that below. Retried because the id is assigned on the connection's
+    // worker, so it is not necessarily there the instant ADD_PATH returns.
+    //
+    const uint32_t BackupPathId = 1;
+    QUIC_PATH_STATUS BackupStatus = { BackupPathId, FALSE };
+    QUIC_STATUS Status = QUIC_STATUS_INVALID_PARAMETER;
+    for (uint32_t Try = 0; Try < 20 && QUIC_FAILED(Status); ++Try) {
+        Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_PATH_STATUS, sizeof(BackupStatus), &BackupStatus);
+        if (QUIC_FAILED(Status)) {
+            CxPlatSleep(10);
+        }
+    }
+    TEST_QUIC_SUCCEEDED(Status);
+
+    //
+    // Long enough for the frame to cross the first path, which is not blocked,
+    // and reach a server that has no path bound for it yet.
+    //
+    CxPlatSleep(100);
+
+    //
+    // Let the path through. The client's next PATH_CHALLENGE binds and
+    // validates it on the server, which activates it -- and that is where the
+    // status used to be overwritten with "active", after which the server sent
+    // on a path the client had asked it to keep in reserve.
+    //
+    Blackhole.Armed = false;
+
+    TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(BackupPathId, ClientContext.AddedPathId);
+
+    //
+    // The server honours the status, and says so. Without the fixes there is
+    // no PATH_STATUS_CHANGED for this path at all: either no frame was sent
+    // (#234) or the frame was dropped on arrival and the validation that
+    // followed had nothing left to apply (#232).
+    //
+    TEST_TRUE(Context.PathStatusChangedEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(BackupPathId, Context.StatusPathId);
+    TEST_FALSE(Context.StatusIsActive);
+
+    Connection.Shutdown(0, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE);
+    TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+}
+
 void
 QuicTestMultipathBackupPathSurvivesActivePathDeath(
     _In_ const FamilyArgs& Params
