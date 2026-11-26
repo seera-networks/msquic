@@ -1015,6 +1015,28 @@ TEST_P(WithFamilyArgs, MultipathBackupPathSurvivesActivePathDeath) {
     }
 }
 
+TEST_P(WithFamilyArgs, MultipathBackupStatusBeforeValidation) {
+    TestLoggerT<ParamType> Logger("QuicTestMultipathBackupStatusBeforeValidation", GetParam());
+    if (UseDuoNic) {
+        //
+        // Port-keyed datapath hook, with the same caveat as
+        // MultipathBackupPathSurvivesActivePathDeath above: on DuoNIC -- which
+        // every XDP leg implies -- PATH_ADDED reports a port the path is not
+        // using, so dropping by port does not reliably hold the validation up.
+        // What the change is about is in the core and is covered
+        // unconditionally by PathTest.SetActive* in msquiccoretest.
+        //
+        GTEST_SKIP() << "Port-keyed hooks are unreliable on DuoNIC.";
+    }
+    if (TestingKernelMode) {
+        ASSERT_TRUE(
+            InvokeKernelTest(
+                FUNC(QuicTestMultipathBackupStatusBeforeValidation), GetParam()));
+    } else {
+        QuicTestMultipathBackupStatusBeforeValidation(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, MultipathPathValidationFailed) {
     TestLoggerT<ParamType> Logger("QuicTestMultipathPathValidationFailed", GetParam());
     if (TestingKernelMode) {
