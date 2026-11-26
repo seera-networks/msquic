@@ -1136,6 +1136,15 @@ TEST_P(WithFamilyArgs, QMuxUniStreamLimits) {
     }
 }
 
+TEST_P(WithFamilyArgs, QMuxGracefulClose) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxGracefulClose", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxGracefulClose), GetParam()));
+    } else {
+        QuicTestQMuxGracefulClose(GetParam());
+    }
+}
+
 TEST_P(WithFamilyArgs, QMuxKeepAlive) {
     TestLoggerT<ParamType> Logger("QuicTestQMuxKeepAlive", GetParam());
     if (TestingKernelMode) {

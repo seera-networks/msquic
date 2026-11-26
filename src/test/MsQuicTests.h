@@ -843,6 +843,11 @@ QuicTestQMuxUniStreamLimits(
     );
 
 void
+QuicTestQMuxGracefulClose(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestQMuxKeepAlive(
     _In_ const FamilyArgs& Params
     );

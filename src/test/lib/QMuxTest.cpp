@@ -406,6 +406,161 @@ struct QMuxUniStreamServerContext {
 // to send to let a second unidirectional stream open was read as a disallowed
 // frame type and closed the connection with FRAME_ENCODING_ERROR.
 //
+//
+// Server side of QuicTestQMuxGracefulClose: records how the connection ended,
+// which is the only thing that distinguishes a close the peer announced from
+// one it was cut off in the middle of.
+//
+struct QMuxCloseServerContext {
+    CxPlatEvent ConnectedEvent;
+    CxPlatEvent ShutdownEvent;
+    CxPlatEvent StreamShutdownEvent;
+    uint64_t BytesReceived {0};
+    uint64_t PeerErrorCode {0};
+    bool PeerInitiated {false};
+
+    static QUIC_STATUS QUIC_API StreamCallback(
+        _In_ MsQuicStream* /* Stream */,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_STREAM_EVENT* Event
+        )
+    {
+        auto Ctx = static_cast<QMuxCloseServerContext*>(Context);
+        switch (Event->Type) {
+        case QUIC_STREAM_EVENT_RECEIVE:
+            Ctx->BytesReceived += Event->RECEIVE.TotalBufferLength;
+            break;
+        case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
+            Ctx->StreamShutdownEvent.Set();
+            break;
+        default:
+            break;
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    static QUIC_STATUS QUIC_API ConnCallback(
+        _In_ MsQuicConnection* /* Conn */,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_CONNECTION_EVENT* Event
+        )
+    {
+        auto Ctx = static_cast<QMuxCloseServerContext*>(Context);
+        switch (Event->Type) {
+        case QUIC_CONNECTION_EVENT_CONNECTED:
+            Ctx->ConnectedEvent.Set();
+            break;
+        case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED:
+            new(std::nothrow) MsQuicStream(
+                Event->PEER_STREAM_STARTED.Stream,
+                CleanUpAutoDelete,
+                StreamCallback,
+                Context);
+            break;
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
+            Ctx->PeerInitiated = true;
+            Ctx->PeerErrorCode = Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode;
+            break;
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+            Ctx->ConnectedEvent.Set();
+            Ctx->StreamShutdownEvent.Set();
+            Ctx->ShutdownEvent.Set();
+            break;
+        default:
+            break;
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+};
+
+//
+// A close the application asked for reaches the peer as that close, carrying
+// its error code, and the stream data written before it is not lost with it.
+//
+// draft-ietf-quic-qmux-02 section 7.2 asks for the graceful shutdown that
+// makes this true: "The use of graceful shutdown mitigates the risk of
+// undelivered records and frames becoming lost due to abrupt termination of
+// the underlying transport." The Linux datapath used to set SO_LINGER with a
+// zero timeout on its TCP sockets to stay out of TIME_WAIT, so close() sent a
+// reset; the CONNECTION_CLOSE written a moment earlier went with it, and the
+// peer saw an aborted connection with no error code instead.
+//
+void
+QuicTestQMuxGracefulClose(
+    _In_ const FamilyArgs& Params
+    )
+{
+    QMuxCloseServerContext ServerContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    if (!QMuxDatapathSupportsTcp()) {
+        return;
+    }
+
+    const QUIC_UINT62 CloseErrorCode = 0x1234;
+
+    MsQuicSettings Settings;
+    Settings.SetPeerUnidiStreamCount(1);
+
+    MsQuicConfiguration ServerConfiguration(
+        Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, true, ServerConfiguration,
+        QMuxCloseServerContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr;
+    QMuxStartListener(Listener, Params.Family, ServerLocalAddr);
+
+    MsQuicConnection Connection(Registration, true);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            ServerLocalAddr.GetFamily(),
+            QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()),
+            ServerLocalAddr.GetPort()));
+
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.ConnectedEvent.WaitTimeout(TestWaitTimeout));
+
+    //
+    // A stream's worth of data first, and waited for: what the close is asked
+    // to preserve is the record carrying the CONNECTION_CLOSE, not whatever
+    // the application had queued when it called -- an application close
+    // discards that in QUIC too.
+    //
+    {
+        MsQuicStream Stream(
+            Connection,
+            QUIC_STREAM_OPEN_FLAG_UNIDIRECTIONAL,
+            CleanUpManual,
+            MsQuicStream::NoOpCallback);
+        TEST_QUIC_SUCCEEDED(Stream.GetInitStatus());
+        TEST_QUIC_SUCCEEDED(Stream.Start());
+        TEST_QUIC_SUCCEEDED(Stream.Send(&QMuxTestSendBuffer, 1, QUIC_SEND_FLAG_FIN));
+        TEST_TRUE(ServerContext.StreamShutdownEvent.WaitTimeout(TestWaitTimeout));
+    }
+
+    Connection.Shutdown(CloseErrorCode);
+
+    TEST_TRUE(Connection.ShutdownCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+
+    TEST_TRUE(ServerContext.PeerInitiated);
+    TEST_EQUAL(CloseErrorCode, ServerContext.PeerErrorCode);
+    TEST_EQUAL(QMuxTestDataLength, ServerContext.BytesReceived);
+}
+
 void
 QuicTestQMuxUniStreamLimits(
     _In_ const FamilyArgs& Params

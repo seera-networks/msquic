@@ -772,41 +772,6 @@ CxPlatSocketContextInitialize(
             goto Exit;
         }
 
-        //
-        // Prevent the socket from entering TIME_WAIT state when closed.
-        //
-        struct linger LingerOpt;
-        LingerOpt.l_onoff = TRUE;   // Enable linger
-        LingerOpt.l_linger = 0;     // Linger time of 0 seconds (immediate reset)
-        Result = setsockopt(SocketContext->SocketFd, SOL_SOCKET, SO_LINGER, &LingerOpt, sizeof(LingerOpt));
-        if (Result == SOCKET_ERROR) {
-            Status = errno;
-            QuicTraceEvent(
-                DatapathErrorStatus,
-                "[data][%p] ERROR, %u, %s.",
-                Binding,
-                Status,
-                "setsockopt(SO_LINGER) failed");
-            goto Exit;
-        }
-    } else if (SocketType == CXPLAT_SOCKET_TCP) {
-        //
-        // Prevent the socket from entering TIME_WAIT state when closed.
-        //
-        struct linger LingerOpt;
-        LingerOpt.l_onoff = TRUE;   // Enable linger
-        LingerOpt.l_linger = 0;     // Linger time of 0 seconds (immediate reset)
-        Result = setsockopt(SocketContext->SocketFd, SOL_SOCKET, SO_LINGER, &LingerOpt, sizeof(LingerOpt));
-        if (Result == SOCKET_ERROR) {
-            Status = errno;
-            QuicTraceEvent(
-                DatapathErrorStatus,
-                "[data][%p] ERROR, %u, %s.",
-                Binding,
-                Status,
-                "setsockopt(SO_LINGER) failed");
-            goto Exit;
-        }
     }
 
     CxPlatCopyMemory(&MappedAddress, &Binding->LocalAddress, sizeof(MappedAddress));
@@ -1013,9 +978,34 @@ CxPlatSocketContextUninitialize(
             //
             // For TCP sockets, we should shutdown the socket before closing it.
             //
+            //
+            // A TCP socket is closed gracefully, which is what QMux asks for:
+            // "After shutting down the sending side, the endpoint SHOULD wait
+            // for the peer to gracefully shut down the peer's sending side.
+            // The use of graceful shutdown mitigates the risk of undelivered
+            // records and frames becoming lost due to abrupt termination of
+            // the underlying transport" -- draft-ietf-quic-qmux-02 section
+            // 7.2.
+            //
+            // Two things make it graceful. SHUT_WR rather than SHUT_RDWR:
+            // shutting down the sending side sends the FIN and flushes what is
+            // queued behind it, while the receiving side stays open so that
+            // anything already in flight from the peer is accepted rather than
+            // answered with a reset. And no SO_LINGER with a zero timeout on
+            // the socket, which these used to carry to avoid TIME_WAIT: with
+            // it, the close() that follows sent a reset instead, and the frame
+            // it discarded was usually the CONNECTION_CLOSE just written --
+            // leaving the peer to report the close as an abort with no error
+            // code. The Windows datapath never set it and was already
+            // graceful.
+            //
+            // What is still missing is the waiting: this end does not hold the
+            // socket open for the peer's FIN, so a peer that is slow to close
+            // may see its last records dropped by the close that follows.
+            //
             (void)InterlockedCompareExchange(
                 &SocketContext->Binding->DisconnectIndicated, TRUE, FALSE);
-            if (shutdown(SocketContext->SocketFd, SHUT_RDWR) != 0) {
+            if (shutdown(SocketContext->SocketFd, SHUT_WR) != 0) {
                 int Errno = errno;
                 if (Errno != ENOTCONN) {
                     QuicTraceEvent(
