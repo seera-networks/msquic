@@ -1179,7 +1179,19 @@ QuicPathSetActive(
         // there is nothing to swap into slot 0: the named path simply becomes
         // one of the active ones.
         //
-        Path->IsActive = TRUE;
+        // Active unless the peer has said otherwise. A PATH_BACKUP that
+        // arrived before this end validated the path was recorded on the path
+        // ID and not applied -- the path was not in a state to carry a status
+        // -- and each end validates on its own schedule, so whether it arrives
+        // before or after is a race. Writing TRUE here regardless is what lost
+        // the peer's word, and the peer never repeats it: it sends one frame
+        // per change of its own mind. The connection then split what it sent
+        // across a path the peer had asked it to keep in reserve. #232.
+        //
+        Path->IsActive =
+            (Path->PathID == NULL ||
+             !Path->PathID->Flags.PeerStatusKnown ||
+             Path->PathID->Flags.PeerStatusActive) ? TRUE : FALSE;
     } else if (Path == ActivePath) {
         CXPLAT_DBG_ASSERT(!Path->IsActive);
         Path->IsActive = TRUE;
@@ -1230,7 +1242,15 @@ QuicPathSetActive(
         ActivePath->ID,
         UdpPortChangeOnly);
 
-    if (!UdpPortChangeOnly) {
+    //
+    // The path ID carries the congestion control to reset, and a path can
+    // reach here without one: a server rebinding a client that only changed
+    // its port takes the branch above that skips this, and that is the one
+    // caller for which QuicConnAssignPathIDs may not have run yet. Asserting
+    // the path ID instead of testing it crashed
+    // ParameterValidation.ValidateConnectionParam on every debug leg.
+    //
+    if (!UdpPortChangeOnly && Path->PathID != NULL) {
         QuicCongestionControlReset(&Path->PathID->CongestionControl, FALSE);
     }
     //

@@ -55,6 +55,20 @@ typedef union QUIC_PATHID_FLAGS {
         //
         BOOLEAN CidsBlocked             : 1;
         BOOLEAN SendCidsBlocked         : 1;
+        //
+        // The status the peer last sent for this path ID -- PATH_AVAILABLE or
+        // PATH_BACKUP -- and whether it has sent one at all.
+        //
+        // On the path ID rather than the path, because a status can arrive
+        // before there is a path in a state to carry it: before the QUIC_PATH
+        // is bound, and before this end has validated the path. The peer sends
+        // one frame per change of its own mind, not one per attempt, so a
+        // status dropped on arrival is never repeated -- and the path then
+        // becomes active behind the peer's back. Remembered here and applied
+        // when the path becomes usable; see QuicPathSetActive.
+        //
+        BOOLEAN PeerStatusKnown         : 1;
+        BOOLEAN PeerStatusActive        : 1;
     };
 } QUIC_PATHID_FLAGS;
 
