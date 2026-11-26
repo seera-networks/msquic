@@ -490,6 +490,40 @@ TEST_F(PathTest, SetActiveActivatesWhatThePeerCalledAvailable)
     ASSERT_TRUE(Connection.Paths.Paths[1].IsActive);
 }
 
+//
+// #80: a path whose path ID has been freed keeps its slot with the path ID and
+// the binding taken away, and QuicConnChoosePath's fallback can hand exactly
+// that path to a flush. Asking whether its route is ready used to read
+// Path->Binding->Socket.
+//
+// Only the datapaths that resolve routes for real ever got there -- the UDP
+// ones answer "resolved" from the state above it -- so this crashed the
+// XDP and QTIP legs and no others.
+//
+TEST_F(PathTest, RouteIsNotReadyWithoutABinding)
+{
+    InitializePaths(1);
+
+    QUIC_PATH* Path = &Connection.Paths.Paths[0];
+    Path->Binding = nullptr;
+
+    //
+    // Resolved is answered before anything is dereferenced, so the question
+    // only arises for a route that still needs resolving.
+    //
+    Path->Route.State = RouteResolved;
+    ASSERT_TRUE(CxPlatIsRouteReady(&Connection, Path));
+
+    Path->Route.State = RouteUnresolved;
+    ASSERT_FALSE(CxPlatIsRouteReady(&Connection, Path));
+
+    Path->Route.State = RouteSuspected;
+    ASSERT_FALSE(CxPlatIsRouteReady(&Connection, Path));
+
+    Path->Route.State = RouteResolving;
+    ASSERT_FALSE(CxPlatIsRouteReady(&Connection, Path));
+}
+
 TEST_F(PathTest, UpdateDestCidsPrioritizesActivePathForReplacement)
 {
     InitializePaths(4);
