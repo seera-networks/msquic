@@ -296,9 +296,8 @@ QuicSendWritePathAckFrames(
     // acknowledge them. The invalid-path removal after a failed route
     // resolution leaves the same.
     //
-    // An ACK_MP frame names the path ID it acknowledges, so
-    // draft-ietf-quic-multipath-21 section 3.4 lets it go out on whichever path
-    // this builder is targeting. That is what makes reaching a path-less path
+    // A PATH_ACK frame names the path ID it acknowledges, so RFC 10069
+    // section 3.4 lets it go out on whichever path this builder is targeting. That is what makes reaching a path-less path
     // ID possible at all, and it is the same reason
     // QuicPathIDSetWritePathAbandonFrame walks the set.
     //

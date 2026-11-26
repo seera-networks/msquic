@@ -475,3 +475,32 @@ TEST_F(StatelessPunchTpValueTest, RejectsNonEmptyValue)
     ASSERT_FALSE(DecodeWithValue(Longer, sizeof(Longer), FALSE));
     ASSERT_FALSE(DecodeWithValue(Longer, sizeof(Longer), TRUE));
 }
+
+//
+// RFC 10069 section 2.1: "If an initial_max_path_id transport parameter value
+// higher than 2^32-1 is received, the receiver MUST close the connection with
+// an error of type TRANSPORT_PARAMETER_ERROR."
+//
+// Hand-built rather than encoded from a QUIC_TRANSPORT_PARAMETERS, because the
+// value under test is one the encoder is never asked to produce.
+//
+TEST(TransportParamTest, RejectsInitialMaxPathIdAboveTheLimit)
+{
+    //
+    // id 0x3e, length 8, then an eight-byte varint of 2^32 -- one above the
+    // largest path ID the extension allows.
+    //
+    const uint8_t TooLarge[] = {
+        0x3e, 0x08, 0xC0, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
+    };
+
+    QUIC_TRANSPORT_PARAMETERS Decoded = {0};
+    TransportParametersScope TPScope(&Decoded);
+    ASSERT_FALSE(
+        QuicCryptoTlsDecodeTransportParameters(
+            &JunkConnection,
+            TRUE,   // IsServerTP
+            TooLarge,
+            (uint16_t)sizeof(TooLarge),
+            &Decoded));
+}

@@ -277,8 +277,8 @@ TEST(SpinFrame, SpinFrame1000000)
             case QUIC_FRAME_PATHS_BLOCKED:
             case QUIC_FRAME_PATH_CIDS_BLOCKED:
                 //
-                // Multipath (draft-ietf-quic-multipath) frames. Their draft-21
-                // codepoints now fall within the 16-bit fuzz range; they are not
+                // Multipath (RFC 10069) frames. Their codepoints fall within
+                // the 16-bit fuzz range; they are not
                 // decode-fuzzed here (covered by the Multipath end-to-end test).
                 //
                 break;

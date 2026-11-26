@@ -2273,20 +2273,40 @@ QuicTestMultipathBackupStatusBeforeValidation(
     QuicAddr SecondLocalAddr, PairAddr;
     TEST_QUIC_SUCCEEDED(Connection.GetLocalAddr(SecondLocalAddr));
     TEST_QUIC_SUCCEEDED(Connection.GetRemoteAddr(PairAddr));
-    SecondLocalAddr.SetEphemeralPort();
 
     //
-    // Armed before the path is added, so nothing on it reaches the server. The
-    // path validation deadline is at least six times the initial RTT and the
-    // challenge is requeued at a third of it, so the window held below is far
-    // inside the time the client keeps trying.
+    // The hook is armed before the path is added, so nothing on it reaches the
+    // server. The path validation deadline is at least six times the initial
+    // RTT and the challenge is requeued at a third of it, so the window held
+    // below is far inside the time the client keeps trying.
     //
-    PathOneWayBlackholeHelper Blackhole(SecondLocalAddr.GetPort());
-    Blackhole.Armed = true;
+    // Both the hook and the path are keyed on a port picked at random, so a
+    // port already in use takes a fresh one and a fresh hook with it. Asking
+    // once was enough to fail a Windows ASAN leg with
+    // QUIC_STATUS_ADDRESS_IN_USE, which is the same retry the sibling test
+    // above carries and for the same reason.
+    //
+    QUIC_STATUS Status = QUIC_STATUS_ADDRESS_IN_USE;
+    PathOneWayBlackholeHelper* Blackhole = nullptr;
+    for (uint32_t Try = 0; Try < 4 && QUIC_FAILED(Status); ++Try) {
+        delete Blackhole;
+        SecondLocalAddr.SetEphemeralPort();
+        Blackhole = new(std::nothrow) PathOneWayBlackholeHelper(SecondLocalAddr.GetPort());
+        if (Blackhole == nullptr) {
+            break;
+        }
+        Blackhole->Armed = true;
 
-    QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
-    TEST_QUIC_SUCCEEDED(
-        Connection.SetParam(QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam));
+        QUIC_PATH_PARAM PathParam = { &SecondLocalAddr.SockAddr, &PairAddr.SockAddr };
+        Status =
+            Connection.SetParam(
+                QUIC_PARAM_CONN_ADD_PATH, sizeof(PathParam), &PathParam);
+    }
+    TEST_NOT_EQUAL(nullptr, Blackhole);
+    if (QUIC_FAILED(Status)) {
+        delete Blackhole;
+    }
+    TEST_QUIC_SUCCEEDED(Status);
 
     //
     // Declared backup before anything has validated it, which is the point.
@@ -2300,7 +2320,7 @@ QuicTestMultipathBackupStatusBeforeValidation(
     //
     const uint32_t BackupPathId = 1;
     QUIC_PATH_STATUS BackupStatus = { BackupPathId, FALSE };
-    QUIC_STATUS Status = QUIC_STATUS_INVALID_PARAMETER;
+    Status = QUIC_STATUS_INVALID_PARAMETER;
     for (uint32_t Try = 0; Try < 20 && QUIC_FAILED(Status); ++Try) {
         Status =
             Connection.SetParam(
@@ -2323,7 +2343,7 @@ QuicTestMultipathBackupStatusBeforeValidation(
     // status used to be overwritten with "active", after which the server sent
     // on a path the client had asked it to keep in reserve.
     //
-    Blackhole.Armed = false;
+    Blackhole->Armed = false;
 
     TEST_TRUE(ClientContext.PathAddedEvent.WaitTimeout(TestWaitTimeout));
     TEST_TRUE(Context.PathAddedEvent.WaitTimeout(TestWaitTimeout));
@@ -2338,6 +2358,8 @@ QuicTestMultipathBackupStatusBeforeValidation(
     TEST_TRUE(Context.PathStatusChangedEvent.WaitTimeout(TestWaitTimeout));
     TEST_EQUAL(BackupPathId, Context.StatusPathId);
     TEST_FALSE(Context.StatusIsActive);
+
+    delete Blackhole;
 
     Connection.Shutdown(0, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE);
     TEST_TRUE(ClientContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
@@ -6247,7 +6269,7 @@ RunServerLostAddressTest(
     if (MultipathEnabled) {
         //
         // Abandoned, and the peer is told -- which is the requirement from
-        // draft-ietf-quic-multipath section 3.4 and the whole reason the
+        // RFC 10069 section 3.4 and the whole reason the
         // server does this at all.
         //
         TEST_TRUE(AltServerAddressWaitForPathCount(*ServerContext.Connection, 1));
