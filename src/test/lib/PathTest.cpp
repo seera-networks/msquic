@@ -6247,7 +6247,7 @@ RunServerLostAddressTest(
     if (MultipathEnabled) {
         //
         // Abandoned, and the peer is told -- which is the requirement from
-        // draft-ietf-quic-multipath section 3.4 and the whole reason the
+        // RFC 10069 section 3.4 and the whole reason the
         // server does this at all.
         //
         TEST_TRUE(AltServerAddressWaitForPathCount(*ServerContext.Connection, 1));
