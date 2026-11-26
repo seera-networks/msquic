@@ -1171,12 +1171,6 @@ QuicPathSetActive(
     BOOLEAN UdpPortChangeOnly = FALSE;
     QUIC_PATH* Path = QuicConnGetPathByID(Connection, PathId);
     CXPLAT_DBG_ASSERT(Path != NULL);
-    //
-    // Stated rather than tested: every caller activates a path that has a path
-    // ID, which is what the congestion control reset at the end of this
-    // function has always assumed by dereferencing it unconditionally.
-    //
-    CXPLAT_DBG_ASSERT(Path->PathID != NULL);
 
     QUIC_PATH* ActivePath = QuicPathGetActive(&Connection->Paths);
     if (Connection->State.MultipathNegotiated) {
@@ -1195,7 +1189,8 @@ QuicPathSetActive(
         // across a path the peer had asked it to keep in reserve. #232.
         //
         Path->IsActive =
-            (!Path->PathID->Flags.PeerStatusKnown ||
+            (Path->PathID == NULL ||
+             !Path->PathID->Flags.PeerStatusKnown ||
              Path->PathID->Flags.PeerStatusActive) ? TRUE : FALSE;
     } else if (Path == ActivePath) {
         CXPLAT_DBG_ASSERT(!Path->IsActive);
@@ -1247,7 +1242,15 @@ QuicPathSetActive(
         ActivePath->ID,
         UdpPortChangeOnly);
 
-    if (!UdpPortChangeOnly) {
+    //
+    // The path ID carries the congestion control to reset, and a path can
+    // reach here without one: a server rebinding a client that only changed
+    // its port takes the branch above that skips this, and that is the one
+    // caller for which QuicConnAssignPathIDs may not have run yet. Asserting
+    // the path ID instead of testing it crashed
+    // ParameterValidation.ValidateConnectionParam on every debug leg.
+    //
+    if (!UdpPortChangeOnly && Path->PathID != NULL) {
         QuicCongestionControlReset(&Path->PathID->CongestionControl, FALSE);
     }
     //
