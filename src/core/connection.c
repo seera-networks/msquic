@@ -6579,6 +6579,80 @@ QuicFrameAllowedIn0Rtt(
 }
 
 //
+// Tells the application what status a path now has.
+//
+static
+void
+QuicConnIndicatePathStatusChanged(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ const QUIC_PATH* Path,
+    _In_ BOOLEAN IsActive
+    )
+{
+    QUIC_CONNECTION_EVENT Event;
+    Event.Type = QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED;
+    Event.PATH_STATUS_CHANGED.PeerAddress = &Path->Route.RemoteAddress;
+    Event.PATH_STATUS_CHANGED.LocalAddress = &Path->Route.LocalAddress;
+    Event.PATH_STATUS_CHANGED.PathId = Path->PathID->ID;
+    Event.PATH_STATUS_CHANGED.IsActive = IsActive;
+    QuicTraceLogConnVerbose(
+        IndicatePathStatusChanged,
+        Connection,
+        "Indicating QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED");
+    (void)QuicConnIndicateEvent(Connection, &Event);
+}
+
+//
+// Takes the status the peer sent for one of its path IDs, from PATH_AVAILABLE
+// or PATH_BACKUP.
+//
+// The status is remembered on the path ID whether or not it can be acted on
+// now, because the peer sends one frame per change of its own mind: a status
+// dropped here is never repeated, and the path would then be used -- or held
+// in reserve -- against what the peer last said. It is applied to a path this
+// end has validated; otherwise QuicPathSetActive applies it when the path
+// becomes usable.
+//
+static
+void
+QuicConnRecvPathStatus(
+    _In_ QUIC_CONNECTION* Connection,
+    _In_ QUIC_PATHID* PathID,
+    _In_ QUIC_VAR_INT StatusSequenceNumber,
+    _In_ BOOLEAN Active
+    )
+{
+    if (StatusSequenceNumber < PathID->StatusRecvSeq) {
+        //
+        // Older than what the peer has already told us. The frame is still
+        // acknowledged by the caller, so the peer stops retransmitting it.
+        //
+        return;
+    }
+    PathID->StatusRecvSeq = StatusSequenceNumber + 1;
+    PathID->Flags.PeerStatusKnown = TRUE;
+    PathID->Flags.PeerStatusActive = Active;
+
+    //
+    // Only a validated path takes the status now. An unvalidated one is not
+    // carrying traffic yet and is about to be activated by QuicPathSetActive,
+    // which reads what was just recorded -- and marking it active here would
+    // be worse than waiting: it would put QuicConnChoosePath on a path whose
+    // peer address this end has not confirmed.
+    //
+    if (PathID->Path == NULL || !PathID->Path->IsPeerValidated) {
+        return;
+    }
+
+    if (PathID->Path->IsActive == Active) {
+        return;
+    }
+
+    PathID->Path->IsActive = Active;
+    QuicConnIndicatePathStatusChanged(Connection, PathID->Path, Active);
+}
+
+//
 // Reads the frames in a packet, and if everything is successful marks the
 // packet for acknowledgement and returns TRUE.
 //
@@ -7379,6 +7453,20 @@ QuicConnRecvFrames(
                             Connection,
                             "Indicating QUIC_CONNECTION_EVENT_PATH_ADDED");
                         (void)QuicConnIndicateEvent(Connection, &Event);
+
+                        //
+                        // A path the peer had already called backup comes out
+                        // of QuicPathSetActive inactive, and the application
+                        // has heard nothing about it: the status arrived
+                        // before there was a validated path to apply it to,
+                        // so nothing was indicated then. Tell it now, after
+                        // PATH_ADDED, which is the order it would have seen
+                        // had the frame come in a moment later.
+                        //
+                        if (!TempPath->IsActive) {
+                            QuicConnIndicatePathStatusChanged(
+                                Connection, TempPath, FALSE);
+                        }
                     }
                     break;
                 }
@@ -7534,38 +7622,12 @@ QuicConnRecvFrames(
             if (PathID == NULL) {
                 break;
             }
-            if (PathID->Path == NULL) {
-                //
-                // The peer referenced a path id whose QUIC_PATH is not (yet)
-                // bound (e.g. CIDs provisioned via PATH_NEW_CONNECTION_ID before
-                // QuicConnAssignPathIDs could attach a path). Ignore the frame.
-                //
-                QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
-                break;
-            }
 
-            if (Frame.StatusSequenceNumber < PathID->StatusRecvSeq) {
-                // ignore the frame
-                QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
-                break;
-            }
-            PathID->StatusRecvSeq = Frame.StatusSequenceNumber + 1;
-
-            if (PathID->Path->IsActive) {
-                // Change status of the path to backup
-                PathID->Path->IsActive = FALSE;
-                QUIC_CONNECTION_EVENT Event;
-                Event.Type = QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED;
-                Event.PATH_STATUS_CHANGED.PeerAddress = &PathID->Path->Route.RemoteAddress;
-                Event.PATH_STATUS_CHANGED.LocalAddress = &PathID->Path->Route.LocalAddress;
-                Event.PATH_STATUS_CHANGED.PathId = PathID->ID;
-                Event.PATH_STATUS_CHANGED.IsActive = FALSE;
-                QuicTraceLogConnVerbose(
-                    IndicatePathStatusChanged,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED");
-                (void)QuicConnIndicateEvent(Connection, &Event);
-            }
+            QuicConnRecvPathStatus(
+                Connection,
+                PathID,
+                Frame.StatusSequenceNumber,
+                FALSE);
 
             AckEliciting = TRUE;
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
@@ -7606,38 +7668,12 @@ QuicConnRecvFrames(
             if (PathID == NULL) {
                 break;
             }
-            if (PathID->Path == NULL) {
-                //
-                // The peer referenced a path id whose QUIC_PATH is not (yet)
-                // bound (e.g. CIDs provisioned via PATH_NEW_CONNECTION_ID before
-                // QuicConnAssignPathIDs could attach a path). Ignore the frame.
-                //
-                QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
-                break;
-            }
 
-            if (Frame.StatusSequenceNumber < PathID->StatusRecvSeq) {
-                // ignore the frame
-                QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
-                break;
-            }
-            PathID->StatusRecvSeq = Frame.StatusSequenceNumber + 1;
-
-            if (!PathID->Path->IsActive) {
-                // Change status of the path to available (active)
-                PathID->Path->IsActive = TRUE;
-                QUIC_CONNECTION_EVENT Event;
-                Event.Type = QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED;
-                Event.PATH_STATUS_CHANGED.PeerAddress = &PathID->Path->Route.RemoteAddress;
-                Event.PATH_STATUS_CHANGED.LocalAddress = &PathID->Path->Route.LocalAddress;
-                Event.PATH_STATUS_CHANGED.PathId = PathID->ID;
-                Event.PATH_STATUS_CHANGED.IsActive = TRUE;
-                QuicTraceLogConnVerbose(
-                    IndicatePathStatusChanged,
-                    Connection,
-                    "Indicating QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED");
-                (void)QuicConnIndicateEvent(Connection, &Event);
-            }
+            QuicConnRecvPathStatus(
+                Connection,
+                PathID,
+                Frame.StatusSequenceNumber,
+                TRUE);
 
             AckEliciting = TRUE;
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);

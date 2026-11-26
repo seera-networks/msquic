@@ -1171,6 +1171,12 @@ QuicPathSetActive(
     BOOLEAN UdpPortChangeOnly = FALSE;
     QUIC_PATH* Path = QuicConnGetPathByID(Connection, PathId);
     CXPLAT_DBG_ASSERT(Path != NULL);
+    //
+    // Stated rather than tested: every caller activates a path that has a path
+    // ID, which is what the congestion control reset at the end of this
+    // function has always assumed by dereferencing it unconditionally.
+    //
+    CXPLAT_DBG_ASSERT(Path->PathID != NULL);
 
     QUIC_PATH* ActivePath = QuicPathGetActive(&Connection->Paths);
     if (Connection->State.MultipathNegotiated) {
@@ -1179,7 +1185,18 @@ QuicPathSetActive(
         // there is nothing to swap into slot 0: the named path simply becomes
         // one of the active ones.
         //
-        Path->IsActive = TRUE;
+        // Active unless the peer has said otherwise. A PATH_BACKUP that
+        // arrived before this end validated the path was recorded on the path
+        // ID and not applied -- the path was not in a state to carry a status
+        // -- and each end validates on its own schedule, so whether it arrives
+        // before or after is a race. Writing TRUE here regardless is what lost
+        // the peer's word, and the peer never repeats it: it sends one frame
+        // per change of its own mind. The connection then split what it sent
+        // across a path the peer had asked it to keep in reserve. #232.
+        //
+        Path->IsActive =
+            (!Path->PathID->Flags.PeerStatusKnown ||
+             Path->PathID->Flags.PeerStatusActive) ? TRUE : FALSE;
     } else if (Path == ActivePath) {
         CXPLAT_DBG_ASSERT(!Path->IsActive);
         Path->IsActive = TRUE;

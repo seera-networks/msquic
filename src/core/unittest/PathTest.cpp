@@ -387,6 +387,65 @@ TEST_F(PathTest, ChoosePathPrefersAnActivePath)
     }
 }
 
+//
+// #232: the peer's PATH_BACKUP for a path this end has not validated yet is
+// recorded on the path ID, and validating the path must not throw it away.
+// Before this, QuicPathSetActive wrote TRUE whatever the peer had said, and
+// the connection then sent on a path the peer asked it to hold in reserve.
+//
+TEST_F(PathTest, SetActiveKeepsWhatThePeerCalledBackup)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+    Connection.State.HandshakeConfirmed = TRUE;
+
+    PathID.Flags.PeerStatusKnown = TRUE;
+    PathID.Flags.PeerStatusActive = FALSE;
+
+    ASSERT_FALSE(Connection.Paths.Paths[1].IsActive);
+    QuicPathSetActive(&Connection, Connection.Paths.Paths[1].ID);
+    ASSERT_FALSE(Connection.Paths.Paths[1].IsActive);
+
+    //
+    // And the point of it: an active slot 0 carries everything, rather than
+    // the two sharing the traffic at random.
+    //
+    for (uint32_t i = 0; i < 20; ++i) {
+        ASSERT_EQ(&Connection.Paths.Paths[0], QuicConnChoosePath(&Connection));
+    }
+}
+
+//
+// A peer that has said nothing about a path gets the old behaviour: becoming
+// usable makes the path active.
+//
+TEST_F(PathTest, SetActiveActivatesWhenThePeerHasNotSpoken)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+
+    ASSERT_FALSE(PathID.Flags.PeerStatusKnown);
+    QuicPathSetActive(&Connection, Connection.Paths.Paths[1].ID);
+    ASSERT_TRUE(Connection.Paths.Paths[1].IsActive);
+}
+
+//
+// As does a peer that called the path available, which is the other half of
+// the same race: the status can arrive before the path is validated either
+// way round.
+//
+TEST_F(PathTest, SetActiveActivatesWhatThePeerCalledAvailable)
+{
+    InitializePaths(2);
+    Connection.State.MultipathNegotiated = TRUE;
+
+    PathID.Flags.PeerStatusKnown = TRUE;
+    PathID.Flags.PeerStatusActive = TRUE;
+
+    QuicPathSetActive(&Connection, Connection.Paths.Paths[1].ID);
+    ASSERT_TRUE(Connection.Paths.Paths[1].IsActive);
+}
+
 TEST_F(PathTest, UpdateDestCidsPrioritizesActivePathForReplacement)
 {
     InitializePaths(4);
