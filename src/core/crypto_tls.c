@@ -70,7 +70,7 @@ typedef enum eSniNameType {
 #define QUIC_TP_ID_ENABLE_TIMESTAMP                         0x7158          // varint
 #define QUIC_TP_ID_OBSERVED_ADDRESS                         0x9f81a176      // varint
 #define QUIC_TP_ID_SERVER_MIGRATION                         0x3e764478      // N/A
-#define QUIC_TP_ID_INITIAL_MAX_PATH_ID                      0x3e // varint (draft-ietf-quic-multipath-21, suggested)
+#define QUIC_TP_ID_INITIAL_MAX_PATH_ID                      0x3e // varint (RFC 10069)
 #define QUIC_TP_ID_ALTERNATIVE_ADDRESS                      0xff0969d85cULL // varint[] (draft-munizaga-quic-alternative-server-address-02)
 #define QUIC_TP_ID_STATELESS_PUNCH                          0x5eea9e7aULL   // empty (draft-kozuka-quic-stateless-punch, provisional)
 
@@ -2066,6 +2066,28 @@ QuicCryptoTlsDecodeTransportParameters( // NOLINT(readability-function-size, goo
                     "Invalid length of QUIC_TP_ID_INITIAL_MAX_PATH_ID");
                 goto Exit;
             }
+            //
+            // "If an initial_max_path_id transport parameter value higher
+            // than 2^32-1 is received, the receiver MUST close the connection
+            // with an error of type TRANSPORT_PARAMETER_ERROR" -- RFC 10069
+            // section 2.1.
+            //
+            // Not a formality here: the value is stored as a uint32_t
+            // (QuicPathIDSetInitializeTransportParameters takes one), so
+            // without this a peer advertising 2^32 would be read as advertising
+            // 0 -- multipath silently negotiated and then unusable.
+            //
+            if (TransportParams->InitialMaxPathId > QUIC_TP_MAX_PATH_ID_MAX) {
+                QuicConnTransportError(
+                    Connection, QUIC_ERROR_TRANSPORT_PARAMETER_ERROR);
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Invalid value of QUIC_TP_ID_INITIAL_MAX_PATH_ID");
+                goto Exit;
+            }
+
             QUIC_CID_LIST_ENTRY* DestCid =
                 CXPLAT_CONTAINING_RECORD(
                     Connection->Paths.Paths[0].PathID->DestCids.Flink,

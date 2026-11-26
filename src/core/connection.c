@@ -1762,7 +1762,7 @@ QuicConnUpdateAddressMonitorRef(
 // somewhere traffic goes, and the one path a server has is the one the client
 // chose, which a server may not move.
 //
-// draft-ietf-quic-multipath section 3.4 is why this exists: an endpoint
+// RFC 10069 section 3.4 is why this exists: an endpoint
 // abandoning a path has to tell its peer. The client cannot see that the
 // server's interface went away, and would go on scheduling traffic onto a path
 // that cannot carry it.
@@ -1834,7 +1834,11 @@ QuicConnAbandonLostLocalAddressPaths(
             continue;
         }
 
-        QuicPathIDAbandonLocally(Path->PathID);
+        //
+        // The local address is gone, which is the "unstable interfaces" half
+        // of what RFC 10069 registered that code for.
+        //
+        QuicPathIDAbandonLocally(Path->PathID, QUIC_ERROR_PATH_UNSTABLE_OR_POOR);
 
         QuicTraceLogConnInfo(
             ServerAbandonedLostPath,
@@ -2326,7 +2330,7 @@ QuicConnProcessLocalAddressChange(
         // addresses, and only with multipath negotiated -- it abandons the
         // paths whose local address went away.
         //
-        // draft-ietf-quic-multipath section 3.4 requires an endpoint
+        // RFC 10069 section 3.4 requires an endpoint
         // abandoning a path to tell its peer, so the abandon is the point: the
         // client cannot see that the server's interface went away and would go
         // on scheduling traffic onto a path that cannot carry it.
@@ -7538,7 +7542,7 @@ QuicConnRecvFrames(
 
                 //
                 // Still three PTO before the path ID goes, even though there is
-                // no path to drain. draft-ietf-quic-multipath-21 section 3.4
+                // no path to drain. RFC 10069 section 3.4
                 // asks for "knowledge of the connection IDs issued to the peer
                 // and of the state of the number space associated to the path"
                 // to "be retained for 3 PTO after the PATH_ABANDON frame has
@@ -7581,7 +7585,32 @@ QuicConnRecvFrames(
                 PathID->Flags.Abandoned = TRUE;
             }
 
-            QuicPathIDAbandonLocally(PathID);
+            //
+            // "If a PATH_ABANDON frame is received for the only open path of a
+            // QUIC connection, the receiving peer SHOULD send a
+            // CONNECTION_CLOSE frame and enter the closing state" -- RFC 10069
+            // section 3.4. Read before abandoning, which is what takes the
+            // path out of the usable set.
+            //
+            // Left to the path's own removal, the connection went instead
+            // through QuicPathRemove's last-path case, which closes silently
+            // three PTO later: correct for a path that stopped answering, and
+            // wrong here, where the peer has said in as many words that it is
+            // done with the connection's only path and is waiting to hear
+            // back.
+            //
+            const BOOLEAN AbandoningTheOnlyPath =
+                !QuicConnHasOtherUsablePath(Connection, PathID->Path);
+
+            //
+            // Mirroring the peer's abandon, so nothing is wrong with the path
+            // as far as this end knows.
+            //
+            QuicPathIDAbandonLocally(PathID, QUIC_ERROR_NO_ERROR);
+
+            if (AbandoningTheOnlyPath) {
+                QuicConnTransportError(Connection, QUIC_ERROR_NO_ERROR);
+            }
 
             AckEliciting = TRUE;
             QuicPathIDRelease(PathID, QUIC_PATHID_REF_LOOKUP);
@@ -9528,7 +9557,7 @@ QuicConnProcessPathValidationTimerOperation(
 
         //
         // The path ID is spent whether the path came up or not, and
-        // draft-ietf-quic-multipath section 3.1 is explicit about what that
+        // RFC 10069 section 3.1 is explicit about what that
         // obliges: "As the used path ID is consumed either way, the endpoint
         // MUST explicitly close the path". Section 3.4 says the same from the
         // other direction -- an endpoint abandoning a path MUST send a
@@ -9551,7 +9580,8 @@ QuicConnProcessPathValidationTimerOperation(
         if (Connection->State.MultipathNegotiated &&
             Path->PathID != NULL &&
             QuicConnHasOtherUsablePath(Connection, Path)) {
-            QuicPathIDAbandonLocally(Path->PathID);
+            QuicPathIDAbandonLocally(
+                Path->PathID, QUIC_ERROR_APPLICATION_ABANDON_PATH);
             //
             // Keeps this path out of the validation timer from here on: it is
             // leaving on the close timer now, and QuicConnPathValidationTimerUpdate

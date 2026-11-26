@@ -98,6 +98,19 @@ extern "C" {
 #define QUIC_ERROR_CRYPTO_USER_CANCELED             QUIC_ERROR_CRYPTO_ERROR(90)  // TLS error code for 'user_canceled'
 #define QUIC_ERROR_CRYPTO_NO_APPLICATION_PROTOCOL   QUIC_ERROR_CRYPTO_ERROR(120) // TLS error code for 'no_application_protocol'
 
+//
+// Why a path was abandoned, carried in the Error Code field of a PATH_ABANDON
+// frame. Registered by RFC 10069 section 6; the frame itself is section 4.2.
+//
+// NO_ERROR (0x0) remains a legal answer and is what this end sends when it is
+// only mirroring the peer's abandon, where nothing is wrong with the path as
+// far as it knows.
+//
+#define QUIC_ERROR_APPLICATION_ABANDON_PATH     0x3e
+#define QUIC_ERROR_PATH_RESOURCE_LIMIT_REACHED  0x3e75
+#define QUIC_ERROR_PATH_UNSTABLE_OR_POOR        0x3e76
+#define QUIC_ERROR_NO_CID_AVAILABLE_FOR_PATH    0x3e77
+
 #define QUIC_ERROR_VERSION_NEGOTIATION_ERROR    0x11
 
 //
@@ -189,12 +202,21 @@ typedef enum QUIC_FRAME_TYPE {
     //
     QUIC_FRAME_ALTERNATIVE_ADDRESS  = 0x1d5845e2ULL,
 
-    // Multipath frame types, per draft-ietf-quic-multipath-21 (suggested codepoints).
+    //
+    // Multipath frame types, per RFC 10069 section 6. These are the assigned
+    // codepoints, and they are the values the draft had suggested, so nothing
+    // moved when the extension was published.
+    //
+    // RFC 10069 names the two status frames PATH_STATUS_BACKUP and
+    // PATH_STATUS_AVAILABLE. They are PATH_BACKUP and PATH_AVAILABLE here, as
+    // the frames and their send flags have been since the extension was first
+    // implemented on this fork.
+    //
     QUIC_FRAME_PATH_ACK             = 0x3eULL, // to 0x3f
     QUIC_FRAME_PATH_ACK_1           = 0x3fULL,
     QUIC_FRAME_PATH_ABANDON         = 0x3e75ULL,
-    QUIC_FRAME_PATH_BACKUP          = 0x3e76ULL, // draft: PATH_STATUS_BACKUP
-    QUIC_FRAME_PATH_AVAILABLE       = 0x3e77ULL, // draft: PATH_STATUS_AVAILABLE
+    QUIC_FRAME_PATH_BACKUP          = 0x3e76ULL, // RFC: PATH_STATUS_BACKUP
+    QUIC_FRAME_PATH_AVAILABLE       = 0x3e77ULL, // RFC: PATH_STATUS_AVAILABLE
     QUIC_FRAME_PATH_NEW_CONNECTION_ID = 0x3e78ULL,
     QUIC_FRAME_PATH_RETIRE_CONNECTION_ID = 0x3e79ULL,
     QUIC_FRAME_MAX_PATH_ID          = 0x3e7aULL,

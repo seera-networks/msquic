@@ -2239,7 +2239,8 @@ QuicLossDetectionProcessTimerOperation(
                     "Path[%u][PathID][%u] dead, abandoning it rather than the connection",
                     Path->ID,
                     PathID->ID);
-                QuicPathIDAbandonLocally(PathID);
+                QuicPathIDAbandonLocally(
+                    PathID, QUIC_ERROR_PATH_UNSTABLE_OR_POOR);
             }
 
         } else {
