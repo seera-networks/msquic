@@ -622,6 +622,7 @@ ExecuteTestRequest(
 #ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
     RegisterTestFunction(QuicTestQMuxConnect);
     RegisterTestFunction(QuicTestQMuxStreamData);
+    RegisterTestFunction(QuicTestQMuxUniStreamLimits);
     RegisterTestFunction(QuicTestQMuxKeepAlive);
     RegisterTestFunction(QuicTestQMuxDatagramBurst);
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES

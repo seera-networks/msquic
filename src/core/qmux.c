@@ -443,6 +443,140 @@ QuicQMuxQueueRecvData(
     }
 }
 
+//
+// The transport parameters QMux allows, refuses, and ignores.
+//
+// "Among the transport parameters defined in Section 18.2 of [QUIC], use of
+// the following transport parameters is allowed" -- draft-ietf-quic-qmux-02
+// section 5.1, which lists the idle timeout and the initial flow control
+// limits, and prohibits the rest by name. To those the document adds
+// max_record_size (section 5.2), and the two extensions it permits:
+// max_datagram_frame_size (section 9.1) and the reliable reset parameter
+// (section 9.2).
+//
+// Three outcomes, which is why this is a function rather than a mask:
+//
+//  - a prohibited QUIC version 1 parameter is a connection error of type
+//    TRANSPORT_PARAMETER_ERROR;
+//  - anything else defined outside [QUIC] "MUST ignore ... unless they are
+//    specified to be usable with QMux", so the flag is cleared and nothing
+//    downstream acts on it -- this fork defines several such parameters
+//    (observed_address, initial_max_path_id, server migration, the punch and
+//    alternative-address parameters), and a QMux connection has no use for
+//    any of them;
+//  - max_record_size has a floor: "When receiving a value less than the
+//    default value, receivers MUST close the connection with an error of type
+//    TRANSPORT_PARAMETER_ERROR" (section 5.2).
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicQMuxValidatePeerTransportParameters(
+    _In_ QUIC_QMUX* QMux
+    )
+{
+    QUIC_CONNECTION* Connection = QMux->Connection;
+    QUIC_TRANSPORT_PARAMETERS* TP = &Connection->PeerTransportParams;
+
+    const uint64_t Prohibited =
+        QUIC_TP_FLAG_ORIGINAL_DESTINATION_CONNECTION_ID |
+        QUIC_TP_FLAG_STATELESS_RESET_TOKEN |
+        QUIC_TP_FLAG_MAX_UDP_PAYLOAD_SIZE |
+        QUIC_TP_FLAG_ACK_DELAY_EXPONENT |
+        QUIC_TP_FLAG_MAX_ACK_DELAY |
+        QUIC_TP_FLAG_DISABLE_ACTIVE_MIGRATION |
+        QUIC_TP_FLAG_PREFERRED_ADDRESS |
+        QUIC_TP_FLAG_ACTIVE_CONNECTION_ID_LIMIT |
+        QUIC_TP_FLAG_INITIAL_SOURCE_CONNECTION_ID |
+        QUIC_TP_FLAG_RETRY_SOURCE_CONNECTION_ID;
+
+    if (TP->Flags & Prohibited) {
+        QuicTraceEvent(
+            ConnError,
+            "[conn][%p] ERROR, %s.",
+            Connection,
+            "Prohibited transport parameter for QMux");
+        QuicConnTransportError(Connection, QUIC_ERROR_TRANSPORT_PARAMETER_ERROR);
+        return FALSE;
+    }
+
+    if ((TP->Flags & QX_TP_FLAG_MAX_RECORD_SIZE) &&
+        TP->MaxRecordSize < QX_TP_MAX_RECORD_SIZE_DEFAULT) {
+        QuicTraceEvent(
+            ConnErrorStatus,
+            "[conn][%p] ERROR, %u, %s.",
+            Connection,
+            (uint32_t)TP->MaxRecordSize,
+            "max_record_size below the default");
+        QuicConnTransportError(Connection, QUIC_ERROR_TRANSPORT_PARAMETER_ERROR);
+        return FALSE;
+    }
+
+    const uint64_t Permitted =
+        QUIC_TP_FLAG_IDLE_TIMEOUT |
+        QUIC_TP_FLAG_INITIAL_MAX_DATA |
+        QUIC_TP_FLAG_INITIAL_MAX_STRM_DATA_BIDI_LOCAL |
+        QUIC_TP_FLAG_INITIAL_MAX_STRM_DATA_BIDI_REMOTE |
+        QUIC_TP_FLAG_INITIAL_MAX_STRM_DATA_UNI |
+        QUIC_TP_FLAG_INITIAL_MAX_STRMS_BIDI |
+        QUIC_TP_FLAG_INITIAL_MAX_STRMS_UNI |
+        QX_TP_FLAG_MAX_RECORD_SIZE |
+        QUIC_TP_FLAG_MAX_DATAGRAM_FRAME_SIZE |
+        QUIC_TP_FLAG_RELIABLE_RESET_ENABLED;
+
+    const uint64_t Ignored = TP->Flags & ~Permitted;
+    if (Ignored != 0) {
+        QuicTraceLogConnWarning(
+            QMuxIgnoredTransportParameters,
+            Connection,
+            "Ignoring transport parameters not usable with QMux (0x%llx)",
+            Ignored);
+        TP->Flags &= Permitted;
+    }
+
+    return TRUE;
+}
+
+//
+// Whether a record this end has just read the Size of is one it said it would
+// accept.
+//
+// "Endpoints MUST NOT send QMux Records with a Frames field that exceeds the
+// maximum declared by the peer. When receiving a QMux Record with a Frames
+// field that exceeds the declared maximum, receivers MUST close the connection
+// with an error of type FRAME_ENCODING_ERROR" -- draft-ietf-quic-qmux-02
+// section 5.2. What this end declares is the default, which is also the floor
+// the parameter allows, so the constant is the whole of the answer.
+//
+// Asked as soon as the Size is readable, before the rest of the record is
+// waited for, so an oversized Size is refused rather than buffered: the
+// receive buffer grows to hold a record in progress, and a peer naming a
+// record larger than it is allowed to send must not be able to make this end
+// allocate for it (section 12.2).
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+static
+BOOLEAN
+QuicQMuxRecordLengthAllowed(
+    _In_ QUIC_QMUX* QMux,
+    _In_ QUIC_VAR_INT RecordLength
+    )
+{
+    if (RecordLength <= QX_TP_MAX_RECORD_SIZE_DEFAULT) {
+        return TRUE;
+    }
+
+    QUIC_CONNECTION* Connection = QMux->Connection;
+    QuicTraceEvent(
+        ConnErrorStatus,
+        "[conn][%p] ERROR, %u, %s.",
+        Connection,
+        (uint32_t)RecordLength,
+        "QMux record larger than the declared maximum");
+    QuicConnTransportError(Connection, QUIC_ERROR_FRAME_ENCODING_ERROR);
+    return FALSE;
+}
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 QuicQMuxRecvFrames(
@@ -535,6 +669,7 @@ QuicQMuxRecvFrames(
         case QUIC_FRAME_MAX_DATA:
         case QUIC_FRAME_MAX_STREAM_DATA:
         case QUIC_FRAME_MAX_STREAMS:
+        case QUIC_FRAME_MAX_STREAMS_1:
         case QUIC_FRAME_DATA_BLOCKED:
         case QUIC_FRAME_STREAM_DATA_BLOCKED:
         case QUIC_FRAME_STREAMS_BLOCKED:
@@ -562,11 +697,54 @@ QuicQMuxRecvFrames(
         }
 
         //
+        // The first half of the same rule: nothing may precede the peer's
+        // transport parameters, PADDING included. Checked after the frame type
+        // is known and before it is acted on, so a peer that opens with
+        // anything else is closed on rather than answered.
+        //
+        if (!Connection->State.PeerTPReceived &&
+            FrameType != QX_FRAME_TRANSPORT_PARAMETERS &&
+            !Closed) {
+            QuicTraceEvent(
+                ConnErrorStatus,
+                "[conn][%p] ERROR, %u, %s.",
+                Connection,
+                (uint32_t)FrameType,
+                "First frame is not QX Transport Parameters");
+            QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+            return FALSE;
+        }
+
+        //
         // Process the frame based on the frame type.
         //
         switch (FrameType) {
 
         case QX_FRAME_TRANSPORT_PARAMETERS: {
+            //
+            // "The QX_TRANSPORT_PARAMETERS frame MUST only be sent as the
+            // first frame. If the first frame being received by an endpoint is
+            // not a QX_TRANSPORT_PARAMETERS frame, or if a
+            // QX_TRANSPORT_PARAMETERS frame is received other than as the
+            // first frame, the endpoint MUST close the connection with an
+            // error of type PROTOCOL_VIOLATION" --
+            // draft-ietf-quic-qmux-02 section 4.2.
+            //
+            // The second half of that rule is this test. Without it a second
+            // frame was decoded and applied like the first, which is how a
+            // peer could raise flow control limits it had already given and
+            // have them taken.
+            //
+            if (Connection->State.PeerTPReceived) {
+                QuicTraceEvent(
+                    ConnError,
+                    "[conn][%p] ERROR, %s.",
+                    Connection,
+                    "Second QX Transport Parameters frame");
+                QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);
+                return FALSE;
+            }
+
             QX_TRANSPORT_PARAMETERS_EX Frame;
             if (!QxTransportParametersFrameDecode(PayloadLength, Payload, &Offset, &Frame)) {
                 QuicTraceEvent(
@@ -594,6 +772,10 @@ QuicQMuxRecvFrames(
                     "[conn][%p] ERROR, %s.",
                     Connection,
                     "Processing transport parameters frame");
+                return FALSE;
+            }
+
+            if (!QuicQMuxValidatePeerTransportParameters(QMux)) {
                 return FALSE;
             }
 
@@ -1340,6 +1522,9 @@ QuicQMuxRecvData(
                         &RecordLength)) {
                         break;
                     }
+                    if (!QuicQMuxRecordLengthAllowed(QMux, RecordLength)) {
+                        goto Error;
+                    }
                     if (QMux->TlsState.EarlyDataBufferLength - EarlyDataBufferOffset <
                         RecordOffset + RecordLength) {
                         break;
@@ -1506,6 +1691,9 @@ QuicQMuxRecvData(
                             &RecordOffset,
                             &RecordLength)) {
                         break;
+                    }
+                    if (!QuicQMuxRecordLengthAllowed(QMux, RecordLength)) {
+                        goto Error;
                     }
                     if (QMux->RecvBufferLength - RecvBufferOffset < RecordOffset + RecordLength) {
                         break;

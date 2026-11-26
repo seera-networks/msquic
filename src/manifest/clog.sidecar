@@ -11896,6 +11896,22 @@
       ],
       "macroName": "QuicTraceLogConnVerbose"
     },
+    "QMuxIgnoredTransportParameters": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] Ignoring transport parameters not usable with QMux (0x%llx)",
+      "UniqueId": "QMuxIgnoredTransportParameters",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llx",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnWarning"
+    },
     "QueueDatagrams": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Queuing %u UDP datagrams",
@@ -20051,6 +20067,11 @@
         "UniquenessHash": "8930afbc-80f9-850d-27b8-65fb41330383",
         "TraceID": "PunchRequestUnknownAddress",
         "EncodingString": "[conn][%p] Punch request named an address this server did not advertise"
+      },
+      {
+        "UniquenessHash": "08039553-5445-421f-5001-55952d5c596c",
+        "TraceID": "QMuxIgnoredTransportParameters",
+        "EncodingString": "[conn][%p] Ignoring transport parameters not usable with QMux (0x%llx)"
       },
       {
         "UniquenessHash": "18ef147d-5376-d7f2-f624-3b27af96dd05",

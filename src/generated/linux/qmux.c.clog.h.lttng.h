@@ -25,6 +25,29 @@ TRACEPOINT_EVENT(CLOG_QMUX_C, ListenerIndicateNewConnection,
 
 
 /*----------------------------------------------------------
+// Decoder Ring for QMuxIgnoredTransportParameters
+// [conn][%p] Ignoring transport parameters not usable with QMux (0x%llx)
+// QuicTraceLogConnWarning(
+            QMuxIgnoredTransportParameters,
+            Connection,
+            "Ignoring transport parameters not usable with QMux (0x%llx)",
+            Ignored);
+// arg1 = arg1 = Connection = arg1
+// arg3 = arg3 = Ignored = arg3
+----------------------------------------------------------*/
+TRACEPOINT_EVENT(CLOG_QMUX_C, QMuxIgnoredTransportParameters,
+    TP_ARGS(
+        const void *, arg1,
+        unsigned long long, arg3), 
+    TP_FIELDS(
+        ctf_integer_hex(uint64_t, arg1, (uint64_t)arg1)
+        ctf_integer(uint64_t, arg3, arg3)
+    )
+)
+
+
+
+/*----------------------------------------------------------
 // Decoder Ring for IgnoreFrameAfterClose
 // [conn][%p] Ignoring frame (%hhu) for already closed stream id = %llu
 // QuicTraceLogConnWarning(
@@ -314,12 +337,12 @@ TRACEPOINT_EVENT(CLOG_QMUX_C, ConnErrorStatus,
 // Decoder Ring for ConnError
 // [conn][%p] ERROR, %s.
 // QuicTraceEvent(
-                ConnError,
-                "[conn][%p] ERROR, %s.",
-                Connection,
-                "Frame type decode failure");
+            ConnError,
+            "[conn][%p] ERROR, %s.",
+            Connection,
+            "Prohibited transport parameter for QMux");
 // arg2 = arg2 = Connection = arg2
-// arg3 = arg3 = "Frame type decode failure" = arg3
+// arg3 = arg3 = "Prohibited transport parameter for QMux" = arg3
 ----------------------------------------------------------*/
 TRACEPOINT_EVENT(CLOG_QMUX_C, ConnError,
     TP_ARGS(

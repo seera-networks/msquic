@@ -838,6 +838,11 @@ QuicTestQMuxStreamData(
     );
 
 void
+QuicTestQMuxUniStreamLimits(
+    _In_ const FamilyArgs& Params
+    );
+
+void
 QuicTestQMuxKeepAlive(
     _In_ const FamilyArgs& Params
     );

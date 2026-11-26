@@ -313,6 +313,179 @@ QuicTestQMuxStreamData(
     TEST_TRUE(ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
 }
 
+//
+// Receive-only side of QuicTestQMuxUniStreamLimits. Each stream completing is
+// what releases a unidirectional stream credit and makes this end send
+// MAX_STREAMS.
+//
+struct QMuxUniStreamServerContext {
+    CxPlatEvent ConnectedEvent;
+    CxPlatEvent ShutdownEvent;
+    CxPlatEvent AllStreamsEvent;
+    uint32_t StreamsExpected {0};
+    uint32_t StreamsCompleted {0};
+    uint64_t BytesReceived {0};
+
+    static QUIC_STATUS QUIC_API StreamCallback(
+        _In_ MsQuicStream* Stream,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_STREAM_EVENT* Event
+        )
+    {
+        auto Ctx = static_cast<QMuxUniStreamServerContext*>(Context);
+        switch (Event->Type) {
+        case QUIC_STREAM_EVENT_RECEIVE:
+            Ctx->BytesReceived += Event->RECEIVE.TotalBufferLength;
+            break;
+        case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
+            //
+            // Nothing to echo on a unidirectional stream: shutting down is
+            // all this end can do, and closing the stream is what returns the
+            // credit.
+            //
+            Stream->Shutdown(0);
+            break;
+        case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
+            //
+            // Counted here rather than waited for by the client: the client's
+            // own stream completes as soon as its FIN is written, which is
+            // before this end has finished with it.
+            //
+            if (++Ctx->StreamsCompleted == Ctx->StreamsExpected) {
+                Ctx->AllStreamsEvent.Set();
+            }
+            break;
+        default:
+            break;
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    static QUIC_STATUS QUIC_API ConnCallback(
+        _In_ MsQuicConnection* Conn,
+        _In_opt_ void* Context,
+        _Inout_ QUIC_CONNECTION_EVENT* Event
+        )
+    {
+        auto Ctx = static_cast<QMuxUniStreamServerContext*>(Context);
+        Ctx->Connection = Conn;
+        switch (Event->Type) {
+        case QUIC_CONNECTION_EVENT_CONNECTED:
+            Ctx->ConnectedEvent.Set();
+            break;
+        case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED:
+            new(std::nothrow) MsQuicStream(
+                Event->PEER_STREAM_STARTED.Stream,
+                CleanUpAutoDelete,
+                StreamCallback,
+                Context);
+            break;
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+            Ctx->Connection = nullptr;
+            Ctx->ConnectedEvent.Set();
+            Ctx->AllStreamsEvent.Set();
+            Ctx->ShutdownEvent.Set();
+            break;
+        default:
+            break;
+        }
+        return QUIC_STATUS_SUCCESS;
+    }
+
+    MsQuicConnection* Connection {nullptr};
+};
+
+//
+// More unidirectional streams than the peer's initial limit, one at a time, so
+// every stream after the first needs a MAX_STREAMS frame for the
+// unidirectional type to arrive first.
+//
+// That frame is 0x13, the second of the two MAX_STREAMS codepoints, and QMux
+// permits MAX_STREAMS (draft-ietf-quic-qmux-02 section 4). Only 0x12 was in
+// the allowed list, so this is what the omission cost: the frame the peer has
+// to send to let a second unidirectional stream open was read as a disallowed
+// frame type and closed the connection with FRAME_ENCODING_ERROR.
+//
+void
+QuicTestQMuxUniStreamLimits(
+    _In_ const FamilyArgs& Params
+    )
+{
+    QMuxUniStreamServerContext ServerContext;
+
+    MsQuicRegistration Registration(true);
+    TEST_TRUE(Registration.IsValid());
+
+    if (!QMuxDatapathSupportsTcp()) {
+        return;
+    }
+
+    //
+    // One at a time, which is the point: the client cannot open the next
+    // stream until the server has released the credit for the last.
+    //
+    const uint32_t StreamCount = 4;
+    ServerContext.StreamsExpected = StreamCount;
+    MsQuicSettings Settings;
+    Settings.SetPeerUnidiStreamCount(1);
+
+    MsQuicConfiguration ServerConfiguration(
+        Registration, "MsQuicTest", Settings, ServerSelfSignedCredConfig);
+    TEST_TRUE(ServerConfiguration.IsValid());
+
+    MsQuicCredentialConfig ClientCredConfig;
+    MsQuicConfiguration ClientConfiguration(
+        Registration, "MsQuicTest", Settings, ClientCredConfig);
+    TEST_TRUE(ClientConfiguration.IsValid());
+
+    MsQuicAutoAcceptListener Listener(
+        Registration, true, ServerConfiguration,
+        QMuxUniStreamServerContext::ConnCallback, &ServerContext);
+    TEST_QUIC_SUCCEEDED(Listener.GetInitStatus());
+
+    QuicAddr ServerLocalAddr;
+    QMuxStartListener(Listener, Params.Family, ServerLocalAddr);
+
+    MsQuicConnection Connection(Registration, true);
+    TEST_QUIC_SUCCEEDED(Connection.GetInitStatus());
+    TEST_QUIC_SUCCEEDED(
+        Connection.Start(
+            ClientConfiguration,
+            ServerLocalAddr.GetFamily(),
+            QUIC_TEST_LOOPBACK_FOR_AF(ServerLocalAddr.GetFamily()),
+            ServerLocalAddr.GetPort()));
+
+    TEST_TRUE(Connection.HandshakeCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.ConnectedEvent.WaitTimeout(TestWaitTimeout));
+
+    for (uint32_t i = 0; i < StreamCount; ++i) {
+        QMuxClientContext ClientContext;
+        MsQuicStream Stream(
+            Connection,
+            QUIC_STREAM_OPEN_FLAG_UNIDIRECTIONAL,
+            CleanUpManual,
+            QMuxClientContext::StreamCallback,
+            &ClientContext);
+        TEST_QUIC_SUCCEEDED(Stream.GetInitStatus());
+        TEST_QUIC_SUCCEEDED(Stream.Start());
+        TEST_QUIC_SUCCEEDED(Stream.Send(&QMuxTestSendBuffer, 1, QUIC_SEND_FLAG_FIN));
+        TEST_TRUE(ClientContext.StreamShutdownEvent.WaitTimeout(TestWaitTimeout));
+    }
+
+    //
+    // Every stream arrived, and the connection is still the one that carried
+    // them: a frame refused mid-run would have shut it down instead.
+    //
+    TEST_TRUE(ServerContext.AllStreamsEvent.WaitTimeout(TestWaitTimeout));
+    TEST_EQUAL(StreamCount, ServerContext.StreamsCompleted);
+    TEST_EQUAL(QMuxTestDataLength * StreamCount, ServerContext.BytesReceived);
+    TEST_FALSE(ServerContext.ShutdownEvent.WaitTimeout(100));
+
+    Connection.Shutdown(0);
+    TEST_TRUE(Connection.ShutdownCompleteEvent.WaitTimeout(TestWaitTimeout));
+    TEST_TRUE(ServerContext.ShutdownEvent.WaitTimeout(TestWaitTimeout));
+}
+
 void
 QuicTestQMuxKeepAlive(
     _In_ const FamilyArgs& Params
