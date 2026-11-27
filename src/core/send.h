@@ -5,6 +5,10 @@
 
 --*/
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 #define SEND_PACKET_SHORT_HEADER_TYPE 0xff
 
 QUIC_INLINE
@@ -568,4 +572,8 @@ CxPlatIsRouteReady(
     _In_ QUIC_CONNECTION *Connection,
     _In_ QUIC_PATH* Path
     );
+
+#if defined(__cplusplus)
+}
+#endif
 
