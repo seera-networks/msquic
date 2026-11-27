@@ -73,6 +73,7 @@
 #include "stream_set.h"
 #include "datagram.h"
 #include "version_neg.h"
+#include "qmux.h"
 #include "pathid_set.h"
 #include "pathid.h"
 #include "candidate.h"

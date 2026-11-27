@@ -2887,7 +2887,8 @@ QuicCryptoDecodeServerTicket(
 
     uint32_t QuicVersion;
     memcpy(&QuicVersion, Ticket + Offset, sizeof(QuicVersion));
-    if (!QuicVersionNegotiationExtIsVersionClientSupported(Connection, QuicVersion)) {
+    if (!QuicConnIsQMux(Connection) &&
+        !QuicVersionNegotiationExtIsVersionClientSupported(Connection, QuicVersion)) {
         QuicTraceEvent(
             ConnError,
             "[conn][%p] ERROR, %s.",

@@ -1108,6 +1108,60 @@ TEST_P(WithFamilyArgs, PathStatistics) {
         QuicTestPathStatistics(GetParam());
     }
 }
+
+TEST_P(WithFamilyArgs, QMuxConnect) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxConnect", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxConnect), GetParam()));
+    } else {
+        QuicTestQMuxConnect(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, QMuxStreamData) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxStreamData", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxStreamData), GetParam()));
+    } else {
+        QuicTestQMuxStreamData(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, QMuxUniStreamLimits) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxUniStreamLimits", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxUniStreamLimits), GetParam()));
+    } else {
+        QuicTestQMuxUniStreamLimits(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, QMuxGracefulClose) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxGracefulClose", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxGracefulClose), GetParam()));
+    } else {
+        QuicTestQMuxGracefulClose(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, QMuxKeepAlive) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxKeepAlive", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxKeepAlive), GetParam()));
+    } else {
+        QuicTestQMuxKeepAlive(GetParam());
+    }
+}
+
+TEST_P(WithFamilyArgs, QMuxDatagramBurst) {
+    TestLoggerT<ParamType> Logger("QuicTestQMuxDatagramBurst", GetParam());
+    if (TestingKernelMode) {
+        ASSERT_TRUE(InvokeKernelTest(FUNC(QuicTestQMuxDatagramBurst), GetParam()));
+    } else {
+        QuicTestQMuxDatagramBurst(GetParam());
+    }
+}
 #endif // QUIC_API_ENABLE_PREVIEW_FEATURES
 
 TEST(Mtu, Settings) {

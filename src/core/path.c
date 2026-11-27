@@ -109,6 +109,25 @@ QuicPathGetActive(
     _In_ const QUIC_PATH_SET* PathSet
     )
 {
+    // NOLINTBEGIN(clang-analyzer-security.ArrayBound): False positive: the
+    // path set is a member of the connection, so walking back to it is in
+    // bounds -- which the analyser cannot see from the offset arithmetic.
+    const QUIC_CONNECTION* Connection =
+        CXPLAT_CONTAINING_RECORD(PathSet, QUIC_CONNECTION, Paths);
+
+    //
+    // A QMux connection has no QUIC paths at all: it runs over a TCP
+    // connection the peer owns the addressing of, so QuicConnQMuxAlloc leaves
+    // the path set empty. Connection-level code that is shared with UDP --
+    // settings application, idle timeout, start -- still reaches for the
+    // active path, and before the path set existed it got the zeroed slot 0
+    // and wrote to it harmlessly. Hand that back here rather than making
+    // every one of those call sites test the transport.
+    //
+    if (QuicConnIsQMux(Connection)) {
+        return (QUIC_PATH*)&PathSet->Paths[0];
+    }
+
     CXPLAT_DBG_ASSERT(PathSet->Count > 0);
     //
     // Upstream asserts Paths[0].IsActive here, and off multipath that still
@@ -133,18 +152,12 @@ QuicPathGetActive(
     // assert there, and inventing one would mean promoting a backup behind the
     // application's back.
     //
-    // NOLINTBEGIN(clang-analyzer-security.ArrayBound): False positive: the
-    // path set is a member of the connection, so walking back to it is in
-    // bounds -- which the analyser cannot see from the offset arithmetic.
-    const QUIC_CONNECTION* Connection =
-        CXPLAT_CONTAINING_RECORD(PathSet, QUIC_CONNECTION, Paths);
     CXPLAT_DBG_ASSERT(
         Connection->State.MultipathNegotiated ||
         PathSet->Paths[0].IsActive ||
         PathSet->Paths[0].LocalClose ||
         PathSet->Paths[0].RemoteClose);
     // NOLINTEND(clang-analyzer-security.ArrayBound)
-    UNREFERENCED_PARAMETER(Connection); // The assert is all that reads it.
     return (QUIC_PATH*)&PathSet->Paths[0];
 }
 
@@ -1060,7 +1073,9 @@ QuicConnChoosePath(
     //
     // Reported as UINT32_MAX rather than through a second trace id, so that
     // "chosen with no path ID" is visible in a log that has one line per
-    // choice. Path ID 0 is a real id and could not have said it.
+    // choice. Path ID 0 is a real id and could not have said it -- which is
+    // also why a QMux connection, whose paths never hold a path ID at all,
+    // reports UINT32_MAX here rather than claiming path ID 0.
     //
     QuicTraceLogConnInfo(
         PathChosen,

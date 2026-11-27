@@ -1111,6 +1111,7 @@ QuicStreamSendWrite(
 
     CXPLAT_DBG_ASSERT(Stream->SendFlags != 0);
     CXPLAT_DBG_ASSERT(
+        QuicConnIsQMux(Stream->Connection) ||
         Builder->Metadata->Flags.KeyType == QUIC_PACKET_KEY_1_RTT ||
         Builder->Metadata->Flags.KeyType == QUIC_PACKET_KEY_0_RTT);
     CXPLAT_DBG_ASSERT(QuicStreamAllowedByPeer(Stream));
@@ -1465,7 +1466,8 @@ QuicStreamOnAck(
         Offset,
         FrameMetadata->Flags);
 
-    if (PacketFlags.KeyType == QUIC_PACKET_KEY_0_RTT &&
+    if (!QuicConnIsQMux(Stream->Connection) &&
+        PacketFlags.KeyType == QUIC_PACKET_KEY_0_RTT &&
         Stream->Sent0Rtt < FollowingOffset) {
         Stream->Sent0Rtt = FollowingOffset;
         QuicTraceLogStreamVerbose(
