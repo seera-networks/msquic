@@ -250,6 +250,15 @@ typedef struct QUIC_PATHID {
     short RefTypeCount[QUIC_PATHID_REF_COUNT];
 #endif
 
+    //
+    // Why this end abandoned the path, for the Error Code field of the
+    // PATH_ABANDON frame (RFC 10069 section 4.2). Set by
+    // QuicPathIDAbandonLocally, which the reason is passed to, because the
+    // frame is written long after the decision is made and the writer has no
+    // way to tell a dead interface from an application's request.
+    //
+    QUIC_VAR_INT AbandonErrorCode;
+
     uint64_t StatusSendSeq;
 
     uint64_t StatusRecvSeq;
@@ -338,7 +347,8 @@ QuicPathIDIndicatePathRemoved(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathIDAbandonLocally(
-    _Inout_ QUIC_PATHID* PathID
+    _Inout_ QUIC_PATHID* PathID,
+    _In_ QUIC_VAR_INT ErrorCode
     );
 
 //

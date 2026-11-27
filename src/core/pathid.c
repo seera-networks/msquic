@@ -151,7 +151,8 @@ QuicPathIDIndicatePathRemoved(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 void
 QuicPathIDAbandonLocally(
-    _Inout_ QUIC_PATHID* PathID
+    _Inout_ QUIC_PATHID* PathID,
+    _In_ QUIC_VAR_INT ErrorCode
     )
 {
     QUIC_CONNECTION* Connection = PathID->Connection;
@@ -161,6 +162,11 @@ QuicPathIDAbandonLocally(
     if (!PathID->Path->LocalClose) {
         PathID->Path->LocalClose = TRUE;
         PathID->Flags.SendAbandon = TRUE;
+        //
+        // The first reason wins, which is the one the frame carries. Callers
+        // driven by the loss detection timer arrive here again on every tick.
+        //
+        PathID->AbandonErrorCode = ErrorCode;
         QuicSendSetSendFlag(&Connection->Send, QUIC_CONN_SEND_FLAG_PATH_ABANDON);
 
         QuicPathIDIndicatePathRemoved(PathID);
@@ -997,7 +1003,7 @@ QuicPathIDWritePathAbandonFrame(
         return !NoRoom;
     }
 
-    QUIC_PATH_ABANDON_EX Frame = { PathID->ID, 0x00 };
+    QUIC_PATH_ABANDON_EX Frame = { PathID->ID, PathID->AbandonErrorCode };
     if (!QuicPathAbandonFrameEncode(
             &Frame,
             &Builder->DatagramLength,

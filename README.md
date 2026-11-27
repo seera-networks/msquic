@@ -35,7 +35,7 @@ If that happens, use upstream.
 | Feature | Specification | Upstream status |
 | --- | --- | --- |
 | Client Initiated Migration | [RFC 9000 §9](https://www.rfc-editor.org/rfc/rfc9000#section-9) | [PR #4218](https://github.com/microsoft/msquic/pull/4218), open |
-| Multipath | [draft-ietf-quic-multipath](https://datatracker.ietf.org/doc/html/draft-ietf-quic-multipath/) | [PR #4724](https://github.com/microsoft/msquic/pull/4724), open |
+| Multipath | [RFC 10069](https://www.rfc-editor.org/rfc/rfc10069.html) | [PR #4724](https://github.com/microsoft/msquic/pull/4724), open |
 | Address Discovery | [draft-ietf-quic-address-discovery](https://tools.ietf.org/html/draft-ietf-quic-address-discovery/) | not upstream |
 | Server Initiated Migration | [draft-kozuka-quic-server-migration](https://datatracker.ietf.org/doc/html/draft-kozuka-quic-server-migration/) | not upstream |
 | NAT Traversal | [draft-seemann-quic-nat-traversal](https://datatracker.ietf.org/doc/html/draft-seemann-quic-nat-traversal/) | not upstream |

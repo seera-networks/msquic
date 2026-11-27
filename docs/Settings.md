@@ -337,7 +337,7 @@ typedef struct QUIC_PATH_STATUS {
 } QUIC_PATH_STATUS;
 ```
 
-`PathId` selects the path, matching the identifier reported by `QUIC_PARAM_CONN_PATH_STATISTICS` and by the `QUIC_CONNECTION_EVENT_PATH_ADDED` / `PATH_REMOVED` / `PATH_STATUS_CHANGED` events. A path that exists but has not been assigned a path ID yet — one added before the handshake is confirmed — cannot be addressed, and neither can an unknown id; both fail with `QUIC_STATUS_INVALID_PARAMETER`.
+`PathId` selects the path, matching the identifier reported by `QUIC_PARAM_CONN_PATH_STATISTICS` and by the `QUIC_CONNECTION_EVENT_PATH_ADDED` / `PATH_REMOVED` / `PATH_STATUS_CHANGED` events. A path that exists but has not been assigned a path ID yet — one added before the handshake is confirmed — cannot be addressed, and neither can an unknown id; both fail with `QUIC_STATUS_INVALID_PARAMETER`. A path that has an id but has not been validated yet can be addressed: declaring such a path backup announces it and holds the declaration, which is what the path becoming usable then honours.
 
 The parameter requires multipath to have been negotiated and fails with `QUIC_STATUS_INVALID_STATE` otherwise. `BufferLength` must be exactly `sizeof(QUIC_PATH_STATUS)`.
 
@@ -345,13 +345,17 @@ Setting it has two effects.
 
 Locally, the status steers path selection. Once multipath is negotiated and the handshake is confirmed, each send flush picks one path at random from those that are active and not closing, and builds that flush's packets on it — the choice is per flush, not per packet, and a flush triggered by pacing reuses the path the pacing was set up for rather than choosing again. Marking a path backup therefore takes it out of that rotation while leaving it validated and usable.
 
-Two caveats on that. **If no path is active at all**, selection falls back to the first path and keeps sending on it, so marking every path backup does not stop sending. And the status is **not durable against internal changes**: several paths through the stack promote a path to active on their own — the fallback when the active path is removed, and a new path completing validation — and those do not send a PATH_AVAILABLE frame or raise an event. A path the application marked backup can therefore end up active again, with the peer still believing it is backup.
+One caveat on that. **If no path is active at all**, selection falls back to the first path and keeps sending on it, so marking every path backup does not stop sending.
 
-On the wire, the change is announced with a PATH_AVAILABLE or PATH_BACKUP frame — the PATH_STATUS frames of draft-ietf-quic-multipath — carrying the path ID and a sequence number kept per path ID. Setting the status to the value it already has changes nothing and sends nothing.
+The status does survive the promotions the stack performs on its own — the fallback when the active path is removed, and a new path completing validation. Both go through the same place, which activates a path only while neither end has asked for it to be held back, so a path the application marked backup stays backup and so does one the peer called backup. That was not true before #235 and #233 respectively: the promotion wrote "active" regardless, and the peer went on believing what it had been told.
+
+On the wire, the change is announced with a PATH_AVAILABLE or PATH_BACKUP frame — PATH_STATUS_AVAILABLE and PATH_STATUS_BACKUP in [RFC 10069](https://www.rfc-editor.org/rfc/rfc10069.html) — carrying the path ID and a sequence number kept per path ID. What decides whether a frame goes out is **what the peer was last told**, not the path's current status: setting a status the peer already has changes nothing and sends nothing, while any change from it is announced, including on a path that is not active yet. A path the peer has never been told about is one it may use, so calling such a path available is the one no-op in the other direction.
 
 The peer can do the same to us. An incoming PATH_AVAILABLE or PATH_BACKUP flips the path's status locally and raises `QUIC_CONNECTION_EVENT_PATH_STATUS_CHANGED` with the new `IsActive`. A frame whose sequence number is not greater than the last one accepted for that path ID is ignored, so a reordered announcement cannot undo a newer one.
 
-That event fires only for changes the peer initiated; setting this parameter raises nothing. An application tracking the current status of a path needs both — what it set itself, and what arrives on the event — and, given the promotion caveat above, neither is a complete record.
+A status that arrives for a path this end has not validated yet is kept rather than applied, and takes effect when the path becomes usable — the peer sends one frame per change of its own mind, never one per attempt, so the alternative was losing it. When the kept status is backup, the event arrives **after** `QUIC_CONNECTION_EVENT_PATH_ADDED` for that path, which is the order an application would have seen had the frame come in a moment later; a kept *available* status raises nothing, since a new path is active in any case.
+
+That event fires only for changes the peer initiated; setting this parameter raises nothing. An application tracking the current status of a path therefore needs both halves — what it set itself, and what arrives on the event — but each half is now durable on its own.
 
 ### QUIC_PARAM_CONN_PATH_STATISTICS
 

@@ -298,9 +298,8 @@ QuicSendWritePathAckFrames(
     // acknowledge them. The invalid-path removal after a failed route
     // resolution leaves the same.
     //
-    // An ACK_MP frame names the path ID it acknowledges, so
-    // draft-ietf-quic-multipath-21 section 3.4 lets it go out on whichever path
-    // this builder is targeting. That is what makes reaching a path-less path
+    // A PATH_ACK frame names the path ID it acknowledges, so RFC 10069
+    // section 3.4 lets it go out on whichever path this builder is targeting. That is what makes reaching a path-less path
     // ID possible at all, and it is the same reason
     // QuicPathIDSetWritePathAbandonFrame walks the set.
     //
@@ -1777,6 +1776,25 @@ CxPlatIsRouteReady(
     }
 
     //
+    // A path that has lost its binding has nothing to resolve a route on. It
+    // is reachable: freeing a path ID releases the binding and clears the
+    // pointer (QuicPathIDSetTryFreePathID) before QuicPathRemove detaches the
+    // path ID, and the last path of a connection is left in the path set
+    // rather than removed -- so a flush on a connection winding down can be
+    // handed exactly this path, which is what QuicConnChoosePath's fallback
+    // answers with when nothing is sendable.
+    //
+    // Reading Path->Binding->Socket below is then a null dereference. It never
+    // showed on the UDP datapaths, where a route counts as resolved as soon as
+    // it is set and the line above returns first; the XDP and QTIP legs
+    // resolve routes for real, and crashed here on every run of
+    // ParameterValidation.ValidateConnectionParam that reached it (#80).
+    //
+    if (Path->Binding == NULL) {
+        return FALSE;
+    }
+
+    //
     // We need to set the path challenge flag back on so that when route is resolved,
     // we know we need to continue to send the challenge.
     //
@@ -2536,6 +2554,22 @@ QuicSendFlush(
     }
 
     CXPLAT_DBG_ASSERT(!Connection->State.HandleClosed);
+
+    //
+    // The path chosen may be one that cannot carry anything. QuicConnChoosePath
+    // prefers a sendable path and falls back to slot 0 when there is none,
+    // because its callers need an answer -- and a path whose path ID has been
+    // freed keeps its slot with the path ID and the binding taken away. Its
+    // congestion control, packet number spaces and destination CIDs all lived
+    // on that path ID, so there is nothing here to send with (#80).
+    //
+    // QMux is exempt, as it is from the route check below: a QMux connection
+    // has no path IDs at all and does not send through a path, so a path
+    // without one is its normal state rather than a path on the way out.
+    //
+    if (!QuicConnIsQMux(Connection) && Path->PathID == NULL) {
+        return TRUE;
+    }
 
     if (!QuicConnIsQMux(Connection) && !CxPlatIsRouteReady(Connection, Path)) {
         return TRUE;

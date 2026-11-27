@@ -1043,7 +1043,7 @@ QuicConnChoosePath(
             // Falling through to it would put the PATH_ABANDON frame that
             // announces the abandonment on the path being abandoned, and every
             // packet after it too, until the application promotes a backup.
-            // draft-ietf-quic-multipath section 3.4 recommends another path
+            // RFC 10069 section 3.4 recommends another path
             // for that frame for exactly this reason, and an application that
             // does not watch for PATH_REMOVED would not be sending into a hole
             // for a moment but until the idle timeout.
